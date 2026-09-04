@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   APP_COMMANDS,
   TOOL_SHORTCUTS,
@@ -124,11 +124,17 @@ describe('command registry', () => {
     expect(requestActiveInteractionCancellation(activeTarget)).toBe(true);
   });
 
-  it('marks in-place Save unavailable until a real implementation exists', () => {
-    expect(APP_COMMANDS['file.save'].availability).toBe('unavailable');
-    expect(isCommandAvailable('file.save', { hasDocument: true })).toBe(false);
-    expect(APP_COMMANDS['file.saveAs'].availability).toBe('unavailable');
-    expect(isCommandAvailable('file.saveAs', { hasDocument: true })).toBe(false);
+  it('marks in-place Save available conditionally', () => {
+    expect(APP_COMMANDS['file.save'].availability).toBe('save');
+    expect(isCommandAvailable('file.save', { isDirty: false })).toBe(false);
+    expect(isCommandAvailable('file.save', { isDirty: true })).toBe(true);
+
+    expect(APP_COMMANDS['file.saveAs'].availability).toBe('document');
+    expect(APP_COMMANDS['file.saveTemplate'].availability).toBe('unavailable');
+    
+    expect(APP_COMMANDS['file.saveAll'].availability).toBe('saveAll');
+    expect(isCommandAvailable('file.saveAll', { hasAnyDirtyDocument: false })).toBe(false);
+    expect(isCommandAvailable('file.saveAll', { hasAnyDirtyDocument: true })).toBe(true);
     expect(isCommandAvailable('file.export', { hasDocument: false })).toBe(false);
     expect(isCommandAvailable('file.export', { hasDocument: true })).toBe(true);
     expect(isCommandAvailable('edit.selectAll', { hasDocument: true })).toBe(false);

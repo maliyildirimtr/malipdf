@@ -3,9 +3,7 @@ import {
   COMMAND_EXECUTE_CHANNEL,
   COMMAND_STATE_CHANNEL,
   FULLSCREEN_TOGGLE_CHANNEL,
-  NATIVE_ROLE_CHANNEL,
   type NativeCommandState,
-  type NativeRole,
 } from './commandBridge';
 
 // ─── Type definitions for the exposed API ─────────────────────────────────────
@@ -27,10 +25,12 @@ export interface ElectronAPI {
   getTempDir: () => Promise<string>;
   getVersion: () => Promise<string>;
 
-  onCommand: (callback: (commandId: unknown) => void) => () => void;
+  onCommand: (callback: (commandId: unknown, payload?: unknown) => void) => () => void;
   updateCommandStates: (states: NativeCommandState[]) => void;
-  executeNativeRole: (role: NativeRole) => Promise<boolean>;
   toggleFullScreen: () => Promise<boolean>;
+  askCloseConfirm: (fileName: string) => Promise<'save' | 'discard' | 'cancel'>;
+  askCloseAllConfirm: (fileNames: string[]) => Promise<'save' | 'discard' | 'cancel'>;
+  confirmLifecycle: (requestId: string, allow: boolean) => void;
 }
 
 const electronAPI: ElectronAPI = {
@@ -42,13 +42,15 @@ const electronAPI: ElectronAPI = {
   getVersion: () => ipcRenderer.invoke('app:getVersion'),
 
   onCommand: (callback) => {
-    const listener = (_event: Electron.IpcRendererEvent, commandId: unknown) => callback(commandId);
+    const listener = (_event: Electron.IpcRendererEvent, commandId: unknown, payload?: unknown) => callback(commandId, payload);
     ipcRenderer.on(COMMAND_EXECUTE_CHANNEL, listener);
     return () => ipcRenderer.removeListener(COMMAND_EXECUTE_CHANNEL, listener);
   },
   updateCommandStates: (states) => ipcRenderer.send(COMMAND_STATE_CHANNEL, states),
-  executeNativeRole: (role) => ipcRenderer.invoke(NATIVE_ROLE_CHANNEL, role),
   toggleFullScreen: () => ipcRenderer.invoke(FULLSCREEN_TOGGLE_CHANNEL),
+  askCloseConfirm: (fileName) => ipcRenderer.invoke('dialog:askCloseConfirm', fileName),
+  askCloseAllConfirm: (fileNames) => ipcRenderer.invoke('dialog:askCloseAllConfirm', fileNames),
+  confirmLifecycle: (requestId, allow) => ipcRenderer.send('app:confirmLifecycle', requestId, allow),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);

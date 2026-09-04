@@ -1,0 +1,501 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  animation: fadeIn 0.15s ease-out;
+}
+
+.dialog {
+  background: var(--bg-primary, #ffffff);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15), 0 2px 8px rgba(0, 0, 0, 0.08);
+  width: 500px;
+  max-width: 90vw;
+  display: flex;
+  flex-direction: column;
+  animation: slideUp 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  border: 1px solid var(--border-color, #dcdcdc);
+  color: var(--text-primary, #333333);
+  outline: none;
+}
+
+.header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+}
+
+.header h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.content {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sectionHeader {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-tertiary, #888888);
+  letter-spacing: 0.5px;
+}
+
+.divider {
+  height: 1px;
+  background: var(--border-color, #ebebeb);
+  margin: 0 -4px;
+}
+
+.thumbnailRow {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding: 4px 0;
+}
+
+.thumbnailBtn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+  outline: none;
+}
+
+.thumbnailPreview {
+  width: 52px;
+  height: 68px;
+  border-radius: 4px;
+  border: 2px solid transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  transition: all 0.15s ease;
+}
+
+.thumbnailPreview svg {
+  border-radius: 2px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.thumbnailSelected .thumbnailPreview {
+  border-color: var(--accent-color, #0066ff);
+  background: rgba(0, 102, 255, 0.05);
+}
+
+.thumbnailBtn:hover:not(.thumbnailSelected) .thumbnailPreview {
+  border-color: var(--border-color, #cccccc);
+}
+
+.thumbnailLabel {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary, #666666);
+}
+
+.thumbnailSelected .thumbnailLabel {
+  color: var(--accent-color, #0066ff);
+  font-weight: 600;
+}
+
+.formRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.formRow label:first-child {
+  width: 90px;
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary, #666);
+}
+
+.radioGroup {
+  display: flex;
+  gap: 12px;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+.radioCard {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color, #dcdcdc);
+  background: var(--bg-primary, #ffffff);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.radioIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary, #888888);
+}
+
+.radioCard span {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.radioSelected {
+  border-color: var(--accent-color, #0066ff);
+  background: rgba(0, 102, 255, 0.04);
+}
+
+.radioSelected .radioIcon {
+  color: var(--accent-color, #0066ff);
+}
+
+.sizeControl {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+}
+
+.compactSelect,
+.compactInput {
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border-color, #cccccc);
+  background: var(--bg-primary, #ffffff);
+  color: var(--text-primary, #333);
+  font-size: 12px;
+  outline: none;
+}
+
+.compactSelect:focus,
+.compactInput:focus {
+  border-color: var(--accent-color, #0066ff);
+  box-shadow: 0 0 0 2px rgba(0, 102, 255, 0.2);
+}
+
+.dimensions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dimensions input {
+  width: 54px;
+  text-align: center;
+}
+
+.dimSep {
+  font-size: 12px;
+  color: var(--text-tertiary, #888);
+}
+
+.stepperControl {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border-color, #cccccc);
+  border-radius: 6px;
+  overflow: hidden;
+  height: 28px;
+  width: fit-content;
+}
+
+.stepperBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 100%;
+  background: var(--bg-secondary, #f5f5f5);
+  border: none;
+  cursor: pointer;
+  color: var(--text-secondary, #666);
+  transition: background 0.15s ease;
+}
+
+.stepperBtn:hover:not(:disabled) {
+  background: var(--bg-hover, #e8e8e8);
+}
+
+.stepperBtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.stepperInput {
+  width: 40px;
+  height: 100%;
+  border: none;
+  border-left: 1px solid var(--border-color, #cccccc);
+  border-right: 1px solid var(--border-color, #cccccc);
+  text-align: center;
+  font-size: 13px;
+  font-weight: 500;
+  outline: none;
+  background: var(--bg-primary, #ffffff);
+  color: var(--text-primary, #333);
+  -moz-appearance: textfield;
+}
+
+.stepperInput::-webkit-outer-spin-button,
+.stepperInput::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.footer {
+  padding: 12px 16px;
+  border-top: 1px solid var(--border-color, #e0e0e0);
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  background: var(--bg-secondary, #fafafa);
+  border-bottom-left-radius: 10px;
+  border-bottom-right-radius: 10px;
+}
+
+.cancelButton,
+.createButton {
+  padding: 0 14px;
+  height: 28px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  outline: none;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cancelButton {
+  background: transparent;
+  color: var(--text-primary, #333);
+  border: 1px solid var(--border-color, #cccccc);
+}
+
+.cancelButton:hover:not(:disabled) {
+  background: var(--bg-hover, #f0f0f0);
+}
+
+.createButton {
+  background: var(--accent-color, #0066ff);
+  color: white;
+}
+
+.createButton:hover:not(:disabled) {
+  background: var(--accent-hover, #0055dd);
+}
+
+.createButton:disabled,
+.cancelButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Dark mode overrides */
+:global([data-theme="dark"]) .dialog {
+  background: #2a2a2a;
+  border-color: #444;
+  color: #eeeeee;
+}
+:global([data-theme="dark"]) .header,
+:global([data-theme="dark"]) .footer,
+:global([data-theme="dark"]) .divider {
+  border-color: #444;
+}
+:global([data-theme="dark"]) .footer {
+  background: #222;
+}
+:global([data-theme="dark"]) .sectionHeader,
+:global([data-theme="dark"]) .dimSep {
+  color: #999;
+}
+:global([data-theme="dark"]) .thumbnailLabel,
+:global([data-theme="dark"]) .formRow label:first-child {
+  color: #aaaaaa;
+}
+:global([data-theme="dark"]) .thumbnailPreview svg {
+  box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+}
+:global([data-theme="dark"]) .thumbnailBtn:hover:not(.thumbnailSelected) .thumbnailPreview {
+  border-color: #555;
+}
+:global([data-theme="dark"]) .thumbnailPreview svg rect {
+  fill: #333;
+  stroke: #555;
+}
+:global([data-theme="dark"]) .thumbnailPreview svg line {
+  stroke: #555;
+}
+:global([data-theme="dark"]) .radioCard {
+  background: #2a2a2a;
+  border-color: #555;
+}
+:global([data-theme="dark"]) .radioIcon {
+  color: #999;
+}
+:global([data-theme="dark"]) .compactSelect,
+:global([data-theme="dark"]) .compactInput {
+  background: #333;
+  border-color: #555;
+  color: #eee;
+}
+:global([data-theme="dark"]) .stepperControl {
+  border-color: #555;
+}
+:global([data-theme="dark"]) .stepperBtn {
+  background: #333;
+  color: #aaa;
+}
+:global([data-theme="dark"]) .stepperBtn:hover:not(:disabled) {
+  background: #444;
+}
+:global([data-theme="dark"]) .stepperInput {
+  background: #2a2a2a;
+  color: #eee;
+  border-color: #555;
+}
+:global([data-theme="dark"]) .cancelButton {
+  color: #eee;
+  border-color: #555;
+}
+:global([data-theme="dark"]) .cancelButton:hover:not(:disabled) {
+  background: #333;
+}
+
+.contextualRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--bg-secondary, #f9f9f9);
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color, #ebebeb);
+}
+
+.chipGroup {
+  display: flex;
+  gap: 6px;
+}
+
+.chip {
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border-color, #ccc);
+  background: var(--bg-primary, #fff);
+  color: var(--text-secondary, #666);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.chip:hover {
+  background: var(--bg-hover, #f0f0f0);
+}
+
+.chipSelected {
+  background: var(--accent-color, #0066ff);
+  color: #fff;
+  border-color: var(--accent-color, #0066ff);
+}
+
+.chipSelected:hover {
+  background: var(--accent-hover, #0055dd);
+}
+
+.colorControl {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.colorWell {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--border-color, #ccc);
+  border-radius: 4px;
+  cursor: pointer;
+  overflow: hidden;
+  background: none;
+}
+
+.colorWell::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.colorWell::-webkit-color-swatch {
+  border: none;
+}
+
+:global([data-theme="dark"]) .contextualRow {
+  background: #222;
+  border-color: #444;
+}
+
+:global([data-theme="dark"]) .chip {
+  background: #333;
+  border-color: #555;
+  color: #ccc;
+}
+
+:global([data-theme="dark"]) .chip:hover {
+  background: #444;
+}
+
+:global([data-theme="dark"]) .chipSelected {
+  background: var(--accent-color, #0066ff);
+  color: #fff;
+  border-color: var(--accent-color, #0066ff);
+}

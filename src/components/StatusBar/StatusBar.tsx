@@ -17,7 +17,8 @@ export function StatusBar() {
     );
   }
 
-  const { id: docId, instanceId, activePageIndex, pageCount, zoom, zoomMode, isDirty } = activeDoc;
+  const { id: docId, instanceId, activePageIndex, pageCount, zoom, zoomMode, currentStateId, savedStateId } = activeDoc;
+  const isDirty = currentStateId !== savedStateId;
 
   function goToPage(pageIndex: number) {
     const nextPage = Math.max(0, Math.min(pageCount - 1, pageIndex));

@@ -35,9 +35,34 @@ function rectangle(
   };
 }
 
+import { useDocumentStore } from '../../store/documentStore';
+import { nanoid } from '../../utils/nanoid';
+
 beforeEach(() => {
   useHistoryStore.setState({ histories: new Map() });
   useAnnotationStore.setState({ docAnnotations: new Map() });
+  useDocumentStore.setState({ documents: new Map(), activeDocId: null, tabOrder: [] });
+  
+  const doc = {
+    id: DOC_ID,
+    instanceId: 1,
+    title: 'test.pdf',
+    filePath: null,
+    currentStateId: nanoid(),
+    savedStateId: null,
+    saveStatus: 'idle' as const,
+    lastSaveError: null,
+    sourceData: new Uint8Array(0),
+    activePageIndex: 0,
+    pageCount: 1,
+    zoom: 1,
+    zoomMode: 'fitWidth' as const,
+    scrollTop: 0,
+    scrollLeft: 0,
+    pageRotations: {},
+  };
+  
+  useDocumentStore.getState().openDocument(doc);
   useHistoryStore.getState().initDocument(DOC_ID);
   useAnnotationStore.getState().initDocument(DOC_ID);
 });

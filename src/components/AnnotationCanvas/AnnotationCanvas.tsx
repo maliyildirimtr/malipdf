@@ -39,7 +39,9 @@ import type {
   PdfPoint,
   ShapeKind,
 } from '../../types/annotations';
+import type { DocumentIdentity } from '../../types/documentSession';
 import { useAnnotationStore } from '../../store/annotationStore';
+import { useSelectionStore } from '../../store/selectionStore';
 import { useHistoryStore, makeAddAction, makeRemoveAction, makeMoveAction } from '../../store/historyStore';
 import { useUIStore } from '../../store/uiStore';
 import {
@@ -77,6 +79,7 @@ import { CANCEL_ACTIVE_INTERACTION_EVENT } from '../../commands';
 
 interface AnnotationCanvasProps {
   docId: string;
+  instanceId: number;
   pageIndex: number;
   transform: PageTransform;
   onInteractionPinChange?: (pinned: boolean) => void;
@@ -136,6 +139,7 @@ function toolToShapeKind(tool: ToolType): ShapeKind | null {
 
 const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCanvas({
   docId,
+  instanceId,
   pageIndex,
   transform,
   onInteractionPinChange,
@@ -151,7 +155,6 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
   const shapeStart       = useRef<{ screenX: number; screenY: number; pdfX: number; pdfY: number } | null>(null);
   const selectionStart   = useRef<{ screenX: number; screenY: number } | null>(null);
   const currentEnd       = useRef<{ screenX: number; screenY: number }>({ screenX: 0, screenY: 0 });
-  const selectedIds      = useRef<Set<string>>(new Set());
   const moveAnchor       = useRef<{ screenX: number; screenY: number; pdfX: number; pdfY: number } | null>(null);
   const moveBefore       = useRef<Map<string, Annotation>>(new Map());
   const resizeHandle     = useRef<ResizeHandle | null>(null);
@@ -162,7 +165,9 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
   const suppressTextBlurCommitRef = useRef(false);
   const activePointerIdRef = useRef<number | null>(null);
   const gestureToolRef   = useRef<ToolType | null>(null);
-  const selectionBefore  = useRef<Set<string>>(new Set());
+  const selectionBefore  = useRef<string[]>([]);
+  const gestureSelectedIdsRef = useRef<string[]>([]);
+
 
   // React state only for text overlay (needs DOM update)
   const [textOverlay, setTextOverlay] = useState<TextOverlay | null>(null);
@@ -171,6 +176,12 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
   const interactionTool = temporaryTool ?? activeTool;
   const { addAnnotation, removeAnnotation, replaceAnnotation, getPageAnnotations } = useAnnotationStore();
   const { push: pushHistory } = useHistoryStore();
+  const identity: DocumentIdentity = { docId, instanceId };
+  
+  const selectionState = useSelectionStore(state => state.getSelection(identity));
+  const selectedIdsArray = (selectionState?.pageIndex === pageIndex) ? selectionState.selectedIds : [];
+  const selectedIds = new Set(selectedIdsArray);
+  const { selectAnnotation, clearSelection, setSelection } = useSelectionStore();
 
   const { scale, cssWidth: width, cssHeight: height } = transform;
   const dpr = computeSafeCanvasOutputScale(
@@ -208,9 +219,9 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     const annotations = getPageAnnotations(docId, pageIndex);
     renderAnnotations(ctx, annotations, transform, dpr);
 
-    // Draw selection overlays for selected annotations
-    if (selectedIds.current.size > 0) {
-      for (const id of selectedIds.current) {
+    // Draw selection overlays for selected annotations, except when moving
+    if (selectedIdsArray.length > 0 && mode.current !== 'moving') {
+      for (const id of selectedIdsArray) {
         const ann = annotations.find(a => a.id === id);
         if (!ann) continue;
 
@@ -222,12 +233,13 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
         renderSelectionOverlay(ctx, screenBounds, handles, dpr);
       }
     }
-  }, [docId, pageIndex, transform, dpr, getPageAnnotations]);
+  }, [docId, pageIndex, transform, dpr, getPageAnnotations, selectedIdsArray]);
+
 
   // Re-render whenever store or selection changes
   useEffect(() => {
     redrawAnnotationLayer();
-  });
+  }, [redrawAnnotationLayer]);
 
   // ── Drawing canvas helpers ────────────────────────────────────────────────
 
@@ -284,6 +296,33 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
       const { screenX: sx, screenY: sy } = selectionStart.current;
       const { screenX: ex, screenY: ey } = currentEnd.current;
       renderSelectionRect(ctx, sx, sy, ex, ey, dpr);
+    } else if (m === 'moving' && moveAnchor.current) {
+      const annotations = getPageAnnotations(docId, pageIndex);
+      const dx = moveAnchor.current.pdfX - shapeStart.current!.pdfX; // using shapeStart as original anchor
+      const dy = moveAnchor.current.pdfY - shapeStart.current!.pdfY;
+
+      // Draw transient move preview
+      const previewAnnotations = gestureSelectedIdsRef.current
+        .map(id => annotations.find(a => a.id === id))
+        .filter((a): a is Annotation => a !== undefined)
+        .map(a => applyMoveToAnnotation(a, dx, dy));
+
+      renderAnnotations(ctx, previewAnnotations, transform, dpr);
+      
+      // Draw selection overlay on the transient preview
+      for (const ann of previewAnnotations) {
+        const bounds = getAnnotationBounds(ann);
+        const screenBounds = pdfRectToScreenBounds(bounds, transform);
+        const handles = getResizeHandles(bounds).map(h => pdfToScreen(h.x, h.y, transform));
+        renderSelectionOverlay(ctx, screenBounds, handles, dpr);
+      }
+    } else if (m === 'resizing' && resizeBefore.current && resizeHandle.current) {
+      const ann = applyResizeToAnnotation(resizeBefore.current, resizeHandle.current.id, moveAnchor.current!.pdfX, moveAnchor.current!.pdfY);
+      renderAnnotations(ctx, [ann], transform, dpr);
+      const bounds = getAnnotationBounds(ann);
+      const screenBounds = pdfRectToScreenBounds(bounds, transform);
+      const handles = getResizeHandles(bounds).map(h => pdfToScreen(h.x, h.y, transform));
+      renderSelectionOverlay(ctx, screenBounds, handles, dpr);
     }
   }
 
@@ -321,87 +360,101 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     const { screenX, screenY } = getPagePoint(e);
     const pdfPt = screenToPdfPoint(screenX, screenY);
 
-    // ── Pen / Highlighter ──
-    if (interactionTool === 'pen' || interactionTool === 'highlighter') {
-      mode.current = 'drawing';
-      activePoints.current = [{ x: screenX, y: screenY, pressure: e.pressure > 0 ? e.pressure : 0.5, timestamp: e.timeStamp }];
-      schedulePreviewRender();
-      return;
-    }
-
-    // ── Eraser ──
-    if (interactionTool === 'eraser') {
-      mode.current = 'erasing';
-      doErase(pdfPt);
-      return;
-    }
-
-    // ── Shape tools ──
-    const shapeKind = toolToShapeKind(interactionTool);
-    if (shapeKind) {
-      mode.current = 'shapeDrawing';
-      shapeStart.current = { screenX, screenY, pdfX: pdfPt.x, pdfY: pdfPt.y };
-      currentEnd.current = { screenX, screenY };
-      schedulePreviewRender();
-      return;
-    }
-
-    // ── Text ──
-    if (interactionTool === 'text') {
-      openTextOverlay(screenX, screenY, pdfPt.x, pdfPt.y);
-      return;
-    }
-
-    // ── Select ──
-    if (interactionTool === 'select') {
-      const annotations = getPageAnnotations(docId, pageIndex);
-
-      // First: check if clicking on a resize handle of a selected annotation
-      if (selectedIds.current.size === 1) {
-        const [selId] = selectedIds.current;
-        const selAnn = annotations.find(a => a.id === selId);
-        if (selAnn) {
-          const bounds = getAnnotationBounds(selAnn);
-          const handles = getResizeHandles(bounds);
-          const hit = hitTestResizeHandle(pdfPt, handles, transform);
-          if (hit) {
-            mode.current = 'resizing';
-            resizeHandle.current = hit;
-            resizeBefore.current = selAnn;
-            return;
+    switch (interactionTool) {
+      case 'pen':
+      case 'highlighter': {
+        mode.current = 'drawing';
+        activePoints.current = [{ x: screenX, y: screenY, pressure: e.pressure > 0 ? e.pressure : 0.5, timestamp: e.timeStamp }];
+        schedulePreviewRender();
+        return;
+      }
+      
+      case 'eraser': {
+        mode.current = 'erasing';
+        doErase(pdfPt);
+        return;
+      }
+      
+      case 'text': {
+        openTextOverlay(screenX, screenY, pdfPt.x, pdfPt.y);
+        return;
+      }
+      
+      case 'select': {
+        const annotations = getPageAnnotations(docId, pageIndex);
+  
+        // First: check if clicking on a resize handle of a selected annotation
+        if (selectedIdsArray.length === 1) {
+          const [selId] = selectedIdsArray;
+          const selAnn = annotations.find(a => a.id === selId);
+          if (selAnn) {
+            const bounds = getAnnotationBounds(selAnn);
+            const handles = getResizeHandles(bounds);
+            const hit = hitTestResizeHandle(pdfPt, handles, transform);
+            if (hit) {
+              mode.current = 'resizing';
+              resizeHandle.current = hit;
+              resizeBefore.current = structuredClone(selAnn);
+              shapeStart.current = { screenX, screenY, pdfX: pdfPt.x, pdfY: pdfPt.y };
+              moveAnchor.current = { screenX, screenY, pdfX: pdfPt.x, pdfY: pdfPt.y };
+              // Suppress original annotation during resize preview by tricking the layer redraw
+              schedulePreviewRender();
+              return;
+            }
           }
         }
-      }
-
-      // Second: hit-test annotations
-      const hit = hitTestAnnotations(pdfPt, annotations, transform);
-      if (hit) {
-        // If not already selected, replace selection
-        if (!selectedIds.current.has(hit.id)) {
-          selectedIds.current = new Set([hit.id]);
+  
+        // Second: hit-test annotations
+        const hit = hitTestAnnotations(pdfPt, annotations, transform);
+        if (hit) {
+          // If not already selected, replace selection
+          let activeIds = selectedIdsArray;
+          if (!selectedIds.has(hit.id)) {
+            activeIds = [hit.id];
+            selectAnnotation(identity, pageIndex, hit.id);
+          }
+          // Start move
+          mode.current = 'moving';
+          shapeStart.current = { screenX, screenY, pdfX: pdfPt.x, pdfY: pdfPt.y }; // Original anchor
+          moveAnchor.current = { screenX, screenY, pdfX: pdfPt.x, pdfY: pdfPt.y }; // Current transient anchor
+          gestureSelectedIdsRef.current = [...activeIds];
+          
+          // Snapshot annotations before move
+          moveBefore.current = new Map();
+          for (const id of activeIds) {
+            const ann = annotations.find(a => a.id === id);
+            if (ann) moveBefore.current.set(id, structuredClone(ann));
+          }
+          redrawAnnotationLayer(); // Suppress selected annotations by skipping them in redraw (if mode === 'moving')
+          schedulePreviewRender();
+        } else {
+          // Start rubber-band selection
+          selectionBefore.current = [...selectedIdsArray];
+          clearSelection(identity);
+          mode.current = 'selectDrag';
+          selectionStart.current = { screenX, screenY };
+          currentEnd.current = { screenX, screenY };
+          schedulePreviewRender();
         }
-        // Start move
-        mode.current = 'moving';
-        moveAnchor.current = { screenX, screenY, pdfX: pdfPt.x, pdfY: pdfPt.y };
-        // Snapshot annotations before move
-        moveBefore.current = new Map();
-        for (const id of selectedIds.current) {
-          const ann = annotations.find(a => a.id === id);
-          if (ann) moveBefore.current.set(id, structuredClone(ann));
-        }
-      } else {
-        // Start rubber-band selection
-        selectionBefore.current = new Set(selectedIds.current);
-        selectedIds.current = new Set();
-        mode.current = 'selectDrag';
-        selectionStart.current = { screenX, screenY };
-        currentEnd.current = { screenX, screenY };
-        schedulePreviewRender();
+        return;
       }
-      return;
+      
+      case 'line':
+      case 'arrow':
+      case 'rectangle':
+      case 'roundedRect':
+      case 'ellipse': {
+        const shapeKind = toolToShapeKind(interactionTool);
+        if (shapeKind) {
+          mode.current = 'shapeDrawing';
+          shapeStart.current = { screenX, screenY, pdfX: pdfPt.x, pdfY: pdfPt.y };
+          currentEnd.current = { screenX, screenY };
+          schedulePreviewRender();
+          return;
+        }
+        break;
+      }
     }
-
-    // ── Hand ── (DocumentArea handles panning, we pass through)
   }
 
   // ── Pointer move ──────────────────────────────────────────────────────────
@@ -448,15 +501,14 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     }
 
     if (m === 'moving' && moveAnchor.current) {
-      const dx = pdfPt.x - moveAnchor.current.pdfX;
-      const dy = pdfPt.y - moveAnchor.current.pdfY;
       moveAnchor.current = { screenX, screenY, pdfX: pdfPt.x, pdfY: pdfPt.y };
-      moveSelectedAnnotations(dx, dy);
+      schedulePreviewRender();
       return;
     }
 
     if (m === 'resizing' && resizeHandle.current && resizeBefore.current) {
-      resizeAnnotation(pdfPt);
+      moveAnchor.current = { screenX, screenY, pdfX: pdfPt.x, pdfY: pdfPt.y };
+      schedulePreviewRender();
       return;
     }
   }
@@ -492,7 +544,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     resizeBefore.current = null;
     activePoints.current = [];
     gestureToolRef.current = null;
-    selectionBefore.current = new Set();
+    selectionBefore.current = [];
     moveBefore.current.clear();
     setIsDrawing(textEditingRef.current);
     if (!textEditingRef.current) onInteractionPinChange?.(false);
@@ -579,7 +631,9 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     for (const ann of hits) {
       removeAnnotation(docId, pageIndex, ann.id);
       pushHistory(makeRemoveAction(docId, ann));
-      selectedIds.current.delete(ann.id);
+      if (selectedIds.has(ann.id)) {
+        setSelection(identity, pageIndex, selectedIdsArray.filter(id => id !== ann.id));
+      }
     }
   }
 
@@ -597,97 +651,88 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     );
 
     const annotations = getPageAnnotations(docId, pageIndex);
-    const newSelection = new Set<string>();
+    const newSelection: string[] = [];
     for (const ann of annotations) {
       const bounds = getAnnotationBounds(ann);
       if (rectsIntersect(bounds, selectionRect)) {
-        newSelection.add(ann.id);
+        newSelection.push(ann.id);
       }
     }
-    selectedIds.current = newSelection;
+    setSelection(identity, pageIndex, newSelection);
   }
 
   // ── Move ─────────────────────────────────────────────────────────────────
 
-  function moveSelectedAnnotations(dx: number, dy: number) {
-    const annotations = getPageAnnotations(docId, pageIndex);
-    for (const id of selectedIds.current) {
-      const ann = annotations.find(a => a.id === id);
-      if (!ann) continue;
-      applyMoveToAnnotation(ann, dx, dy);
-    }
-  }
-
-  function applyMoveToAnnotation(ann: Annotation, dx: number, dy: number) {
+  function applyMoveToAnnotation(ann: Annotation, dx: number, dy: number): Annotation {
     switch (ann.type) {
       case 'stroke':
       case 'highlight': {
-        const moved = {
+        return {
           ...ann,
           points: ann.points.map(p => ({ ...p, x: p.x + dx, y: p.y + dy })),
           updatedAt: Date.now(),
         };
-        replaceAnnotation(docId, pageIndex, moved);
-        break;
       }
       case 'text': {
-        const moved = {
+        return {
           ...ann,
           bounds: { ...ann.bounds, x: ann.bounds.x + dx, y: ann.bounds.y + dy },
           updatedAt: Date.now(),
         };
-        replaceAnnotation(docId, pageIndex, moved);
-        break;
       }
       case 'shape': {
-        const moved = {
+        return {
           ...ann,
           startPoint: { x: ann.startPoint.x + dx, y: ann.startPoint.y + dy },
           endPoint: { x: ann.endPoint.x + dx, y: ann.endPoint.y + dy },
           updatedAt: Date.now(),
         };
-        replaceAnnotation(docId, pageIndex, moved);
-        break;
       }
     }
   }
 
   function commitMove() {
-    const annotations = getPageAnnotations(docId, pageIndex);
-    for (const [id, before] of moveBefore.current) {
-      const after = annotations.find(a => a.id === id);
-      if (after) pushHistory(makeMoveAction(docId, before, after));
+    if (!shapeStart.current || !moveAnchor.current) return;
+    const dx = moveAnchor.current.pdfX - shapeStart.current.pdfX;
+    const dy = moveAnchor.current.pdfY - shapeStart.current.pdfY;
+    
+    // Commit only if moved
+    if (Math.hypot(dx, dy) > 0.001) {
+      for (const [id, before] of moveBefore.current) {
+        const after = applyMoveToAnnotation(before, dx, dy);
+        replaceAnnotation(docId, pageIndex, after);
+        pushHistory(makeMoveAction(docId, structuredClone(before), structuredClone(after)));
+      }
     }
     moveBefore.current.clear();
+    gestureSelectedIdsRef.current = [];
   }
 
   // ── Resize ────────────────────────────────────────────────────────────────
 
-  function resizeAnnotation(pdfPt: PdfPoint) {
-    const ann = resizeBefore.current;
-    if (!ann || !resizeHandle.current || ann.type !== 'shape') return;
+  function applyResizeToAnnotation(ann: Annotation, handleId: string, pdfX: number, pdfY: number): Annotation {
+    if (ann.type !== 'shape') return ann;
 
-    const h = resizeHandle.current.id;
     const { startPoint, endPoint } = ann;
     let { x: x1, y: y1 } = startPoint;
     let { x: x2, y: y2 } = endPoint;
 
     // Adjust the appropriate corner/edge
-    if (h.includes('n')) y2 = pdfPt.y;
-    if (h.includes('s')) y1 = pdfPt.y;
-    if (h.includes('w')) x1 = pdfPt.x;
-    if (h.includes('e')) x2 = pdfPt.x;
+    if (handleId.includes('n')) y2 = pdfY;
+    if (handleId.includes('s')) y1 = pdfY;
+    if (handleId.includes('w')) x1 = pdfX;
+    if (handleId.includes('e')) x2 = pdfX;
 
-    const moved = { ...ann, startPoint: { x: x1, y: y1 }, endPoint: { x: x2, y: y2 }, updatedAt: Date.now() };
-    replaceAnnotation(docId, pageIndex, moved);
+    return { ...ann, startPoint: { x: x1, y: y1 }, endPoint: { x: x2, y: y2 }, updatedAt: Date.now() };
   }
 
   function commitResize() {
     const before = resizeBefore.current;
-    if (!before) return;
-    const annotations = getPageAnnotations(docId, pageIndex);
-    const after = annotations.find(a => a.id === before.id);
-    if (after) pushHistory(makeMoveAction(docId, before, after));
+    if (!before || !resizeHandle.current || !moveAnchor.current) return;
+    
+    const after = applyResizeToAnnotation(before, resizeHandle.current.id, moveAnchor.current.pdfX, moveAnchor.current.pdfY);
+    replaceAnnotation(docId, pageIndex, after);
+    pushHistory(makeMoveAction(docId, structuredClone(before), structuredClone(after)));
   }
 
   function cancelActiveInteraction(): boolean {
@@ -695,14 +740,10 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     const hadTextEditor = textEditingRef.current;
     if (activeMode === 'idle' && !hadTextEditor) return false;
 
-    if (activeMode === 'moving') {
-      for (const annotation of moveBefore.current.values()) {
-        replaceAnnotation(docId, pageIndex, structuredClone(annotation));
-      }
-    } else if (activeMode === 'resizing' && resizeBefore.current) {
-      replaceAnnotation(docId, pageIndex, structuredClone(resizeBefore.current));
+    if (activeMode === 'moving' || activeMode === 'resizing') {
+      // Nothing to revert in store because we didn't mutate it!
     } else if (activeMode === 'selectDrag') {
-      selectedIds.current = new Set(selectionBefore.current);
+      setSelection(identity, pageIndex, selectionBefore.current);
     }
 
     if (hadTextEditor) {
@@ -731,7 +772,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     resizeHandle.current = null;
     resizeBefore.current = null;
     gestureToolRef.current = null;
-    selectionBefore.current = new Set();
+    selectionBefore.current = [];
     setIsDrawing(false);
     onInteractionPinChange?.(false);
     redrawAnnotationLayer();
@@ -824,25 +865,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
 
   // ── Keyboard: Delete selected annotations ─────────────────────────────────
 
-  useEffect(() => {
-    function onKeyDown(ev: KeyboardEvent) {
-      if (ev.key !== 'Delete' && ev.key !== 'Backspace') return;
-      if (ev.target instanceof HTMLInputElement || ev.target instanceof HTMLTextAreaElement) return;
-      if (selectedIds.current.size === 0) return;
 
-      const annotations = getPageAnnotations(docId, pageIndex);
-      for (const id of selectedIds.current) {
-        const ann = annotations.find(a => a.id === id);
-        if (ann) {
-          removeAnnotation(docId, pageIndex, id);
-          pushHistory(makeRemoveAction(docId, ann));
-        }
-      }
-      selectedIds.current = new Set();
-    }
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [docId, pageIndex, getPageAnnotations, removeAnnotation, pushHistory]);
 
   // ── Cleanup ───────────────────────────────────────────────────────────────
 

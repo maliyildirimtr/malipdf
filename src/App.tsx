@@ -23,12 +23,12 @@ import { PageSidebar } from './components/PageSidebar/PageSidebar';
 import { DocumentArea } from './components/DocumentArea/DocumentArea';
 import { StatusBar } from './components/StatusBar/StatusBar';
 import { FocusToolbar } from './components/FocusToolbar/FocusToolbar';
-import { ApplicationMenu } from './components/ApplicationMenu/ApplicationMenu';
 import { useUIStore } from './store/uiStore';
 import { useDocumentStore } from './store/documentStore';
 import { useAnnotationStore } from './store/annotationStore';
 import { exportAndSave } from './pdf/annotationExporter';
 import { useAppCommands } from './commands';
+import { NewDocumentDialog } from './components/NewDocumentDialog/NewDocumentDialog';
 
 // ─── Export toast ─────────────────────────────────────────────────────────────
 
@@ -111,7 +111,7 @@ export default function App() {
 
     try {
       const baseName = activeDoc.title.replace(/\.pdf$/i, '') + '_annotated.pdf';
-      const saved = await exportAndSave(activeDoc.sourceData, docAnnotState, baseName, activeDoc.pageRotations);
+      const saved = await exportAndSave(activeDoc.sourceData, docAnnotState, baseName);
       if (saved) {
         showToast('success', 'PDF exported successfully.');
       }
@@ -133,7 +133,6 @@ export default function App() {
     <div className="app-root" data-theme={resolvedTheme} data-workspace-mode={workspaceMode}>
       <div className="app-top-chrome">
         <TopBar />
-        <ApplicationMenu onCommand={executeCommand} canExecute={canExecute} />
         <MainRibbon onCommand={executeCommand} canExecute={canExecute} />
       </div>
       <div
@@ -152,6 +151,8 @@ export default function App() {
         <StatusBar />
       </div>
       <FocusToolbar onCommand={executeCommand} canExecute={canExecute} />
+      
+      <NewDocumentDialog />
 
       {/* Export toasts */}
       <div style={styles.toastContainer}>

@@ -7,7 +7,8 @@
  * The rendering pipeline transforms:
  *   PDF coordinates → viewport transformation → screen coordinates
  *
- * Export performs the inverse transformation back to PDF coordinates.
+ * Export serializes these stored PDF coordinates directly; screen zoom and
+ * display rotation never become part of persisted annotation geometry.
  *
  * This ensures correct rendering at all zoom levels, with all page sizes,
  * rotations, and crop boxes.
@@ -206,7 +207,10 @@ export interface DocumentState {
   instanceId: number;
   title: string;
   filePath: string | null;
-  isDirty: boolean;
+  currentStateId: string;
+  savedStateId: string | null;
+  saveStatus: 'idle' | 'saving' | 'error';
+  lastSaveError: string | null;
 
   // Raw PDF data — never mutated
   sourceData: Uint8Array;
@@ -242,6 +246,8 @@ export interface HistoryAction {
   annotationId: string;
   before: Annotation | null;   // State before action
   after: Annotation | null;    // State after action
+  beforeStateId: string;
+  afterStateId: string;
 }
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
@@ -291,10 +297,12 @@ declare global {
       readFile: (filePath: string) => Promise<{ name: string; data: ArrayBuffer }>;
       getTempDir: () => Promise<string>;
       getVersion: () => Promise<string>;
-      onCommand: (callback: (commandId: unknown) => void) => () => void;
-      updateCommandStates: (states: Array<{ commandId: string; enabled: boolean; checked?: boolean }>) => void;
-      executeNativeRole: (role: 'cut' | 'copy' | 'paste' | 'minimize' | 'zoom' | 'bringAllToFront') => Promise<boolean>;
+      onCommand: (callback: (commandId: unknown, payload?: unknown) => void) => () => void;
+      updateCommandStates: (states: any[]) => void;
       toggleFullScreen: () => Promise<boolean>;
+      askCloseConfirm: (fileName: string) => Promise<'save' | 'discard' | 'cancel'>;
+      askCloseAllConfirm: (fileNames: string[]) => Promise<'save' | 'discard' | 'cancel'>;
+      confirmLifecycle: (requestId: string, allow: boolean) => void;
     };
   }
 }

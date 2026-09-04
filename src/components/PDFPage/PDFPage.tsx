@@ -129,6 +129,7 @@ const PDFPage = React.memo<PDFPageProps>(function PDFPage({
             />
             <AnnotationCanvas
               docId={docId}
+              instanceId={instanceId}
               pageIndex={pageIndex}
               transform={transform}
               onInteractionPinChange={handlePinChange}

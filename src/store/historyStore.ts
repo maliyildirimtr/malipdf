@@ -1,6 +1,10 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import type { HistoryAction, Annotation } from '../types/annotations';
+import { nanoid } from '../utils/nanoid';
+import { useDocumentStore } from './documentStore';
+
+export type HistoryActionDraft = Omit<HistoryAction, 'beforeStateId' | 'afterStateId'>;
 
 const MAX_HISTORY = 100;
 
@@ -20,7 +24,7 @@ interface HistoryStore {
   removeDocument: (docId: string) => void;
 
   /** Push an action. This clears the redo stack. */
-  push: (action: HistoryAction) => void;
+  push: (actionDraft: HistoryActionDraft) => void;
 
   /** Undo: returns the action to reverse, or null if nothing to undo */
   undo: (docId: string) => HistoryAction | null;
@@ -64,7 +68,22 @@ export const useHistoryStore = create<HistoryStore>()(
       });
     },
 
-    push: (action) => {
+    push: (actionDraft) => {
+      const { documents, updateDocument } = useDocumentStore.getState();
+      const doc = documents.get(actionDraft.docId);
+      if (!doc) return;
+      
+      const beforeStateId = doc.currentStateId;
+      const afterStateId = nanoid();
+      
+      const action: HistoryAction = {
+        ...actionDraft,
+        beforeStateId,
+        afterStateId,
+      };
+
+      updateDocument(doc.id, { currentStateId: afterStateId });
+
       set((state) => {
         const histories = new Map(state.histories);
         const history = histories.get(action.docId) ?? emptyHistory();
@@ -91,6 +110,8 @@ export const useHistoryStore = create<HistoryStore>()(
 
       const action = history.undoStack[history.undoStack.length - 1];
 
+      useDocumentStore.getState().updateDocument(docId, { currentStateId: action.beforeStateId });
+
       set((state) => {
         const histories = new Map(state.histories);
         const h = histories.get(docId)!;
@@ -110,6 +131,8 @@ export const useHistoryStore = create<HistoryStore>()(
       if (!history || history.redoStack.length === 0) return null;
 
       const action = history.redoStack[history.redoStack.length - 1];
+
+      useDocumentStore.getState().updateDocument(docId, { currentStateId: action.afterStateId });
 
       set((state) => {
         const histories = new Map(state.histories);
@@ -149,7 +172,7 @@ export const useHistoryStore = create<HistoryStore>()(
 export function makeAddAction(
   docId: string,
   annotation: Annotation,
-): HistoryAction {
+): HistoryActionDraft {
   return {
     type: 'ADD_ANNOTATION',
     docId,
@@ -163,7 +186,7 @@ export function makeAddAction(
 export function makeRemoveAction(
   docId: string,
   annotation: Annotation,
-): HistoryAction {
+): HistoryActionDraft {
   return {
     type: 'REMOVE_ANNOTATION',
     docId,
@@ -178,7 +201,7 @@ export function makeUpdateAction(
   docId: string,
   before: Annotation,
   after: Annotation,
-): HistoryAction {
+): HistoryActionDraft {
   return {
     type: 'UPDATE_ANNOTATION',
     docId,
@@ -193,7 +216,7 @@ export function makeMoveAction(
   docId: string,
   before: Annotation,
   after: Annotation,
-): HistoryAction {
+): HistoryActionDraft {
   return {
     type: 'MOVE_ANNOTATION',
     docId,
@@ -208,7 +231,7 @@ export function makeResizeAction(
   docId: string,
   before: Annotation,
   after: Annotation,
-): HistoryAction {
+): HistoryActionDraft {
   return {
     type: 'RESIZE_ANNOTATION',
     docId,

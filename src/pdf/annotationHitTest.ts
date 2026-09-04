@@ -227,12 +227,17 @@ export function getAnnotationBounds(annotation: Annotation): PdfRect {
     case 'text':
       return annotation.bounds;
     case 'shape': {
-      const { startPoint, endPoint, strokeWidth } = annotation;
-      const x = Math.min(startPoint.x, endPoint.x);
-      const y = Math.min(startPoint.y, endPoint.y);
-      const w = Math.abs(endPoint.x - startPoint.x);
-      const h = Math.abs(endPoint.y - startPoint.y);
-      const pad = strokeWidth / 2;
+      const { startPoint, endPoint, strokeWidth, shapeKind } = annotation;
+      let x = Math.min(startPoint.x, endPoint.x);
+      let y = Math.min(startPoint.y, endPoint.y);
+      let w = Math.abs(endPoint.x - startPoint.x);
+      let h = Math.abs(endPoint.y - startPoint.y);
+      
+      let pad = strokeWidth / 2;
+      if (shapeKind === 'arrow') {
+        // Arrow heads extend beyond the endpoints
+        pad = strokeWidth * 4 + 12; 
+      }
       return { x: x - pad, y: y - pad, width: w + pad * 2, height: h + pad * 2 };
     }
   }

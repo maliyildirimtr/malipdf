@@ -112,9 +112,6 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
       : `${Math.round((activeDoc?.zoom ?? 1) * 100)}%`;
 
   const isEnabled = React.useCallback((commandId: AppCommandId) => {
-    // In-place Save and Save As do not exist yet. Keep them discoverable but
-    // truthful until the real document-save lifecycle is implemented.
-    if (commandId === 'file.save' || commandId === 'file.saveAs') return false;
     if (canExecute) return canExecute(commandId);
     return !DOCUMENT_COMMANDS.has(commandId) || hasDocument;
   }, [canExecute, hasDocument]);
@@ -149,15 +146,17 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
         onKeyDown={handleToolbarArrowNavigation}
       >
         <ToolbarGroup label="File">
-          <CommandButton commandId="file.open" label="Open PDF" shortcut="⌘O" icon={FolderOpen} onCommand={runCommand} enabled={isEnabled('file.open')} />
-          <CommandButton commandId="file.save" label="Save (not available yet)" shortcut="⌘S" icon={Save} onCommand={runCommand} enabled={false} className={styles.secondaryFileAction} />
           <ToolbarMenu
-            label="More file actions"
-            icon={MoreHorizontal}
+            label="File menu"
+            icon={FolderOpen}
             onCommand={runCommand}
             items={[
-              { commandId: 'file.saveAs', label: 'Save As…', shortcut: '⇧⌘S', enabled: false },
+              { commandId: 'file.new', label: 'New Document…', shortcut: '⌘N', enabled: isEnabled('file.new') },
+              { commandId: 'file.open', label: 'Open PDF…', shortcut: '⌘O', enabled: isEnabled('file.open') },
+              { commandId: 'file.save', label: 'Save', shortcut: '⌘S', enabled: isEnabled('file.save') },
+              { commandId: 'file.saveAs', label: 'Save As…', shortcut: '⇧⌘S', enabled: isEnabled('file.saveAs') },
               { commandId: 'file.export', label: 'Export PDF…', shortcut: '⌘E', enabled: isEnabled('file.export') },
+              { commandId: 'file.close', label: 'Close', shortcut: '⌘W', enabled: isEnabled('file.close') },
             ]}
           />
         </ToolbarGroup>
@@ -197,16 +196,6 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
         <div className={styles.primarySpacer} />
 
         <ToolbarGroup label="View">
-          <CommandButton
-            commandId="view.sidebar"
-            label={sidebarOpen ? 'Hide Sidebar' : 'Show Sidebar'}
-            shortcut="⌘B"
-            icon={PanelLeft}
-            onCommand={runCommand}
-            enabled={isEnabled('view.sidebar')}
-            pressed={sidebarOpen}
-          />
-          <span className={styles.viewSeparator} aria-hidden="true" />
           <div className={styles.zoomCluster} role="group" aria-label="Zoom">
             <CommandButton commandId="view.zoomOut" label="Zoom Out" shortcut="⌘−" icon={ZoomOut} onCommand={runCommand} enabled={isEnabled('view.zoomOut')} />
             <output className={styles.zoomValue} aria-label={`Current zoom ${zoomLabel}`}>{zoomLabel}</output>
@@ -251,6 +240,16 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
       </div>
 
       <div className={styles.propertyShelf} role="toolbar" aria-label={`${activeCommand.shortLabel} properties`}>
+        <CommandButton
+          commandId="view.sidebar"
+          label={sidebarOpen ? 'Hide Sidebar' : 'Show Sidebar'}
+          shortcut="⌘B"
+          icon={PanelLeft}
+          onCommand={runCommand}
+          enabled={isEnabled('view.sidebar')}
+          pressed={sidebarOpen}
+        />
+        <ToolbarSeparator compact />
         <div className={styles.toolIdentity} aria-label={`Active tool: ${activeCommand.shortLabel}`}>
           <ActiveToolIcon size={17} aria-hidden="true" />
           <strong>{activeCommand.shortLabel}</strong>

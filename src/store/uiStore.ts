@@ -129,6 +129,10 @@ interface UIStore {
   // Properties panel
   propertiesPanelOpen: boolean;
   setPropertiesPanelOpen: (open: boolean) => void;
+
+  // Dialogs
+  newDocumentDialogOpen: boolean;
+  setNewDocumentDialogOpen: (open: boolean) => void;
 }
 
 // ─── Store implementation ─────────────────────────────────────────────────────
@@ -232,6 +236,9 @@ export const useUIStore = create<UIStore>()(
 
         propertiesPanelOpen: false,
         setPropertiesPanelOpen: (open) => set({ propertiesPanelOpen: open }),
+
+        newDocumentDialogOpen: false,
+        setNewDocumentDialogOpen: (open) => set({ newDocumentDialogOpen: open }),
       }),
       {
         name: 'malipedefe-ui',

@@ -20,7 +20,6 @@ import {
 } from '../../store/documentSessionStore';
 import {
   getPage,
-  openDocument,
   reconcilePageCache,
   requestPageEviction,
 } from '../../pdf/documentManager';
@@ -44,6 +43,7 @@ import {
   type DocumentViewCommandId,
 } from '../../commands';
 import { nanoid } from '../../utils/nanoid';
+import { openDocumentBytes } from '../../document/openDocumentBytes';
 import styles from './DocumentArea.module.css';
 
 export function DocumentArea() {
@@ -65,8 +65,6 @@ export function DocumentArea() {
     setZoom,
     setZoomMode,
   } = useDocumentStore();
-  const { initDocument: initAnnotations } = useAnnotationStore();
-  const { initDocument: initHistory } = useHistoryStore();
   const { activeTool, temporaryTool } = useUIStore();
   const interactionTool = temporaryTool ?? activeTool;
   const sessionState = useDocumentSessionStore((state) => state);
@@ -93,28 +91,7 @@ export function DocumentArea() {
       isLoadingRef.current = true;
 
       try {
-        const bytes = new Uint8Array(data);
-        const docId = nanoid();
-        const { identity, pageCount } = await openDocument(docId, bytes);
-
-        sessionState.createSession(identity, pageCount, 0, 1);
-        openDocStore({
-          id: docId,
-          instanceId: identity.instanceId,
-          title: name,
-          filePath,
-          isDirty: false,
-          sourceData: bytes,
-          activePageIndex: 0,
-          pageCount,
-          zoom: 1,
-          zoomMode: 'fitWidth',
-          scrollTop: 0,
-          scrollLeft: 0,
-          pageRotations: {},
-        });
-        initAnnotations(docId);
-        initHistory(docId);
+        await openDocumentBytes(name, filePath, data);
       } catch (error) {
         console.error('Failed to load PDF:', error);
         alert(`Failed to open PDF: ${error instanceof Error ? error.message : String(error)}`);
@@ -122,7 +99,7 @@ export function DocumentArea() {
         isLoadingRef.current = false;
       }
     },
-    [initAnnotations, initHistory, openDocStore, sessionState.createSession],
+    [],
   );
 
   const openFileDialog = useCallback(async () => {

@@ -22,11 +22,12 @@ export type AppCommandId =
   | 'view.layoutSingle' | 'view.layoutTwoPage' | 'view.rotateCCW'
   | 'view.rotateCW' | 'view.annotations' | 'view.primaryToolbar'
   | 'view.propertyShelf' | 'view.statusBar' | 'view.nativeFullscreen'
-  | 'view.focusMode' | 'extras.favorites' | 'extras.toolStyles' | 'help.open';
+  | 'view.focusMode' | 'extras.favorites' | 'extras.toolStyles' | 'help.open'
+  | 'app.requestQuit' | 'app.requestCloseWindow';
 
 export type CommandGroup = 'file' | 'history' | 'edit' | 'tool' | 'view' | 'extras' | 'help';
 export type CommandKind = 'action' | 'tool' | 'toggle' | 'radio';
-export type CommandAvailability = 'always' | 'document' | 'undo' | 'redo' | 'selection' | 'unavailable';
+export type CommandAvailability = 'always' | 'document' | 'undo' | 'redo' | 'selection' | 'save' | 'saveAll' | 'unavailable';
 export type CommandIconId =
   | 'newDocument' | 'combine' | 'open' | 'save' | 'saveAs' | 'template'
   | 'saveAll' | 'export' | 'close' | 'closeAll' | 'properties' | 'print'
@@ -65,13 +66,13 @@ interface CommandOptions {
 
 /** Shared command metadata for menus, toolbars, shortcuts, and Electron. */
 export const APP_COMMANDS = {
-  'file.new': command('file.new', 'New Document…', 'file', 'action', 'unavailable', { icon: 'newDocument', shortcut: '⌘N', menuPlacements: ['file'] }),
+  'file.new': command('file.new', 'New Document…', 'file', 'action', 'always', { icon: 'newDocument', shortcut: '⌘N', menuPlacements: ['file'] }),
   'file.combine': command('file.combine', 'Combine Files…', 'file', 'action', 'unavailable', { icon: 'combine', menuPlacements: ['file'] }),
   'file.open': command('file.open', 'Open…', 'file', 'action', 'always', { icon: 'open', shortcut: '⌘O', menuPlacements: ['file'], toolbarPlacements: ['primary.file'] }),
-  'file.save': command('file.save', 'Save', 'file', 'action', 'unavailable', { icon: 'save', shortcut: '⌘S', menuPlacements: ['file'], toolbarPlacements: ['primary.file'] }),
-  'file.saveAs': command('file.saveAs', 'Save As…', 'file', 'action', 'unavailable', { icon: 'saveAs', shortcut: '⇧⌘S', menuPlacements: ['file'] }),
+  'file.save': command('file.save', 'Save', 'file', 'action', 'save', { icon: 'save', shortcut: '⌘S', menuPlacements: ['file'], toolbarPlacements: ['primary.file'] }),
+  'file.saveAs': command('file.saveAs', 'Save As…', 'file', 'action', 'document', { icon: 'saveAs', shortcut: '⇧⌘S', menuPlacements: ['file'] }),
   'file.saveTemplate': command('file.saveTemplate', 'Save as Template…', 'file', 'action', 'unavailable', { icon: 'template', menuPlacements: ['file'] }),
-  'file.saveAll': command('file.saveAll', 'Save All', 'file', 'action', 'unavailable', { icon: 'saveAll', menuPlacements: ['file'] }),
+  'file.saveAll': command('file.saveAll', 'Save All', 'file', 'action', 'saveAll', { icon: 'saveAll', menuPlacements: ['file'] }),
   'file.export': command('file.export', 'Export PDF…', 'file', 'action', 'document', { icon: 'export', shortcut: '⌘E', menuPlacements: ['file'], toolbarPlacements: ['primary.file.more'] }),
   'file.close': command('file.close', 'Close', 'file', 'action', 'document', { icon: 'close', shortcut: '⌘W', menuPlacements: ['file'] }),
   'file.closeAll': command('file.closeAll', 'Close All', 'file', 'action', 'document', { icon: 'closeAll', shortcut: '⌥⌘W', menuPlacements: ['file'] }),
@@ -128,6 +129,8 @@ export const APP_COMMANDS = {
   'extras.favorites': command('extras.favorites', 'No Favorites Yet', 'extras', 'action', 'unavailable', { icon: 'favorites', menuPlacements: ['tool.favorites'] }),
   'extras.toolStyles': command('extras.toolStyles', 'Tool Styles Coming Later', 'extras', 'action', 'unavailable', { icon: 'toolStyles', menuPlacements: ['tool.styles', 'extras'] }),
   'help.open': command('help.open', 'MaliPDF Help', 'help', 'action', 'unavailable', { icon: 'help', menuPlacements: ['help'] }),
+  'app.requestQuit': command('app.requestQuit', 'Quit MaliPDF', 'file', 'action', 'always', { icon: 'close', menuPlacements: [] }),
+  'app.requestCloseWindow': command('app.requestCloseWindow', 'Close Window', 'file', 'action', 'always', { icon: 'close', menuPlacements: [] }),
 } as const satisfies Record<AppCommandId, AppCommandDefinition>;
 
 export interface CommandAvailabilityContext {
@@ -135,6 +138,8 @@ export interface CommandAvailabilityContext {
   readonly canUndo?: boolean;
   readonly canRedo?: boolean;
   readonly hasSelection?: boolean;
+  readonly isDirty?: boolean;
+  readonly hasAnyDirtyDocument?: boolean;
 }
 export interface CommandPresentationContext extends CommandAvailabilityContext {
   readonly activeTool?: ToolType;
@@ -149,6 +154,8 @@ export function isCommandAvailable(commandId: AppCommandId, context: CommandAvai
     case 'undo': return context.hasDocument === true && context.canUndo === true;
     case 'redo': return context.hasDocument === true && context.canRedo === true;
     case 'selection': return context.hasDocument === true && context.hasSelection === true;
+    case 'save': return context.isDirty === true;
+    case 'saveAll': return context.hasAnyDirtyDocument === true;
     case 'unavailable': return false;
   }
 }

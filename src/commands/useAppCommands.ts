@@ -1,7 +1,10 @@
 import { useCallback, useEffect } from 'react';
 import { useDocumentStore } from '../store/documentStore';
-import { useHistoryStore } from '../store/historyStore';
+import { useHistoryStore, makeRemoveAction } from '../store/historyStore';
 import { useUIStore } from '../store/uiStore';
+import { useSelectionStore } from '../store/selectionStore';
+import { useDocumentSessionStore, documentSessionStore } from '../store/documentSessionStore';
+import { useAnnotationStore } from '../store/annotationStore';
 import {
   APP_COMMANDS,
   isAppCommandId,
@@ -12,6 +15,7 @@ import {
 } from './commandRegistry';
 import { executeRedo, executeUndo } from './historyCommands';
 import { closeAllDocuments, closeDocumentById } from './documentCommands';
+import { saveDocument, saveDocumentAs, saveAllDocuments } from './saveCommands';
 import {
   getToolForKeyboardEvent,
   isEditableTarget,
@@ -34,36 +38,52 @@ export interface AppCommandController {
 }
 
 function currentAvailabilityContext(): CommandAvailabilityContext {
-  const { activeDocId } = useDocumentStore.getState();
+  const documents = useDocumentStore.getState();
   const history = useHistoryStore.getState();
-  const selection = useUIStore.getState().selection;
+  const sessions = documentSessionStore.getState();
+  const selections = useSelectionStore.getState();
+  
+  const activeDocId = documents.activeDocId;
+  const activeDoc = activeDocId ? documents.documents.get(activeDocId) : undefined;
+  const activeIdentity = sessions.activeIdentity;
+  
+  let hasSelection = false;
+  if (activeIdentity) {
+    const sel = selections.getSelection(activeIdentity);
+    if (sel && sel.selectedIds.length > 0) hasSelection = true;
+  }
+  
+  let hasAnyDirtyDocument = false;
+  for (const doc of documents.documents.values()) {
+    if (doc.currentStateId !== doc.savedStateId) {
+      hasAnyDirtyDocument = true;
+      break;
+    }
+  }
+
   return {
     hasDocument: activeDocId !== null,
     canUndo: activeDocId ? history.canUndo(activeDocId) : false,
     canRedo: activeDocId ? history.canRedo(activeDocId) : false,
-    hasSelection: selection.selectedIds.size > 0,
+    hasSelection,
+    isDirty: activeDoc ? activeDoc.currentStateId !== activeDoc.savedStateId : false,
+    hasAnyDirtyDocument,
   };
 }
 
 export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandController {
   const activeDocId = useDocumentStore((state) => state.activeDocId);
   const histories = useHistoryStore((state) => state.histories);
-  const selectedIds = useUIStore((state) => state.selection.selectedIds);
   const workspaceMode = useUIStore((state) => state.workspaceMode);
   const activeTool = useUIStore((state) => state.activeTool);
   const sidebarOpen = useUIStore((state) => state.sidebarOpen);
 
   const canExecute = useCallback((commandId: AppCommandId) => {
     if (commandId === 'view.focusMode' && workspaceMode === 'focus') return true;
-    return isCommandAvailable(commandId, {
-      hasDocument: activeDocId !== null,
-      canUndo: activeDocId ? (histories.get(activeDocId)?.undoStack.length ?? 0) > 0 : false,
-      canRedo: activeDocId ? (histories.get(activeDocId)?.redoStack.length ?? 0) > 0 : false,
-      hasSelection: selectedIds.size > 0,
-    });
-  }, [activeDocId, histories, selectedIds, workspaceMode]);
+    return isCommandAvailable(commandId, currentAvailabilityContext());
+  }, [workspaceMode]);
 
-  const executeCommand = useCallback((commandId: AppCommandId) => {
+  const executeCommand = useCallback((commandId: AppCommandId, payload?: unknown) => {
     const ui = useUIStore.getState();
     const documents = useDocumentStore.getState();
     const docId = documents.activeDocId;
@@ -84,24 +104,75 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
         document.dispatchEvent(new CustomEvent('app:openFile'));
         return;
       case 'file.close':
-        if (docId) closeDocumentById(docId);
+        if (docId) void closeDocumentById(docId);
         return;
       case 'file.closeAll':
-        closeAllDocuments();
+        void closeAllDocuments();
+        return;
+      case 'app.requestQuit':
+        if (typeof payload !== 'string') return;
+        void closeAllDocuments().then((closed) => {
+          if (useDocumentStore.getState().tabOrder.length === 0) {
+            window.electronAPI.confirmLifecycle(payload, true);
+          } else {
+            window.electronAPI.confirmLifecycle(payload, false);
+          }
+        });
+        return;
+      case 'app.requestCloseWindow':
+        if (typeof payload !== 'string') return;
+        void closeAllDocuments().then((closed) => {
+          if (useDocumentStore.getState().tabOrder.length === 0) {
+            window.electronAPI.confirmLifecycle(payload, true);
+          } else {
+            window.electronAPI.confirmLifecycle(payload, false);
+          }
+        });
         return;
       case 'file.export':
         onExport();
         return;
       case 'file.new':
+        ui.setNewDocumentDialogOpen(true);
+        return;
       case 'file.combine':
       case 'file.save':
+        if (docId) void saveDocument(docId);
+        return;
       case 'file.saveAs':
+        if (docId) void saveDocumentAs(docId);
+        return;
       case 'file.saveTemplate':
+        return;
       case 'file.saveAll':
+        void saveAllDocuments();
+        return;
       case 'file.documentProperties':
       case 'file.print':
       case 'edit.selectAll':
-      case 'edit.deleteSelected':
+      case 'edit.deleteSelected': {
+        const session = documentSessionStore.getState();
+        const selectionStore = useSelectionStore.getState();
+        const activeIdentity = session.activeIdentity;
+        if (!activeIdentity || !docId) return;
+        
+        const sel = selectionStore.getSelection(activeIdentity);
+        if (!sel || sel.selectedIds.length === 0) return;
+        
+        const annotationsStore = useAnnotationStore.getState();
+        const historyStore = useHistoryStore.getState();
+        const annotations = annotationsStore.getPageAnnotations(docId, sel.pageIndex!);
+        
+        for (const id of sel.selectedIds) {
+          const ann = annotations.find(a => a.id === id);
+          if (ann) {
+            annotationsStore.removeAnnotation(docId, sel.pageIndex!, id);
+            historyStore.push(makeRemoveAction(docId, ann));
+          }
+        }
+        selectionStore.clearSelection(activeIdentity);
+        return;
+      }
       case 'tool.extractText':
       case 'tool.zoom':
       case 'tool.stamp':
@@ -185,30 +256,77 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
 
   useEffect(() => {
     if (!window.electronAPI?.onCommand) return;
-    return window.electronAPI.onCommand((commandId: unknown) => {
-      if (isAppCommandId(commandId)) executeCommand(commandId);
+    return window.electronAPI.onCommand((commandId: unknown, payload?: unknown) => {
+      if (isAppCommandId(commandId)) executeCommand(commandId, payload);
     });
   }, [executeCommand]);
 
   useEffect(() => {
     if (!window.electronAPI?.updateCommandStates) return;
-    const context = {
-      hasDocument: activeDocId !== null,
-      canUndo: activeDocId ? (histories.get(activeDocId)?.undoStack.length ?? 0) > 0 : false,
-      canRedo: activeDocId ? (histories.get(activeDocId)?.redoStack.length ?? 0) > 0 : false,
-      hasSelection: selectedIds.size > 0,
-      activeTool,
-      sidebarOpen,
-      workspaceMode,
+    
+    // We must subscribe to the documents list explicitly to detect dirty state changes.
+    // The previous implementation missed this subscription.
+    const unsubscribe = useDocumentStore.subscribe((docState) => {
+      let hasAnyDirtyDocument = false;
+      let activeDocIsDirty = false;
+      const activeDocId = docState.activeDocId;
+      
+      for (const doc of docState.documents.values()) {
+        const dirty = doc.currentStateId !== doc.savedStateId;
+        if (dirty) hasAnyDirtyDocument = true;
+        if (dirty && doc.id === activeDocId) activeDocIsDirty = true;
+      }
+      
+      const activeIdentity = documentSessionStore.getState().activeIdentity;
+      let hasSelection = false;
+      if (activeIdentity) {
+        const sel = useSelectionStore.getState().getSelection(activeIdentity);
+        if (sel && sel.selectedIds.length > 0) hasSelection = true;
+      }
+      
+      const context = {
+        hasDocument: activeDocId !== null,
+        canUndo: activeDocId ? (useHistoryStore.getState().histories.get(activeDocId)?.undoStack.length ?? 0) > 0 : false,
+        canRedo: activeDocId ? (useHistoryStore.getState().histories.get(activeDocId)?.redoStack.length ?? 0) > 0 : false,
+        hasSelection,
+        activeTool: useUIStore.getState().activeTool,
+        sidebarOpen: useUIStore.getState().sidebarOpen,
+        workspaceMode: useUIStore.getState().workspaceMode,
+        isDirty: activeDocIsDirty,
+        hasAnyDirtyDocument,
+      };
+      
+      window.electronAPI.updateCommandStates(
+        (Object.keys(APP_COMMANDS) as AppCommandId[]).map((commandId) => ({
+          commandId,
+          enabled: isCommandAvailable(commandId, context),
+          checked: isCommandChecked(commandId, context),
+        })),
+      );
+    });
+    
+    // Also subscribe to history and UI stores so that undo/redo and selection trigger menu updates
+    const unsubscribeHistory = useHistoryStore.subscribe(() => {
+       // Since the updater logic is complex, we just trigger a dummy document update to re-run the menu sync
+       useDocumentStore.setState(s => ({ ...s }));
+    });
+    const unsubscribeUI = useUIStore.subscribe(() => {
+       useDocumentStore.setState(s => ({ ...s }));
+    });
+    const unsubscribeSelection = useSelectionStore.subscribe(() => {
+       useDocumentStore.setState(s => ({ ...s }));
+    });
+    
+    // Initial sync
+    useDocumentStore.setState(s => ({ ...s }));
+    
+    return () => {
+      unsubscribe();
+      unsubscribeHistory();
+      unsubscribeUI();
+      unsubscribeSelection();
     };
-    window.electronAPI.updateCommandStates(
-      (Object.keys(APP_COMMANDS) as AppCommandId[]).map((commandId) => ({
-        commandId,
-        enabled: isCommandAvailable(commandId, context),
-        checked: isCommandChecked(commandId, context),
-      })),
-    );
-  }, [activeDocId, histories, selectedIds, workspaceMode, activeTool, sidebarOpen]);
+  }, []);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -228,6 +346,14 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
         executeCommand(`tool.${tool}`);
         event.preventDefault();
         return;
+      }
+
+      if (event.key === 'Delete' || event.key === 'Backspace') {
+        if (!isEditableTarget(event.target)) {
+          executeCommand('edit.deleteSelected');
+          event.preventDefault();
+          return;
+        }
       }
 
       if (event.key === 'Escape'

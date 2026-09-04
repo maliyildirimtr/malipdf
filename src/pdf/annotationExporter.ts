@@ -4,28 +4,25 @@
  * Export flow:
  *   1. Load original PDF bytes via pdf-lib
  *   2. For each page, get all annotations from AnnotationStore
- *   3. Transform annotation coordinates:
- *        PDF User Space (stored by us, via pdf.js convertToPdfPoint)
- *        → pdfUserSpaceToLibPoint(x, y, rotation, pageW, pageH)
- *        → pdf-lib drawing API
+ *   3. Serialize canonical PDF User Space coordinates directly through pdf-lib
  *   4. Embed the drawings into the PDF page content stream
  *   5. Return the modified PDF as Uint8Array
  *   6. Caller writes it to disk via Electron IPC
  *
  * Coordinate system invariants:
- *   - Annotations are stored in PDF User Space (pdf.js output, rotation-aware)
- *   - pdf-lib draws in the unrotated page coordinate system
- *   - pdfUserSpaceToLibPoint() is the ONLY place rotation transform is applied
- *   - No independent coordinate math exists in this file
+ *   - Annotations and pdf-lib drawing operators share canonical PDF User Space
+ *   - Intrinsic /Rotate remains page metadata and is never reapplied to geometry
+ *   - Display rotation is view-only state and is not accepted by this boundary
+ *   - CropBox and MediaBox origins remain absolute and are never normalized away
  *
  * Per-annotation rendering strategy:
- *   stroke      → series of line segments drawn as a single path or polyline
- *   highlight   → same path approach with high opacity yellow fill using blend
+ *   stroke      → direct PDF line segments (optionally pressure-weighted)
+ *   highlight   → thick PDF line segments using Multiply blend mode
  *   text        → drawText() with line wrapping matching the canvas renderer
  *   shape/line  → drawLine()
  *   shape/arrow → drawLine() + arrowhead triangle
  *   shape/rect  → drawRectangle()
- *   shape/roundedRect → drawRectangle() with cornerRadius options (pdf-lib v1.17+)
+ *   shape/roundedRect → rounded SVG path positioned in PDF User Space
  *   shape/ellipse → drawEllipse()
  */
 
@@ -34,9 +31,9 @@ import {
   rgb,
   StandardFonts,
   LineCapStyle,
-  LineJoinStyle,
   BlendMode,
-  degrees,
+  PDFName,
+  PDFNumber,
 } from 'pdf-lib';
 import type { PDFPage } from 'pdf-lib';
 import type {
@@ -48,12 +45,11 @@ import type {
   InputPoint,
   DocumentAnnotationState,
 } from '../types/annotations';
-import { pdfUserSpaceToLibPoint } from './coordinateTransform';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
 /** All annotations for the whole document, keyed by page index. */
-export type DocumentAnnotations = Map<number, Annotation[]>;
+export type DocumentAnnotations = ReadonlyMap<number, readonly Annotation[]>;
 
 export interface ExportResult {
   data: Uint8Array;
@@ -61,14 +57,44 @@ export interface ExportResult {
   annotationCount: number;
 }
 
+export type AnnotationExportErrorCode =
+  | 'INVALID_ANNOTATION'
+  | 'ANNOTATION_SERIALIZATION_FAILED'
+  | 'SOURCE_ALREADY_FLATTENED';
+
+/** Stable error contract for Save/Export callers. No annotation is silently lost. */
+export class AnnotationExportError extends Error {
+  readonly name = 'AnnotationExportError';
+
+  constructor(
+    readonly code: AnnotationExportErrorCode,
+    message: string,
+    readonly annotationId?: string,
+    readonly pageIndex?: number,
+    options?: { cause?: unknown },
+  ) {
+    super(message, options);
+  }
+}
+
+export interface PdfPageExportContext {
+  readonly intrinsicRotation: number;
+  readonly mediaBox: Readonly<{ x: number; y: number; width: number; height: number }>;
+  readonly cropBox: Readonly<{ x: number; y: number; width: number; height: number }>;
+}
+
+const EXPORT_MARKER = PDFName.of('MaliPDFExport');
+
 // ─── Color parsing ─────────────────────────────────────────────────────────────
 
 /**
  * Parse a CSS hex color string (#rgb, #rrggbb, #rrggbbaa) into pdf-lib rgb().
- * Falls back to black on parse failure.
+ * Invalid colors are rejected so exports cannot silently change appearance.
  */
 function parseCssColor(cssColor: string): ReturnType<typeof rgb> {
-  if (!cssColor || cssColor === 'transparent') return rgb(0, 0, 0);
+  if (!cssColor || cssColor === 'transparent') {
+    throw new Error(`Expected an opaque CSS hex color; received ${cssColor || 'empty value'}.`);
+  }
 
   const hex = cssColor.replace('#', '').trim();
 
@@ -83,8 +109,10 @@ function parseCssColor(cssColor: string): ReturnType<typeof rgb> {
     g = parseInt(hex.substring(2, 4), 16) / 255;
     b = parseInt(hex.substring(4, 6), 16) / 255;
   } else {
-    return rgb(0, 0, 0);
+    throw new Error(`Unsupported CSS color: ${cssColor}.`);
   }
+
+  if (![r, g, b].every(Number.isFinite)) throw new Error(`Invalid CSS color: ${cssColor}.`);
 
   // Clamp
   r = Math.max(0, Math.min(1, r));
@@ -96,36 +124,72 @@ function parseCssColor(cssColor: string): ReturnType<typeof rgb> {
 
 // ─── Page info helper ──────────────────────────────────────────────────────────
 
-interface PageInfo {
-  width: number;   // pdf-lib page.getWidth()  — unrotated
-  height: number;  // pdf-lib page.getHeight() — unrotated
-  rotation: number; // /Rotate value: 0, 90, 180, 270
-}
-
-/**
- * Get unrotated dimensions and rotation angle of a pdf-lib page.
- * pdf-lib getWidth()/getHeight() return the pre-rotation dimensions.
- * The /Rotate value is stored in the page dictionary.
- */
-function getPageInfo(page: PDFPage): PageInfo {
-  const rotation = page.getRotation().angle;
+export function createPdfPageExportContext(page: PDFPage): PdfPageExportContext {
   return {
-    width: page.getWidth(),
-    height: page.getHeight(),
-    rotation,
+    intrinsicRotation: normalizeQuarterTurn(page.getRotation().angle),
+    mediaBox: Object.freeze({ ...page.getMediaBox() }),
+    cropBox: Object.freeze({ ...page.getCropBox() }),
   };
 }
 
-/**
- * Convert a single PDF User Space point to pdf-lib coordinates.
- * This is the ONLY coordinate conversion in this file — always via canonical module.
- */
-function toLib(
-  pdfX: number,
-  pdfY: number,
-  info: PageInfo,
-): { x: number; y: number } {
-  return pdfUserSpaceToLibPoint(pdfX, pdfY, info.rotation, info.width, info.height);
+/** pdf-lib content operators use the same default PDF User Space as annotations. */
+export function annotationPointToExportPoint(pdfX: number, pdfY: number): { x: number; y: number } {
+  assertFinite(pdfX, 'annotation x');
+  assertFinite(pdfY, 'annotation y');
+  return { x: pdfX, y: pdfY };
+}
+
+export function annotationRectToExportRect(rect: Readonly<{ x: number; y: number; width: number; height: number }>) {
+  for (const [label, value] of Object.entries(rect)) assertFinite(value, `annotation rect ${label}`);
+  const x2 = rect.x + rect.width;
+  const y2 = rect.y + rect.height;
+  return {
+    x: Math.min(rect.x, x2),
+    y: Math.min(rect.y, y2),
+    width: Math.abs(rect.width),
+    height: Math.abs(rect.height),
+  };
+}
+
+function normalizeQuarterTurn(rotation: number): number {
+  const normalized = ((rotation % 360) + 360) % 360;
+  if (!Number.isFinite(rotation) || normalized % 90 !== 0) {
+    throw new Error(`PDF page rotation must be a multiple of 90; received ${rotation}.`);
+  }
+  return normalized;
+}
+
+function toLib(pdfX: number, pdfY: number, _context: PdfPageExportContext): { x: number; y: number } {
+  return annotationPointToExportPoint(pdfX, pdfY);
+}
+
+/** Matches the committed-canvas Catmull-Rom interpolation in PDF space. */
+function smoothAnnotationPoints(points: readonly InputPoint[]): InputPoint[] {
+  if (points.length < 3) return [...points];
+  const result: InputPoint[] = [{ ...points[0] }];
+  for (let index = 0; index < points.length - 1; index++) {
+    const p0 = points[Math.max(index - 1, 0)];
+    const p1 = points[index];
+    const p2 = points[index + 1];
+    const p3 = points[Math.min(index + 2, points.length - 1)];
+    for (let step = 1; step <= 8; step++) {
+      const s = step / 8;
+      const s2 = s * s;
+      const s3 = s2 * s;
+      result.push({
+        x: 0.5 * ((2 * p1.x) + (-p0.x + p2.x) * s +
+          (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * s2 +
+          (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * s3),
+        y: 0.5 * ((2 * p1.y) + (-p0.y + p2.y) * s +
+          (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * s2 +
+          (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * s3),
+        pressure: p1.pressure + (p2.pressure - p1.pressure) * s,
+        timestamp: p1.timestamp,
+      });
+    }
+  }
+  result.push({ ...points[points.length - 1] });
+  return result;
 }
 
 // ─── Stroke annotation ─────────────────────────────────────────────────────────
@@ -136,15 +200,16 @@ function toLib(
  * Approach: draw each segment individually to support variable opacity
  * and match the canvas rendering as closely as possible.
  *
- * Note: pdf-lib does not support variable line width per segment.
- * For pressure-sensitive strokes we use the average stroke width.
+ * pdf-lib does not support variable width inside one path, so pressure strokes
+ * are emitted as adjacent segments using the same width formula as canvas.
  */
 function exportStroke(
   page: PDFPage,
   annotation: StrokeAnnotation,
-  info: PageInfo,
+  info: PdfPageExportContext,
 ): void {
-  const { points, color, width, opacity } = annotation;
+  const { color, width, opacity } = annotation;
+  const points = annotation.smooth ? smoothAnnotationPoints(annotation.points) : annotation.points;
   if (points.length < 2) return;
 
   const strokeColor = parseCssColor(color);
@@ -170,23 +235,19 @@ function exportStroke(
     return;
   }
 
-  // Uniform width: draw as single polyline path
-  // pdf-lib doesn't have drawPolyline, so use drawSvgPath
+  // Draw direct PDF line operators. drawSvgPath uses SVG's inverted Y axis and
+  // would mirror canonical PDF-space pen points.
   const libPoints = points.map(p => toLib(p.x, p.y, info));
-  const pathParts = libPoints.map((p, i) =>
-    i === 0 ? `M ${p.x.toFixed(2)} ${p.y.toFixed(2)}`
-             : `L ${p.x.toFixed(2)} ${p.y.toFixed(2)}`
-  );
-  const d = pathParts.join(' ');
-
-  page.drawSvgPath(d, {
-    x: 0,
-    y: 0,
-    borderColor: strokeColor,
-    borderWidth: width,
-    borderLineCap: LineCapStyle.Round,
-    borderOpacity: opacity,
-  });
+  for (let index = 0; index < libPoints.length - 1; index++) {
+    page.drawLine({
+      start: libPoints[index],
+      end: libPoints[index + 1],
+      thickness: width,
+      color: strokeColor,
+      opacity,
+      lineCap: LineCapStyle.Round,
+    });
+  }
 }
 
 // ─── Highlight annotation ──────────────────────────────────────────────────────
@@ -202,9 +263,10 @@ function exportStroke(
 function exportHighlight(
   page: PDFPage,
   annotation: HighlightAnnotation,
-  info: PageInfo,
+  info: PdfPageExportContext,
 ): void {
-  const { points, color, width, opacity } = annotation;
+  const { color, width, opacity } = annotation;
+  const points = smoothAnnotationPoints(annotation.points);
   if (points.length < 2) return;
 
   const highlightColor = parseCssColor(color);
@@ -241,11 +303,9 @@ async function exportText(
   page: PDFPage,
   pdfDoc: PDFDocument,
   annotation: TextAnnotation,
-  info: PageInfo,
+  info: PdfPageExportContext,
 ): Promise<void> {
   const { bounds, content, fontSize, bold, italic, color, opacity, align } = annotation;
-  if (!content.trim()) return;
-
   // Map to closest available StandardFonts
   let fontName: StandardFonts;
   if (bold && italic) {
@@ -263,12 +323,12 @@ async function exportText(
   // Background fill
   if (annotation.backgroundColor !== 'transparent') {
     const bgColor = parseCssColor(annotation.backgroundColor);
-    const tl = toLib(bounds.x, bounds.y + bounds.height, info);
+    const background = annotationRectToExportRect(bounds);
     page.drawRectangle({
-      x: tl.x,
-      y: tl.y,
-      width: bounds.width,
-      height: bounds.height,
+      x: background.x,
+      y: background.y,
+      width: background.width,
+      height: background.height,
       color: bgColor,
       opacity,
     });
@@ -281,7 +341,7 @@ async function exportText(
   const paragraphs = content.split('\n');
   let lineIndex = 0;
   const PADDING = 4; // PDF points
-  const maxWidth = bounds.width - PADDING * 2;
+  const maxWidth = Math.max(0.1, bounds.width - PADDING * 2);
 
   // We draw from the TOP of the bounds downward.
   // In pdf-lib (Y-up), the top of the bounds in lib coords is bounds.y + bounds.height.
@@ -366,7 +426,7 @@ function wrapTextPdfLib(
 function exportShape(
   page: PDFPage,
   annotation: ShapeAnnotation,
-  info: PageInfo,
+  info: PdfPageExportContext,
 ): void {
   const {
     shapeKind,
@@ -423,22 +483,34 @@ function exportShape(
       break;
 
     case 'roundedRect': {
-      // pdf-lib supports borderRadius since v1.17.1
       const maxR = Math.min(rw, rh) / 2;
       const cornerRadius = Math.min(annotation.cornerRadius ?? 8, maxR);
-      page.drawRectangle({
+      const k = 0.5522847498;
+      const w = rw;
+      const h = rh;
+      const r = cornerRadius;
+      const path = [
+        `M ${r} 0`, `L ${w - r} 0`,
+        `C ${w - r + r * k} 0 ${w} ${r - r * k} ${w} ${r}`,
+        `L ${w} ${h - r}`,
+        `C ${w} ${h - r + r * k} ${w - r + r * k} ${h} ${w - r} ${h}`,
+        `L ${r} ${h}`,
+        `C ${r - r * k} ${h} 0 ${h - r + r * k} 0 ${h - r}`,
+        `L 0 ${r}`,
+        `C 0 ${r - r * k} ${r - r * k} 0 ${r} 0 Z`,
+      ].join(' ');
+      // drawSvgPath has a local SVG Y-down axis. Anchoring at PDF top-left
+      // maps the local path back into the canonical PDF rectangle.
+      page.drawSvgPath(path, {
         x: rx,
-        y: ry,
-        width: rw,
-        height: rh,
+        y: ry + rh,
         borderColor: strokeColor,
         borderWidth: strokeWidth,
         borderLineCap: LineCapStyle.Round,
         color: fillColorParsed,
         opacity,
         borderOpacity: opacity,
-        borderRadius: cornerRadius,
-      } as Parameters<typeof page.drawRectangle>[0]);
+      });
       break;
     }
 
@@ -501,6 +573,123 @@ function exportArrow(
 
 // ─── Main export function ──────────────────────────────────────────────────────
 
+function assertFinite(value: number, label: string): void {
+  if (!Number.isFinite(value)) throw new Error(`${label} must be finite; received ${value}.`);
+}
+
+function assertPositive(value: number, label: string): void {
+  assertFinite(value, label);
+  if (value <= 0) throw new Error(`${label} must be greater than zero; received ${value}.`);
+}
+
+function validatePoint(pointValue: InputPoint | { x: number; y: number }, label: string): void {
+  assertFinite(pointValue.x, `${label}.x`);
+  assertFinite(pointValue.y, `${label}.y`);
+  if ('pressure' in pointValue) {
+    assertFinite(pointValue.pressure, `${label}.pressure`);
+    if (pointValue.pressure < 0 || pointValue.pressure > 1) {
+      throw new Error(`${label}.pressure must be between 0 and 1.`);
+    }
+  }
+}
+
+function validateAnnotation(annotation: Annotation, pageIndex: number): void {
+  if (!annotation.id || typeof annotation.id !== 'string') throw new Error('Annotation id must be a non-empty string.');
+  if (annotation.pageIndex !== pageIndex) {
+    throw new Error(`Annotation pageIndex ${annotation.pageIndex} does not match map page ${pageIndex}.`);
+  }
+  assertFinite(annotation.opacity, 'annotation opacity');
+  if (annotation.opacity < 0 || annotation.opacity > 1) throw new Error('Annotation opacity must be between 0 and 1.');
+  parseCssColor(annotation.color);
+
+  switch (annotation.type) {
+    case 'stroke':
+      assertPositive(annotation.width, 'stroke width');
+      if (annotation.points.length < 2) throw new Error('Stroke requires at least two points.');
+      annotation.points.forEach((value, index) => validatePoint(value, `stroke point ${index}`));
+      return;
+    case 'highlight':
+      assertPositive(annotation.width, 'highlight width');
+      if (annotation.points.length < 2) throw new Error('Highlight requires at least two points.');
+      annotation.points.forEach((value, index) => validatePoint(value, `highlight point ${index}`));
+      return;
+    case 'text':
+      if (!annotation.content.trim()) throw new Error('Text annotation content must not be empty.');
+      assertPositive(annotation.bounds.width, 'text bounds width');
+      assertPositive(annotation.bounds.height, 'text bounds height');
+      assertFinite(annotation.bounds.x, 'text bounds x');
+      assertFinite(annotation.bounds.y, 'text bounds y');
+      assertPositive(annotation.fontSize, 'text font size');
+      if (annotation.backgroundColor !== 'transparent') parseCssColor(annotation.backgroundColor);
+      return;
+    case 'shape':
+      validatePoint(annotation.startPoint, 'shape startPoint');
+      validatePoint(annotation.endPoint, 'shape endPoint');
+      assertPositive(annotation.strokeWidth, 'shape stroke width');
+      if (!['line', 'arrow', 'rectangle', 'roundedRect', 'ellipse'].includes(annotation.shapeKind)) {
+        throw new Error(`Unsupported shape kind: ${String(annotation.shapeKind)}.`);
+      }
+      if (annotation.fillColor !== 'transparent') parseCssColor(annotation.fillColor);
+      return;
+    default:
+      throw new Error(`Unsupported annotation type: ${String((annotation as Annotation).type)}.`);
+  }
+}
+
+function cloneAnnotation(annotation: Annotation): Annotation {
+  switch (annotation.type) {
+    case 'stroke':
+    case 'highlight':
+      return Object.freeze({
+        ...annotation,
+        points: Object.freeze(annotation.points.map((value) => Object.freeze({ ...value }))),
+      }) as unknown as Annotation;
+    case 'text':
+      return Object.freeze({ ...annotation, bounds: Object.freeze({ ...annotation.bounds }) }) as Annotation;
+    case 'shape':
+      return Object.freeze({
+        ...annotation,
+        startPoint: Object.freeze({ ...annotation.startPoint }),
+        endPoint: Object.freeze({ ...annotation.endPoint }),
+      }) as Annotation;
+    default:
+      // Preserve unknown runtime data so validation can produce a typed error
+      // containing the original annotation identity instead of throwing here.
+      return Object.freeze({ ...(annotation as unknown as Record<string, unknown>) }) as unknown as Annotation;
+  }
+}
+
+export function createAnnotationSnapshot(annotations: DocumentAnnotations): DocumentAnnotations {
+  const snapshot = new Map<number, readonly Annotation[]>();
+  for (const [pageIndex, pageAnnotations] of annotations) {
+    snapshot.set(pageIndex, Object.freeze(pageAnnotations.map(cloneAnnotation)));
+  }
+  return snapshot;
+}
+
+function annotationCount(annotations: DocumentAnnotations): number {
+  let count = 0;
+  for (const pageAnnotations of annotations.values()) count += pageAnnotations.length;
+  return count;
+}
+
+function assertSourceNotPreviouslyFlattened(pdfDoc: PDFDocument, count: number): void {
+  if (count > 0 && pdfDoc.catalog.get(EXPORT_MARKER)) {
+    throw new AnnotationExportError(
+      'SOURCE_ALREADY_FLATTENED',
+      'The source PDF already contains a MaliPDF flattened export. Reusing it with live annotations would duplicate content.',
+    );
+  }
+}
+
+function markFlattenedExport(pdfDoc: PDFDocument, count: number): void {
+  if (count === 0) return;
+  pdfDoc.catalog.set(EXPORT_MARKER, pdfDoc.context.obj({
+    Version: PDFNumber.of(1),
+    AnnotationCount: PDFNumber.of(count),
+  }));
+}
+
 /**
  * Export a PDF document with annotations flattened into the page content.
  *
@@ -511,27 +700,50 @@ function exportArrow(
 export async function exportAnnotatedPdf(
   sourceData: Uint8Array,
   annotations: DocumentAnnotations,
-  pageRotations: Record<number, number> = {},
 ): Promise<ExportResult> {
-  // Load the original PDF preserving all existing content
-  const pdfDoc = await PDFDocument.load(sourceData, {
+  // Capture annotation state synchronously, before the first async boundary.
+  const snapshot = createAnnotationSnapshot(annotations);
+  const requestedAnnotationCount = annotationCount(snapshot);
+
+  // Load a copy so pdf-lib can never detach or mutate DocumentState.sourceData.
+  const pdfDoc = await PDFDocument.load(sourceData.slice(), {
     ignoreEncryption: false,
   });
 
   const pages = pdfDoc.getPages();
+  assertSourceNotPreviouslyFlattened(pdfDoc, requestedAnnotationCount);
+
+  for (const [pageIndex, pageAnnotations] of snapshot) {
+    if (!Number.isInteger(pageIndex) || pageIndex < 0 || pageIndex >= pages.length) {
+      throw new AnnotationExportError(
+        'INVALID_ANNOTATION',
+        `Annotation page ${pageIndex} is outside the source PDF page range.`,
+        pageAnnotations[0]?.id,
+        pageIndex,
+      );
+    }
+    for (const annotation of pageAnnotations) {
+      try {
+        validateAnnotation(annotation, pageIndex);
+      } catch (cause) {
+        throw new AnnotationExportError(
+          'INVALID_ANNOTATION',
+          `Invalid annotation ${annotation.id} on page ${pageIndex}: ${cause instanceof Error ? cause.message : String(cause)}`,
+          annotation.id,
+          pageIndex,
+          { cause },
+        );
+      }
+    }
+  }
+
   let totalAnnotationCount = 0;
 
   for (let pageIndex = 0; pageIndex < pages.length; pageIndex++) {
     const page = pages[pageIndex];
-    const info = getPageInfo(page);
+    const info = createPdfPageExportContext(page);
 
-    // Apply any user-defined rotation override
-    if (pageRotations[pageIndex]) {
-      const newRotation = (((info.rotation + pageRotations[pageIndex]) % 360) + 360) % 360;
-      page.setRotation(degrees(newRotation));
-    }
-
-    const pageAnnotations = annotations.get(pageIndex) || [];
+    const pageAnnotations = snapshot.get(pageIndex) || [];
     if (pageAnnotations.length === 0) continue;
 
     for (const annotation of pageAnnotations) {
@@ -552,15 +764,19 @@ export async function exportAnnotatedPdf(
         }
         totalAnnotationCount++;
       } catch (err) {
-        // Log to error but don't abort the export — best effort per annotation
         const errMsg = err instanceof Error ? err.message : String(err);
-        throw new Error(
-          `Failed to export annotation ${annotation.id} (type=${annotation.type}) on page ${pageIndex}: ${errMsg}`
+        throw new AnnotationExportError(
+          'ANNOTATION_SERIALIZATION_FAILED',
+          `Failed to export annotation ${annotation.id} (type=${annotation.type}) on page ${pageIndex}: ${errMsg}`,
+          annotation.id,
+          pageIndex,
+          { cause: err },
         );
       }
     }
   }
 
+  markFlattenedExport(pdfDoc, totalAnnotationCount);
   const pdfBytes = await pdfDoc.save();
   return {
     data: pdfBytes,
@@ -579,13 +795,13 @@ export async function exportAnnotatedPdf(
 export function buildAnnotationsMap(
   docAnnotationState: DocumentAnnotationState,
 ): DocumentAnnotations {
-  const result: DocumentAnnotations = new Map();
+  const result = new Map<number, readonly Annotation[]>();
   for (const [pageIndex, pageState] of docAnnotationState.pages) {
     if (pageState.annotations.length > 0) {
-      result.set(pageIndex, [...pageState.annotations]);
+      result.set(pageIndex, pageState.annotations);
     }
   }
-  return result;
+  return createAnnotationSnapshot(result);
 }
 
 /**
@@ -604,12 +820,11 @@ export async function exportAndSave(
   sourceData: Uint8Array,
   docAnnotState: DocumentAnnotationState,
   defaultName: string,
-  pageRotations: Record<number, number> = {},
 ): Promise<boolean> {
   const annotations = buildAnnotationsMap(docAnnotState);
 
   // Build the annotated PDF
-  const result = await exportAnnotatedPdf(sourceData, annotations, pageRotations);
+  const result = await exportAnnotatedPdf(sourceData, annotations);
 
   // Ask the user where to save
   const savePath = await window.electronAPI.saveFile(defaultName);

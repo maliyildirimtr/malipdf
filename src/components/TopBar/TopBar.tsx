@@ -119,7 +119,8 @@ export function TopBar() {
 
   function handleClose(docId: string, event: React.MouseEvent<HTMLButtonElement>) {
     event.stopPropagation();
-    closeDocumentById(docId);
+    event.preventDefault();
+    void closeDocumentById(docId);
   }
 
   function handleTabKeyDown(event: React.KeyboardEvent<HTMLButtonElement>, docId: string) {
@@ -182,6 +183,7 @@ export function TopBar() {
           const doc = documents.get(docId);
           if (!doc) return null;
           const isActive = docId === activeDocId;
+          const isDirty = doc.currentStateId !== doc.savedStateId;
 
           return (
             <div
@@ -201,13 +203,13 @@ export function TopBar() {
                 id={`document-tab-${docId}`}
                 aria-controls="document-workspace"
                 aria-selected={isActive}
-                aria-label={`${doc.title}${doc.isDirty ? ', modified' : ''}`}
+                aria-label={`${doc.title}${isDirty ? ', modified' : ''}`}
                 tabIndex={isActive ? 0 : -1}
                 title={doc.filePath ?? doc.title}
                 type="button"
               >
                 <FileText size={13} className={styles.tabIcon} aria-hidden="true" />
-                {doc.isDirty && <span className={styles.dirtyIndicator} aria-hidden="true" />}
+                {isDirty && <span className={styles.dirtyIndicator} aria-hidden="true" />}
                 <span className={styles.tabTitle}>{doc.title}</span>
               </button>
               <button
@@ -250,6 +252,7 @@ export function TopBar() {
                 const doc = documents.get(docId);
                 if (!doc) return null;
                 const isActive = docId === activeDocId;
+                const isDirty = doc.currentStateId !== doc.savedStateId;
 
                 return (
                   <button
@@ -261,7 +264,7 @@ export function TopBar() {
                     type="button"
                     role="menuitemradio"
                     aria-checked={isActive}
-                    aria-label={`${doc.title}${doc.isDirty ? ', modified' : ''}`}
+                    aria-label={`${doc.title}${isDirty ? ', modified' : ''}`}
                     tabIndex={isActive ? 0 : -1}
                     className={`${styles.overflowItem} ${isActive ? styles.overflowItemActive : ''}`}
                     onClick={() => activateTab(docId, true)}
@@ -271,7 +274,7 @@ export function TopBar() {
                       {isActive && <Check size={13} />}
                     </span>
                     <FileText size={14} aria-hidden="true" />
-                    {doc.isDirty && <span className={styles.dirtyIndicator} aria-hidden="true" />}
+                    {isDirty && <span className={styles.dirtyIndicator} aria-hidden="true" />}
                     <span className={styles.overflowItemTitle}>{doc.title}</span>
                   </button>
                 );
