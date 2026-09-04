@@ -1,0 +1,79 @@
+.statusBar {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: var(--statusbar-height);
+  padding: 0 12px;
+  gap: 8px;
+  background: var(--color-toolbar-bg);
+  border-top: 1px solid var(--color-toolbar-border);
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  user-select: none;
+}
+
+.pageNavigation {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.iconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+}
+
+.iconButton:hover:not(:disabled) {
+  background: var(--color-toolbar-control-hover);
+  color: var(--color-text-primary);
+}
+
+.iconButton:disabled {
+  opacity: var(--toolbar-control-disabled-opacity);
+}
+
+.pageCount {
+  min-width: 86px;
+  text-align: center;
+  color: var(--color-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.zoomReadout {
+  min-width: 84px;
+  font-variant-numeric: tabular-nums;
+}
+
+.separator {
+  width: 1px;
+  height: 14px;
+  background: var(--color-toolbar-divider);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.saved,
+.edited,
+.brand {
+  white-space: nowrap;
+}
+
+.edited {
+  color: var(--color-warning);
+}
+
+.saved {
+  color: var(--color-text-tertiary);
+}
+
+.brand {
+  color: var(--color-text-tertiary);
+  opacity: 0.72;
+}

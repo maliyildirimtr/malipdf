@@ -1,0 +1,40 @@
+{
+  "name": "malipedefe",
+  "productName": "MaliPDF",
+  "version": "0.1.0",
+  "description": "Professional PDF Annotation & Document Workspace",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "concurrently -k \"npm run dev:vite\" \"npm run dev:electron\"",
+    "dev:vite": "vite",
+    "dev:electron": "wait-on tcp:5173 && cross-env NODE_ENV=development electron .",
+    "build": "npm run build:vite && npm run build:electron",
+    "build:vite": "tsc && vite build",
+    "build:electron": "tsc -p tsconfig.electron.json",
+    "preview": "vite preview",
+    "lint": "eslint src --ext ts,tsx",
+    "test": "vitest run",
+    "test:coordinate": "vitest run src/pdf/__tests__"
+  },
+  "dependencies": {
+    "lucide-react": "^0.441.0",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "4.4.168",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zustand": "^4.5.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.5.5",
+    "@types/react": "^18.3.5",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "concurrently": "^9.0.1",
+    "cross-env": "^7.0.3",
+    "electron": "^32.3.3",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.4",
+    "vitest": "^2.1.9",
+    "wait-on": "^8.0.1"
+  }
+}

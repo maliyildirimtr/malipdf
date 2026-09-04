@@ -1,0 +1,72 @@
+.pageContainer {
+  position: relative;
+  flex-shrink: 0;
+  margin: 24px auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.pageSurface {
+  position: relative;
+  background: #ffffff;
+  box-shadow:
+    0 2px 8px var(--color-page-shadow),
+    0 8px 32px rgba(0, 0, 0, 0.25);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.pdfCanvas {
+  display: block;
+  position: absolute;
+  inset: 0;
+}
+
+.loadingOverlay {
+  position: absolute;
+  inset: 0;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.loadingSkeleton {
+  width: 60%;
+  height: 60%;
+  background: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0.04) 0%,
+    rgba(0, 0, 0, 0.08) 50%,
+    rgba(0, 0, 0, 0.04) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease infinite;
+  border-radius: 4px;
+}
+
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to   { background-position: -200% 0; }
+}
+
+.errorOverlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(248, 113, 113, 0.05);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-error);
+  font-size: var(--text-sm);
+}
+
+.pageLabel {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+  text-align: center;
+  padding: 4px;
+  user-select: none;
+}

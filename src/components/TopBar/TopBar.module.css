@@ -1,0 +1,249 @@
+.topBar {
+  position: relative;
+  z-index: 30;
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  height: var(--titlebar-height);
+  min-height: var(--titlebar-height);
+  padding-left: 80px;
+  padding-right: 8px;
+  background: var(--color-toolbar-bg);
+  border-bottom: 1px solid var(--color-toolbar-border);
+  flex-shrink: 0;
+  -webkit-app-region: drag;
+}
+
+.tabs {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  height: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  flex: 1;
+  scrollbar-width: none;
+  -webkit-app-region: drag;
+}
+
+.tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.tabItem {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  min-width: 120px;
+  max-width: 220px;
+  flex: 1 1 180px;
+  color: var(--color-text-secondary);
+  border-bottom: 2px solid transparent;
+  transition:
+    color var(--duration-fast),
+    background var(--duration-fast),
+    border-color var(--duration-fast);
+  -webkit-app-region: no-drag;
+}
+
+.tabItem::after {
+  position: absolute;
+  top: 10px;
+  right: 0;
+  bottom: 8px;
+  width: 1px;
+  background: var(--color-toolbar-border);
+  content: '';
+  pointer-events: none;
+}
+
+.tabItem:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-hover);
+}
+
+.tabItemActive {
+  color: var(--color-text-primary);
+  background: var(--color-accent-subtle);
+  border-bottom-color: var(--color-accent);
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  height: 100%;
+  padding: 0 32px 0 11px;
+  gap: 6px;
+  flex: 1;
+  border-radius: 0;
+  color: inherit;
+  background: transparent;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  text-align: left;
+  -webkit-app-region: no-drag;
+}
+
+.tab:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline-offset: -3px;
+}
+
+.tabIcon {
+  color: var(--color-text-tertiary);
+  flex-shrink: 0;
+}
+
+.tabItemActive .tabIcon {
+  color: var(--color-accent);
+}
+
+.dirtyIndicator {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--color-accent);
+  flex: 0 0 6px;
+}
+
+.tabTitle {
+  min-width: 0;
+  overflow: hidden;
+  flex: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tabClose {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-tertiary);
+  background: transparent;
+  opacity: 0;
+  transform: translateY(-50%);
+  transition:
+    opacity var(--duration-fast),
+    background var(--duration-fast),
+    color var(--duration-fast);
+  -webkit-app-region: no-drag;
+}
+
+.tabItem:hover .tabClose,
+.tabItemActive .tabClose,
+.tabClose:focus-visible {
+  opacity: 1;
+}
+
+.tabClose:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-active);
+}
+
+.tabClose:focus-visible {
+  outline-offset: 1px;
+}
+
+.overflow {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding-left: 4px;
+  flex: 0 0 auto;
+  -webkit-app-region: no-drag;
+}
+
+.overflowButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  background: transparent;
+  transition:
+    color var(--duration-fast),
+    background var(--duration-fast);
+}
+
+.overflowButton:hover,
+.overflowButton[aria-expanded='true'] {
+  color: var(--color-text-primary);
+  background: var(--color-bg-hover);
+}
+
+.overflowMenu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  width: min(280px, calc(100vw - 24px));
+  max-height: min(360px, calc(100vh - 64px));
+  padding: 5px;
+  overflow-y: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-elevated);
+  box-shadow: var(--shadow-lg);
+}
+
+.overflowItem {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 32px;
+  padding: 0 8px 0 4px;
+  gap: 7px;
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  background: transparent;
+  text-align: left;
+}
+
+.overflowItem:hover,
+.overflowItem:focus-visible {
+  color: var(--color-text-primary);
+  background: var(--color-bg-hover);
+}
+
+.overflowItemActive {
+  color: var(--color-text-primary);
+  background: var(--color-accent-subtle);
+}
+
+.overflowItemCheck {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  color: var(--color-accent);
+  flex: 0 0 14px;
+}
+
+.overflowItemTitle {
+  min-width: 0;
+  overflow: hidden;
+  flex: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tabItem,
+  .tabClose,
+  .overflowButton {
+    transition: none;
+  }
+}

@@ -1,0 +1,274 @@
+.toolbar {
+  position: fixed;
+  top: 50%;
+  z-index: 90;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: var(--focus-toolbar-width);
+  max-height: calc(100vh - 24px);
+  padding: 5px;
+  gap: 2px;
+  color: var(--color-text-primary);
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--focus-toolbar-shadow);
+  box-sizing: border-box;
+  transform: translateY(-50%);
+  user-select: none;
+  -webkit-app-region: no-drag;
+}
+
+.left {
+  left: 10px;
+}
+
+.right {
+  right: 10px;
+}
+
+.collapsed {
+  justify-content: space-between;
+  min-height: 96px;
+}
+
+.focusButton,
+.splitButton {
+  position: relative;
+  display: flex;
+  flex: 0 0 var(--focus-toolbar-button-size);
+  align-items: center;
+  justify-content: center;
+  width: var(--focus-toolbar-button-size);
+  height: var(--focus-toolbar-button-size);
+  color: var(--color-text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  box-sizing: border-box;
+}
+
+.focusButton {
+  transition: color var(--duration-fast), background var(--duration-fast), border-color var(--duration-fast);
+}
+
+.focusButton:hover:not(:disabled),
+.shapeMain:hover:not(:disabled),
+.shapeDisclosure:hover,
+.focusButton[aria-expanded='true'] {
+  color: var(--color-text-primary);
+  background: var(--color-toolbar-control-hover);
+}
+
+.focusButton:focus-visible,
+.shapeMain:focus-visible,
+.shapeDisclosure:focus-visible,
+.shapeOption:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 1px;
+}
+
+.focusButton:disabled,
+.shapeMain:disabled {
+  opacity: var(--toolbar-control-disabled-opacity);
+}
+
+.active {
+  color: var(--color-toolbar-control-selected-fg) !important;
+  background: var(--color-toolbar-control-selected-bg) !important;
+  border-color: var(--color-accent-emphasis) !important;
+}
+
+.active::after {
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  left: 1px;
+  width: 2px;
+  background: var(--color-accent);
+  border-radius: var(--radius-full);
+  content: '';
+}
+
+.separator {
+  width: 28px;
+  height: 1px;
+  margin: 2px 0;
+  background: var(--color-toolbar-divider);
+  flex: 0 0 1px;
+}
+
+.splitButton {
+  align-items: stretch;
+  padding: 0;
+}
+
+.shapeMain,
+.shapeDisclosure {
+  position: relative;
+  color: inherit;
+  background: transparent;
+}
+
+.shapeMain {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
+}
+
+.shapeDisclosure {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  border-left: 1px solid var(--color-toolbar-divider);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+}
+
+.popover {
+  position: absolute;
+  z-index: 110;
+  color: var(--color-text-primary);
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+}
+
+.left .popover {
+  left: calc(100% + 8px);
+}
+
+.right .popover {
+  right: calc(100% + 8px);
+}
+
+.shapePopover {
+  top: 0;
+  display: grid;
+  grid-template-columns: repeat(2, 72px);
+  padding: 5px;
+  gap: 3px;
+}
+
+.shapeOption {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  min-height: 58px;
+  gap: 4px;
+  color: var(--color-text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+}
+
+.shapeOption:hover {
+  color: var(--color-text-primary);
+  background: var(--color-toolbar-control-hover);
+}
+
+.propertyPopover {
+  top: 0;
+  width: 314px;
+  padding: 10px;
+}
+
+.popoverTitle {
+  margin-bottom: 9px;
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+}
+
+.propertyStack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 9px;
+}
+
+.propertyHint {
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
+
+.focusField {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 10px;
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+}
+
+.focusField input {
+  width: 72px;
+  height: 26px;
+  padding: 0 6px;
+  color: var(--color-text-primary);
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.colorIndicator {
+  position: relative;
+  display: flex;
+}
+
+.colorIndicator::after {
+  position: absolute;
+  right: -3px;
+  bottom: -5px;
+  left: -3px;
+  height: 4px;
+  background: var(--focus-color);
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  border-radius: var(--radius-full);
+  content: '';
+}
+
+.widthIndicator {
+  position: absolute;
+  right: 3px;
+  bottom: 2px;
+  min-width: 14px;
+  color: var(--color-text-tertiary);
+  font-size: 8px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.flexSpacer {
+  flex: 1 1 4px;
+  min-height: 2px;
+}
+
+.exitButton {
+  color: var(--color-accent);
+}
+
+@media (max-height: 720px) {
+  .toolbar:not(.collapsed) {
+    top: 8px;
+    max-height: calc(100vh - 16px);
+    overflow-y: auto;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .focusButton {
+    transition: none;
+  }
+}
