@@ -69,3 +69,104 @@ malipdf/
 ├── package.json
 ├── package-lock.json
 └── README.md
+```
+
+## Development
+
+### Requirements
+
+- Node.js
+- npm
+
+Clone the repository:
+
+```bash
+git clone https://github.com/maliyildirimtr/malipdf.git
+cd malipdf
+```
+
+Install dependencies:
+
+```bash
+npm install
+```
+
+Start development:
+
+```bash
+npm run dev
+```
+
+Run tests:
+
+```bash
+npm test
+```
+
+Create a production build:
+
+```bash
+npm run build
+```
+
+## Website
+
+The MaliPDF website is located in the `website/` directory.
+
+Start the website locally:
+
+```bash
+cd website
+npm install
+npm run dev
+```
+
+Create a production build:
+
+```bash
+npm run build
+```
+
+## Project Status
+
+MaliPDF is currently in active development.
+
+The current stable development checkpoint is:
+
+`v0.9-stable`
+
+Planned areas include:
+
+- Clipboard and annotation copy/paste workflows
+- Advanced page management
+- Annotation management tools
+- Document search and navigation
+- Import/export improvements
+- Packaging and distribution
+- Additional platform support
+- Performance and security hardening
+
+## Early Access
+
+MaliPDF is being developed publicly while its architecture and feature set continue to evolve.
+
+Installers and official releases will be published when they are ready for broader testing.
+
+## License
+
+No software license has been granted for this repository yet.
+
+The source code is publicly visible, but public availability of the repository does not by itself grant permission to copy, modify, redistribute, or commercially use the software.
+
+A formal license may be added in the future.
+
+## Author
+
+**Mehmet Ali Yıldırım**
+
+Electrical & Electronics Engineering  
+GitHub: [@maliyildirimtr](https://github.com/maliyildirimtr)
+
+---
+
+**MaliPDF — Your PDFs. Your workspace.**
