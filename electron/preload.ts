@@ -17,6 +17,23 @@ export interface OpenedFile {
   data: ArrayBuffer;
 }
 
+export interface RecoveryAsset {
+  id: string;
+  mimeType: string;
+  width: number;
+  height: number;
+  data: Uint8Array;
+}
+
+export interface RecoveryEntry {
+  docId: string;
+  title: string;
+  filePath: string | null;
+  savedAt: number;
+  pageCount: number;
+  annotationCount: number;
+}
+
 export interface ElectronAPI {
   // File operations
   openFile: () => Promise<OpenedFile[] | null>;
@@ -39,6 +56,17 @@ export interface ElectronAPI {
   captureScreen: () => Promise<{ success: boolean; data?: ArrayBuffer; mimeType?: string; width?: number; height?: number; error?: string }>;
   captureRegion: () => Promise<{ success: boolean; canceled?: boolean; data?: ArrayBuffer; mimeType?: string; width?: number; height?: number; error?: string }>;
   readClipboardImage: () => Promise<{ data: ArrayBuffer; mimeType: string } | null>;
+
+  // Crash recovery (Auto Save)
+  recoveryWrite: (docId: string, meta: string, source: Uint8Array | null, assets: RecoveryAsset[]) => Promise<boolean>;
+  recoveryRemove: (docId: string) => Promise<boolean>;
+  recoveryList: () => Promise<RecoveryEntry[]>;
+  recoveryLoad: (docId: string) => Promise<{ meta: string; source: ArrayBuffer; assets: { id: string; data: ArrayBuffer }[] }>;
+
+  // App info / updates
+  checkForUpdates: () => Promise<boolean>;
+  showAbout: () => Promise<boolean>;
+  openCrashReports: () => Promise<boolean>;
 
   // PPTX Printout
   pptxIsAvailable: () => Promise<boolean>;
@@ -67,6 +95,15 @@ const electronAPI: ElectronAPI = {
   captureScreen: () => ipcRenderer.invoke('screenshot:captureDisplay'),
   captureRegion: () => ipcRenderer.invoke('screenshot:captureRegion'),
   readClipboardImage: () => ipcRenderer.invoke('clipboard:readImage'),
+
+  recoveryWrite: (docId, meta, source, assets) => ipcRenderer.invoke('recovery:write', docId, meta, source, assets),
+  recoveryRemove: (docId) => ipcRenderer.invoke('recovery:remove', docId),
+  recoveryList: () => ipcRenderer.invoke('recovery:list'),
+  recoveryLoad: (docId) => ipcRenderer.invoke('recovery:load', docId),
+
+  checkForUpdates: () => ipcRenderer.invoke('updates:check'),
+  showAbout: () => ipcRenderer.invoke('app:showAbout'),
+  openCrashReports: () => ipcRenderer.invoke('app:openCrashReports'),
 
   // PPTX Printout
   pptxIsAvailable: () => ipcRenderer.invoke('pptx:isAvailable'),

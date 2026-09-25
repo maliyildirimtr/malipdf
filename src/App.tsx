@@ -31,6 +31,8 @@ import { useImportJobStore } from './store/importJobStore';
 import { exportAndSave, loadDefaultExportFonts } from './pdf/annotationExporter';
 import { useAppCommands } from './commands';
 import { NewDocumentDialog } from './components/NewDocumentDialog/NewDocumentDialog';
+import { RecoveryDialog } from './components/RecoveryDialog/RecoveryDialog';
+import { startAutoSave } from './document/autoSave';
 import { NOTIFY_EVENT, type NotifyDetail } from './utils/notify';
 
 // ─── Export toast ─────────────────────────────────────────────────────────────
@@ -146,6 +148,10 @@ export default function App() {
     return () => window.removeEventListener(NOTIFY_EVENT, onNotify);
   }, [showToast]);
 
+  // ── Auto save (crash recovery snapshots) ───────────────────────────────
+
+  useEffect(() => startAutoSave(), []);
+
   // ── Save error surfacing ───────────────────────────────────────────────
   // saveCommands records failures on the document; show each new one once.
 
@@ -232,6 +238,7 @@ export default function App() {
       <FocusToolbar onCommand={executeCommand} canExecute={canExecute} />
       
       <NewDocumentDialog />
+      <RecoveryDialog />
 
       {/* Export toasts */}
       <div style={styles.toastContainer}>

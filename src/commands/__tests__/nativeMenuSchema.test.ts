@@ -12,7 +12,7 @@ const schema = createNativeMenuSchema(true, false);
 describe('native macOS menu schema', () => {
   it('uses the required native top-level order and MaliPDF app name', () => {
     expect(schema.map((menu) => menu.label)).toEqual([
-      'MaliPDF', 'File', 'Edit', 'Tools', 'View', 'Extras', 'Window', 'Help',
+      'MaliPDF', 'File', 'Edit', 'Tools', 'View', 'Page', 'Extras', 'Window', 'Help',
     ]);
   });
 

@@ -5,7 +5,8 @@ import { resolve } from 'path';
 // The loader must work whether or not the real package is installed here.
 vi.mock('@pdf-lib/fontkit', () => ({ default: { create: () => ({}) } }));
 
-import { dataUrlToBytes, loadExportFonts, readAssetBytes, EXPORT_FONT_URLS } from '../exportFonts';
+import { bundledExportFontPaths, dataUrlToBytes, loadExportFonts, readAssetBytes } from '../exportFonts';
+import { fontFamilyKey } from '../fontFamilies';
 
 const projectRoot = resolve(__dirname, '../../..');
 const readFromDisk = async (url: string) => new Uint8Array(readFileSync(resolve(projectRoot, url.replace(/^\//, '').replace(/\?.*$/, ''))));
@@ -16,13 +17,22 @@ describe('exportFonts', () => {
     expect([...await readAssetBytes('data:font/ttf;base64,AAEC/w==')]).toEqual([0, 1, 2, 255]);
   });
 
-  it('points at the four bundled Liberation Sans faces', async () => {
+  it('bundles 12 Liberation faces (sans, serif, mono × 4 styles)', async () => {
+    expect(bundledExportFontPaths()).toHaveLength(12);
     const fonts = await loadExportFonts(readFromDisk);
-    for (const url of Object.values(EXPORT_FONT_URLS)) expect(url).toMatch(/LiberationSans-.*\.ttf/);
-    for (const bytes of [fonts.regular, fonts.bold, fonts.italic, fonts.boldItalic]) {
-      expect(bytes.byteLength).toBeGreaterThan(100_000);
-      expect([...bytes.slice(0, 4)]).toEqual([0, 1, 0, 0]); // TrueType signature
+    for (const family of ['sans', 'serif', 'mono'] as const) {
+      for (const style of ['regular', 'bold', 'italic', 'boldItalic'] as const) {
+        const bytes = await fonts.load(family, style);
+        expect(bytes.byteLength).toBeGreaterThan(100_000);
+        expect([...bytes.slice(0, 4)]).toEqual([0, 1, 0, 0]); // TrueType signature
+      }
     }
-    expect(fonts.fontkit).toBeDefined();
+  });
+
+  it('classifies stored font families', () => {
+    expect(fontFamilyKey('Inter, sans-serif')).toBe('sans');
+    expect(fontFamilyKey('Georgia, serif')).toBe('serif');
+    expect(fontFamilyKey('"Times New Roman", "Liberation Serif", Times, serif')).toBe('serif');
+    expect(fontFamilyKey('Courier New, monospace')).toBe('mono');
   });
 });

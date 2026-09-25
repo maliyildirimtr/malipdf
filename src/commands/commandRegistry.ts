@@ -11,7 +11,7 @@ export type AppCommandId =
   | 'file.new' | 'file.combine' | 'file.open' | 'file.save' | 'file.saveAs'
   | 'file.saveTemplate' | 'file.saveAll' | 'file.export' | 'file.close'
   | 'file.closeAll' | 'file.documentProperties' | 'file.print'
-  | 'history.undo' | 'history.redo' | 'edit.selectAll' | 'edit.deleteSelected'
+  | 'history.undo' | 'history.redo' | 'edit.selectAll' | 'edit.deleteSelected' | 'edit.duplicate' | 'edit.find'
   | ToolCommandId | 'tool.polygon' | 'tool.extractText' | 'tool.zoom' | 'tool.stamp'
   | 'tool.dimension' | 'tool.lasso' | 'tool.snapshot'
   | 'tool.crop' | 'tool.measure' | 'tool.formula' | 'tool.laserPointer'
@@ -23,9 +23,12 @@ export type AppCommandId =
   | 'view.rotateCW' | 'view.annotations' | 'view.primaryToolbar'
   | 'view.propertyShelf' | 'view.statusBar' | 'view.nativeFullscreen'
   | 'view.focusMode' | 'extras.favorites' | 'extras.toolStyles' | 'help.open'
-  | 'app.requestQuit' | 'app.requestCloseWindow';
+  | 'app.requestQuit' | 'app.requestCloseWindow'
+  | 'file.recoveredDocuments' | 'help.checkForUpdates' | 'help.about' | 'help.crashReports'
+  | 'page.insertBlank' | 'page.duplicate' | 'page.delete' | 'page.rotateLeft' | 'page.rotateRight'
+  | 'page.insertFromPdf' | 'page.exportSelected';
 
-export type CommandGroup = 'file' | 'history' | 'edit' | 'tool' | 'view' | 'insert' | 'extras' | 'help';
+export type CommandGroup = 'file' | 'history' | 'edit' | 'tool' | 'view' | 'insert' | 'page' | 'extras' | 'help';
 export type CommandKind = 'action' | 'tool' | 'toggle' | 'radio';
 export type CommandAvailability = 'always' | 'document' | 'undo' | 'redo' | 'selection' | 'save' | 'saveAll' | 'unavailable';
 export type CommandIconId =
@@ -82,6 +85,8 @@ export const APP_COMMANDS = {
   'history.redo': command('history.redo', 'Redo', 'history', 'action', 'redo', { icon: 'redo', shortcut: '⇧⌘Z', menuPlacements: ['edit'], toolbarPlacements: ['primary.history'] }),
   'edit.selectAll': command('edit.selectAll', 'Select All Annotations', 'edit', 'action', 'unavailable', { icon: 'selectAll', shortcut: '⌘A', menuPlacements: ['edit'] }),
   'edit.deleteSelected': command('edit.deleteSelected', 'Delete Selected', 'edit', 'action', 'selection', { icon: 'delete', shortcut: '⌫', menuPlacements: ['edit'] }),
+  'edit.find': command('edit.find', 'Find…', 'edit', 'action', 'document', { icon: 'zoom', shortcut: '⌘F', menuPlacements: ['edit'] }),
+  'edit.duplicate': command('edit.duplicate', 'Duplicate', 'edit', 'action', 'selection', { icon: 'selectAll', shortcut: '⌘D', menuPlacements: ['edit'] }),
   'tool.select': toolCommand('select', 'Select', 'V', 'select'),
   'tool.hand': toolCommand('hand', 'Hand / Pan', 'H', 'hand'),
   'tool.pen': toolCommand('pen', 'Pen', 'P', 'pen'),
@@ -114,8 +119,8 @@ export const APP_COMMANDS = {
   'view.sidebarPages': command('view.sidebarPages', 'Pages', 'view', 'radio', 'document', { icon: 'sidebar', menuPlacements: ['view.sidebar'] }),
   'view.sidebarBookmarks': command('view.sidebarBookmarks', 'Bookmarks', 'view', 'radio', 'unavailable', { icon: 'sidebar', menuPlacements: ['view.sidebar'] }),
   'view.sidebarOutline': command('view.sidebarOutline', 'Outline', 'view', 'radio', 'unavailable', { icon: 'sidebar', menuPlacements: ['view.sidebar'] }),
-  'view.sidebarAnnotations': command('view.sidebarAnnotations', 'Annotations', 'view', 'radio', 'unavailable', { icon: 'annotations', menuPlacements: ['view.sidebar'] }),
-  'view.sidebarSearch': command('view.sidebarSearch', 'Search', 'view', 'radio', 'unavailable', { icon: 'zoom', menuPlacements: ['view.sidebar'] }),
+  'view.sidebarAnnotations': command('view.sidebarAnnotations', 'Annotations', 'view', 'radio', 'document', { icon: 'annotations', menuPlacements: ['view.sidebar'] }),
+  'view.sidebarSearch': command('view.sidebarSearch', 'Search', 'view', 'radio', 'document', { icon: 'zoom', menuPlacements: ['view.sidebar'] }),
   'view.zoomIn': command('view.zoomIn', 'Zoom In', 'view', 'action', 'document', { icon: 'zoomIn', shortcut: '⌘+', menuPlacements: ['view'], toolbarPlacements: ['primary.view'] }),
   'view.zoomOut': command('view.zoomOut', 'Zoom Out', 'view', 'action', 'document', { icon: 'zoomOut', shortcut: '⌘−', menuPlacements: ['view'], toolbarPlacements: ['primary.view'] }),
   'view.actualSize': command('view.actualSize', 'Actual Size', 'view', 'action', 'document', { icon: 'actualSize', shortcut: '⌘0', menuPlacements: ['view'] }),
@@ -135,6 +140,17 @@ export const APP_COMMANDS = {
   'extras.favorites': command('extras.favorites', 'No Favorites Yet', 'extras', 'action', 'unavailable', { icon: 'favorites', menuPlacements: ['tool.favorites'] }),
   'extras.toolStyles': command('extras.toolStyles', 'Tool Styles Coming Later', 'extras', 'action', 'unavailable', { icon: 'toolStyles', menuPlacements: ['tool.styles', 'extras'] }),
   'help.open': command('help.open', 'MaliPDF Help', 'help', 'action', 'unavailable', { icon: 'help', menuPlacements: ['help'] }),
+  'page.insertBlank': command('page.insertBlank', 'Insert Blank Page', 'page', 'action', 'document', { icon: 'newDocument', shortcut: '⇧⌘N', menuPlacements: ['page'] }),
+  'page.duplicate': command('page.duplicate', 'Duplicate Page', 'page', 'action', 'document', { icon: 'selectAll', menuPlacements: ['page'] }),
+  'page.delete': command('page.delete', 'Delete Page', 'page', 'action', 'document', { icon: 'delete', menuPlacements: ['page'] }),
+  'page.rotateLeft': command('page.rotateLeft', 'Rotate Page Left', 'page', 'action', 'document', { icon: 'rotateLeft', shortcut: '⇧⌘[', menuPlacements: ['page'] }),
+  'page.rotateRight': command('page.rotateRight', 'Rotate Page Right', 'page', 'action', 'document', { icon: 'rotateRight', shortcut: '⇧⌘]', menuPlacements: ['page'] }),
+  'page.insertFromPdf': command('page.insertFromPdf', 'Insert Pages from PDF…', 'page', 'action', 'document', { icon: 'open', menuPlacements: ['page'] }),
+  'page.exportSelected': command('page.exportSelected', 'Export Selected Pages…', 'page', 'action', 'document', { icon: 'export', menuPlacements: ['page'] }),
+  'file.recoveredDocuments': command('file.recoveredDocuments', 'Recovered Documents…', 'file', 'action', 'always', { icon: 'open', menuPlacements: ['file'] }),
+  'help.checkForUpdates': command('help.checkForUpdates', 'Check for Updates…', 'help', 'action', 'always', { icon: 'help', menuPlacements: ['help'] }),
+  'help.about': command('help.about', 'About MaliPDF', 'help', 'action', 'always', { icon: 'help', menuPlacements: ['help'] }),
+  'help.crashReports': command('help.crashReports', 'Show Crash Reports', 'help', 'action', 'always', { icon: 'help', menuPlacements: ['help'] }),
   'app.requestQuit': command('app.requestQuit', 'Quit MaliPDF', 'file', 'action', 'always', { icon: 'close', menuPlacements: [] }),
   'app.requestCloseWindow': command('app.requestCloseWindow', 'Close Window', 'file', 'action', 'always', { icon: 'close', menuPlacements: [] }),
 } as const satisfies Record<AppCommandId, AppCommandDefinition>;

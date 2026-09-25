@@ -41,7 +41,7 @@ const defaultToolOptions: ToolOptions = {
     size: 20,
   },
   text: {
-    fontFamily: 'Inter, sans-serif',
+    fontFamily: 'Arial, "Liberation Sans", Helvetica, sans-serif',
     fontSize: 14,
     bold: false,
     italic: false,
@@ -97,6 +97,20 @@ interface UIStore {
   addFavoriteColor: (color: string) => void;
   removeFavoriteColor: (color: string) => void;
 
+  /** Most recently chosen colors, newest first (max RECENT_COLORS_MAX). */
+  recentColors: string[];
+  addRecentColor: (color: string) => void;
+
+  /** Saved pen / highlighter slots (color + width + opacity). */
+  penPresets: PenPreset[];
+  savePenPreset: (tool: PenPreset['tool']) => void;
+  removePenPreset: (id: string) => void;
+  applyPenPreset: (id: string) => void;
+
+  /** Tool buttons the user removed from the ribbon (Customize Toolbar). */
+  hiddenToolbarTools: ToolType[];
+  toggleToolbarTool: (tool: ToolType) => void;
+
   // Sidebar
   sidebarOpen: boolean;
   activeSidebarPanel: SidebarPanel;
@@ -126,6 +140,25 @@ interface UIStore {
 }
 
 // ─── Store implementation ─────────────────────────────────────────────────────
+
+export interface PenPreset {
+  id: string;
+  tool: 'pen' | 'highlighter';
+  color: string;
+  width: number;
+  opacity: number;
+}
+
+export const RECENT_COLORS_MAX = 8;
+export const PEN_PRESETS_MAX = 10;
+
+export const DEFAULT_PEN_PRESETS: PenPreset[] = [
+  { id: 'default-black', tool: 'pen', color: '#000000', width: 2, opacity: 1 },
+  { id: 'default-red', tool: 'pen', color: '#e63946', width: 2, opacity: 1 },
+  { id: 'default-blue', tool: 'pen', color: '#1d4ed8', width: 2, opacity: 1 },
+  { id: 'default-yellow-hl', tool: 'highlighter', color: '#ffe066', width: 16, opacity: 0.5 },
+  { id: 'default-green-hl', tool: 'highlighter', color: '#7bed9f', width: 16, opacity: 0.5 },
+];
 
 export const useUIStore = create<UIStore>()(
   subscribeWithSelector(
@@ -190,6 +223,46 @@ export const useUIStore = create<UIStore>()(
           return { favoriteColors: state.favoriteColors.filter(c => c !== norm) };
         }),
 
+        recentColors: [],
+        addRecentColor: (color) => set((state) => {
+          const norm = normalizeColor(color);
+          if (norm === 'transparent' || !/^#[0-9a-f]{6}$/.test(norm)) return state;
+          if (state.recentColors[0] === norm) return state;
+          return { recentColors: [norm, ...state.recentColors.filter((c) => c !== norm)].slice(0, RECENT_COLORS_MAX) };
+        }),
+
+        penPresets: DEFAULT_PEN_PRESETS,
+        savePenPreset: (tool) => set((state) => {
+          const options = tool === 'pen' ? state.toolOptions.pen : state.toolOptions.highlighter;
+          const preset: PenPreset = {
+            id: `preset-${Date.now().toString(36)}`,
+            tool,
+            color: normalizeColor(options.color),
+            width: options.width,
+            opacity: options.opacity,
+          };
+          const duplicate = state.penPresets.some((p) => p.tool === tool && p.color === preset.color
+            && p.width === preset.width && p.opacity === preset.opacity);
+          if (duplicate) return state;
+          return { penPresets: [...state.penPresets, preset].slice(-PEN_PRESETS_MAX) };
+        }),
+        removePenPreset: (id) => set((state) => ({ penPresets: state.penPresets.filter((p) => p.id !== id) })),
+        applyPenPreset: (id) => set((state) => {
+          const preset = state.penPresets.find((p) => p.id === id);
+          if (!preset) return state;
+          const toolOptions = preset.tool === 'pen'
+            ? { ...state.toolOptions, pen: { ...state.toolOptions.pen, color: preset.color, width: preset.width, opacity: preset.opacity } }
+            : { ...state.toolOptions, highlighter: { ...state.toolOptions.highlighter, color: preset.color, width: preset.width, opacity: preset.opacity } };
+          return { toolOptions, activeTool: preset.tool };
+        }),
+
+        hiddenToolbarTools: [],
+        toggleToolbarTool: (tool) => set((state) => ({
+          hiddenToolbarTools: state.hiddenToolbarTools.includes(tool)
+            ? state.hiddenToolbarTools.filter((t) => t !== tool)
+            : [...state.hiddenToolbarTools, tool],
+        })),
+
         sidebarOpen: false,
         activeSidebarPanel: 'pages',
         setSidebarOpen: (open) => set({ sidebarOpen: open }),
@@ -241,6 +314,9 @@ export const useUIStore = create<UIStore>()(
           focusToolbarSide: state.focusToolbarSide,
           lastShapeTool: state.lastShapeTool,
           favoriteColors: state.favoriteColors,
+          recentColors: state.recentColors,
+          penPresets: state.penPresets,
+          hiddenToolbarTools: state.hiddenToolbarTools,
         }),
       },
     ),

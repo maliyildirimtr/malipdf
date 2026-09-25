@@ -61,7 +61,7 @@ export function hitTestAnnotations(
   // Iterate in reverse so topmost (last drawn) is found first
   for (let i = annotations.length - 1; i >= 0; i--) {
     const ann = annotations[i];
-    if (ann.locked) continue;
+    if (ann.locked || ann.hidden) continue;
     
     // If the annotation is currently selected, clicking anywhere inside its bounding box 
     // should count as a hit, allowing the user to easily grab and move it.
@@ -100,7 +100,7 @@ export function hitTestSelectedBounds(
 
   for (let i = annotations.length - 1; i >= 0; i--) {
     const annotation = annotations[i];
-    if (annotation.locked || !selected.has(annotation.id)) continue;
+    if (annotation.locked || annotation.hidden || !selected.has(annotation.id)) continue;
     // We use a small tolerance (e.g. 5) to make it easy to grab selected strokes
     if (hitTestAnnotation(pdfPoint, annotation, 5)) {
       return annotation;
@@ -305,7 +305,7 @@ export function eraserHitTest(
 ): Annotation[] {
   const hit: Annotation[] = [];
   for (const ann of annotations) {
-    if (ann.locked) continue;
+    if (ann.locked || ann.hidden) continue;
     if (hitTestAnnotation(pdfPoint, ann, eraserSizePdf)) {
       hit.push(ann);
     }

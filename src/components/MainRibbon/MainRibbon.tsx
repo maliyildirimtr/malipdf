@@ -38,15 +38,16 @@ import {
 import { APP_COMMANDS, type AppCommandId } from '../../commands';
 import { useDocumentStore } from '../../store/documentStore';
 import { useUIStore } from '../../store/uiStore';
-import type { TextAlign, ToolType } from '../../types/annotations';
+import type { TextAlign, TextListStyle, ToolType } from '../../types/annotations';
+import { TEXT_FONT_FAMILIES, cssForFamily, fontFamilyKey } from '../../pdf/fontFamilies';
 import { ColorWell } from './ColorWell';
+import { PenPresetBar, QuickColors, ToolbarCustomizeMenu } from './ToolbarExtras';
 import { OpacityControl } from './PropertyControls';
 import { TOOL_WIDTH_CONSTRAINTS } from '../../constants/toolConstraints';
 import { WidthControl } from '../Properties/WidthControl';
 import { BorderStyleControl } from '../Properties/BorderStyleControl';
 import styles from './MainRibbon.module.css';
 
-const FONT_FAMILIES = ['Inter, sans-serif', 'Georgia, serif', 'Courier New, monospace'] as const;
 const FONT_SIZES = [10, 12, 14, 16, 18, 24, 32] as const;
 
 interface ToolDefinition {
@@ -200,6 +201,7 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
           <ToolButton tool="rectangle" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.rectangle')} />
           <ToolButton tool="ellipse" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.ellipse')} />
           <ToolButton tool="freeform" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.freeform')} />
+          <ToolbarCustomizeMenu />
         </ToolbarGroup>
 
         <ToolbarSeparator />
@@ -303,7 +305,10 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
 
           {activeTool === 'pen' && (
             <>
+              <PenPresetBar tool="pen" />
+              <PropertySeparator />
               <ColorWell label="Color" value={toolOptions.pen.color} onChange={(color) => updatePenOptions({ color })} />
+              <QuickColors value={toolOptions.pen.color} onPick={(color) => updatePenOptions({ color })} />
               <PropertySeparator />
               <WidthControl value={toolOptions.pen.width} constraint={TOOL_WIDTH_CONSTRAINTS.pen} onChange={(width) => updatePenOptions({ width })} onCommit={(width) => updatePenOptions({ width })} />
               <PropertySeparator />
@@ -319,7 +324,10 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
 
           {activeTool === 'highlighter' && (
             <>
+              <PenPresetBar tool="highlighter" />
+              <PropertySeparator />
               <ColorWell label="Color" value={toolOptions.highlighter.color} onChange={(color) => updateHighlighterOptions({ color })} />
+              <QuickColors value={toolOptions.highlighter.color} onPick={(color) => updateHighlighterOptions({ color })} />
               <PropertySeparator />
               <WidthControl value={toolOptions.highlighter.width} constraint={TOOL_WIDTH_CONSTRAINTS.highlighter} onChange={(width) => updateHighlighterOptions({ width })} onCommit={(width) => updateHighlighterOptions({ width })} />
               <PropertySeparator />
@@ -342,8 +350,8 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
             <>
               <label className={styles.compactControl}>
                 <span className={styles.propertyLabel}>Font</span>
-                <select className={`${styles.compactSelect} ${styles.fontSelect}`} value={toolOptions.text.fontFamily} aria-label="Font family" onChange={(event) => updateTextOptions({ fontFamily: event.target.value })}>
-                  {FONT_FAMILIES.map((font) => <option key={font} value={font}>{font.split(',')[0]}</option>)}
+                <select className={`${styles.compactSelect} ${styles.fontSelect}`} value={cssForFamily(fontFamilyKey(toolOptions.text.fontFamily))} aria-label="Font family" onChange={(event) => updateTextOptions({ fontFamily: event.target.value })}>
+                  {TEXT_FONT_FAMILIES.map((font) => <option key={font.key} value={font.css}>{font.label}</option>)}
                 </select>
               </label>
               <label className={styles.compactControl}>
@@ -354,6 +362,7 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
               </label>
               <PropertySeparator />
               <ColorWell label="Text" value={toolOptions.text.color} onChange={(color) => updateTextOptions({ color })} />
+              <QuickColors value={toolOptions.text.color} onPick={(color) => updateTextOptions({ color })} />
               <PropertySeparator />
               <div className={styles.propertySegment} role="group" aria-label="Text style">
                 <PropertyToggle label="Bold" shortLabel="B" pressed={toolOptions.text.bold} onChange={(bold) => updateTextOptions({ bold })} bold />
@@ -372,12 +381,31 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
                 allowTransparent
                 onChange={(backgroundColor) => updateTextOptions({ backgroundColor })}
               />
+              <ColorWell
+                label="Border"
+                value={toolOptions.text.borderColor ?? 'transparent'}
+                allowTransparent
+                onChange={(borderColor) => updateTextOptions({
+                  borderColor,
+                  borderWidth: borderColor === 'transparent' ? 0 : (toolOptions.text.borderWidth || 1),
+                })}
+              />
+              <PropertySeparator />
+              <label className={styles.compactControl}>
+                <span className={styles.propertyLabel}>List</span>
+                <select className={styles.compactSelect} value={toolOptions.text.listStyle ?? 'none'} aria-label="List style" onChange={(event) => updateTextOptions({ listStyle: event.target.value as TextListStyle })}>
+                  <option value="none">None</option>
+                  <option value="bullet">• Bullets</option>
+                  <option value="number">1. Numbers</option>
+                </select>
+              </label>
             </>
           )}
 
           {isShapeTool(activeTool) && (
             <>
               <ColorWell label="Stroke" value={toolOptions.shape.color} onChange={(color) => updateShapeOptions({ color })} />
+              <QuickColors value={toolOptions.shape.color} onPick={(color) => updateShapeOptions({ color })} />
               {isClosedShape(activeTool) && (
                 <>
                   <PropertySeparator />
@@ -443,6 +471,9 @@ function CommandButton({ commandId, label, shortcut, icon: Icon, enabled, onComm
 }
 
 function ToolButton({ tool, activeTool, onCommand, enabled }: { tool: ToolType; activeTool: ToolType; onCommand: (commandId: AppCommandId) => void; enabled: boolean }) {
+  // Hidden via Customize Toolbar (the active tool always stays visible).
+  const hiddenByUser = useUIStore((state) => state.hiddenToolbarTools.includes(tool));
+  if (hiddenByUser && activeTool !== tool) return null;
   const definition = TOOL_DEFINITIONS[tool];
   const command = APP_COMMANDS[definition.commandId];
   const Icon = definition.icon;

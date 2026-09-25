@@ -1,6 +1,16 @@
 import React, { useRef, useState, useLayoutEffect, useEffect, useCallback } from 'react';
 import ReactDOM from 'react-dom';
-import type { Annotation, ShapeAnnotation } from '../../types/annotations';
+import type { Annotation, ShapeAnnotation, TextAnnotation, TextListStyle } from '../../types/annotations';
+import { autoSizeTextBox, canvasMeasure } from '../../pdf/textLayout';
+import { TEXT_FONT_FAMILIES, cssForFamily, fontFamilyKey } from '../../pdf/fontFamilies';
+
+const TEXT_STYLE_KEYS = [
+  'color', 'fontFamily', 'fontSize', 'bold', 'italic', 'underline', 'align',
+  'backgroundColor', 'borderColor', 'borderWidth', 'listStyle',
+] as const;
+const TEXT_LAYOUT_KEYS = ['fontFamily', 'fontSize', 'bold', 'italic', 'listStyle'] as const;
+const TEXT_SIZES = [8, 10, 12, 14, 16, 18, 20, 24, 28, 32, 40, 48, 64];
+const BORDER_WIDTHS = [0, 0.5, 1, 2, 3, 4];
 import type { PageTransform } from '../../pdf/coordinateTransform';
 import type { DocumentIdentity } from '../../types/documentSession';
 import { getAnnotationBounds } from '../../pdf/annotationGeometry';
@@ -73,7 +83,14 @@ export const FloatingInspector = React.memo(function FloatingInspector({
     }
     if (ann.type === 'text') {
       const patch: Record<string, unknown> = {};
-      if ('color' in raw) patch.color = raw.color;
+      for (const key of TEXT_STYLE_KEYS) if (key in raw) patch[key] = raw[key];
+      if (TEXT_LAYOUT_KEYS.some((key) => key in raw)) {
+        // Font / size / list changes re-flow the text: re-fit the box, keeping its top-left.
+        const merged = { ...ann, ...patch } as TextAnnotation;
+        const size = autoSizeTextBox(merged, canvasMeasure(merged));
+        const top = ann.bounds.y + ann.bounds.height;
+        patch.bounds = { x: ann.bounds.x, y: top - size.height, width: size.width, height: size.height };
+      }
       return patch as Partial<Annotation>;
     }
     if (ann.type === 'image') {
@@ -96,9 +113,10 @@ export const FloatingInspector = React.memo(function FloatingInspector({
     // Clear transient first
     setTransientStyle(identity, pageIndex, ann.id, undefined);
     // No real change (e.g. blur without editing): no store write, no undo step.
-    const changed = Object.entries(patch).some(
-      ([key, value]) => (ann as unknown as Record<string, unknown>)[key] !== value,
-    );
+    const changed = Object.entries(patch).some(([key, value]) => {
+      const current = (ann as unknown as Record<string, unknown>)[key];
+      return key === 'bounds' ? JSON.stringify(current) !== JSON.stringify(value) : current !== value;
+    });
     if (!changed) return;
     // Persist to store
     const after = { ...ann, ...patch } as Annotation;
@@ -256,7 +274,7 @@ export const FloatingInspector = React.memo(function FloatingInspector({
       {hasStrokeColor && (
         <div className={styles.controlGroup}>
           <ColorWell
-            label="Stroke"
+            label={annotation.type === 'text' ? 'Text' : 'Stroke'}
             value={currentColor}
             onChange={(color) => handlePropertyChange({ color })}
             onCommit={(color) => handlePropertyCommit({ color })}
@@ -322,6 +340,85 @@ export const FloatingInspector = React.memo(function FloatingInspector({
         </>
       )}
 
+      {/* Text properties */}
+      {annotation.type === 'text' && (
+        <>
+          <div className={styles.divider} />
+          <div className={styles.controlGroup}>
+            <select
+              className={styles.select}
+              aria-label="Font"
+              value={cssForFamily(fontFamilyKey(annotation.fontFamily))}
+              onChange={(e) => handlePropertyCommit({ fontFamily: e.target.value })}
+            >
+              {TEXT_FONT_FAMILIES.map((f) => <option key={f.key} value={f.css}>{f.label}</option>)}
+            </select>
+            <select
+              className={styles.select}
+              aria-label="Font size"
+              value={annotation.fontSize}
+              onChange={(e) => handlePropertyCommit({ fontSize: Number(e.target.value) })}
+            >
+              {[...new Set([...TEXT_SIZES, annotation.fontSize])].sort((a, b) => a - b)
+                .map((size) => <option key={size} value={size}>{size} pt</option>)}
+            </select>
+          </div>
+          <div className={styles.controlGroup}>
+            <ToggleButton label="Bold" pressed={annotation.bold} onClick={() => handlePropertyCommit({ bold: !annotation.bold })}><b>B</b></ToggleButton>
+            <ToggleButton label="Italic" pressed={annotation.italic} onClick={() => handlePropertyCommit({ italic: !annotation.italic })}><i>I</i></ToggleButton>
+            <ToggleButton label="Underline" pressed={annotation.underline} onClick={() => handlePropertyCommit({ underline: !annotation.underline })}><u>U</u></ToggleButton>
+            <select
+              className={styles.select}
+              aria-label="Alignment"
+              value={annotation.align}
+              onChange={(e) => handlePropertyCommit({ align: e.target.value })}
+            >
+              <option value="left">Left</option>
+              <option value="center">Center</option>
+              <option value="right">Right</option>
+            </select>
+            <select
+              className={styles.select}
+              aria-label="List"
+              value={annotation.listStyle ?? 'none'}
+              onChange={(e) => handlePropertyCommit({ listStyle: e.target.value as TextListStyle })}
+            >
+              <option value="none">No list</option>
+              <option value="bullet">• Bullets</option>
+              <option value="number">1. Numbers</option>
+            </select>
+          </div>
+          <div className={styles.divider} />
+          <div className={styles.controlGroup}>
+            <ColorWell
+              label="Fill"
+              value={annotation.backgroundColor || 'transparent'}
+              allowTransparent
+              onChange={(backgroundColor) => handlePropertyChange({ backgroundColor })}
+              onCommit={(backgroundColor) => handlePropertyCommit({ backgroundColor })}
+            />
+            <ColorWell
+              label="Border"
+              value={annotation.borderColor || 'transparent'}
+              allowTransparent
+              onChange={(borderColor) => handlePropertyChange({ borderColor })}
+              onCommit={(borderColor) => handlePropertyCommit({
+                borderColor,
+                ...(borderColor !== 'transparent' && !annotation.borderWidth ? { borderWidth: 1 } : {}),
+              })}
+            />
+            <select
+              className={styles.select}
+              aria-label="Border width"
+              value={annotation.borderWidth ?? 0}
+              onChange={(e) => handlePropertyCommit({ borderWidth: Number(e.target.value) })}
+            >
+              {BORDER_WIDTHS.map((w) => <option key={w} value={w}>{w === 0 ? 'No border' : `${w} pt`}</option>)}
+            </select>
+          </div>
+        </>
+      )}
+
       {/* Opacity */}
       {hasOpacity && (
         <>
@@ -341,3 +438,23 @@ export const FloatingInspector = React.memo(function FloatingInspector({
 
   return ReactDOM.createPortal(content, document.body);
 });
+
+function ToggleButton({ label, pressed, onClick, children }: {
+  label: string;
+  pressed: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      className={`${styles.toggle} ${pressed ? styles.toggleOn : ''}`}
+      aria-label={label}
+      aria-pressed={pressed}
+      title={label}
+      onClick={onClick}
+    >
+      {children}
+    </button>
+  );
+}

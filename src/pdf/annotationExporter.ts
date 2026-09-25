@@ -49,6 +49,8 @@ import type {
 } from '../types/annotations';
 import type { ImageAsset } from '../store/assetStore';
 import type { ExportFontSet } from './exportFonts';
+import { fontFamilyKey, fontStyleKey, type FontFamilyKey, type FontStyleKey } from './fontFamilies';
+import { layoutTextLines, LINE_HEIGHT, TEXT_PADDING } from './textLayout';
 
 export type ImageAssetResolver =
   | Map<string, ImageAsset>
@@ -78,26 +80,35 @@ export async function loadDefaultExportFonts(): Promise<ExportFontSet | undefine
   }
 }
 
-type TextFontResolver = (bold: boolean, italic: boolean) => Promise<PDFFont>;
+type TextFontResolver = (fontFamily: string, bold: boolean, italic: boolean) => Promise<PDFFont>;
+
+const STANDARD_FONTS: Record<FontFamilyKey, Record<FontStyleKey, StandardFonts>> = {
+  sans: {
+    regular: StandardFonts.Helvetica, bold: StandardFonts.HelveticaBold,
+    italic: StandardFonts.HelveticaOblique, boldItalic: StandardFonts.HelveticaBoldOblique,
+  },
+  serif: {
+    regular: StandardFonts.TimesRoman, bold: StandardFonts.TimesRomanBold,
+    italic: StandardFonts.TimesRomanItalic, boldItalic: StandardFonts.TimesRomanBoldItalic,
+  },
+  mono: {
+    regular: StandardFonts.Courier, bold: StandardFonts.CourierBold,
+    italic: StandardFonts.CourierOblique, boldItalic: StandardFonts.CourierBoldOblique,
+  },
+};
 
 function createTextFontResolver(pdfDoc: PDFDocument, fonts: ExportFontSet | undefined): TextFontResolver {
   const cache = new Map<string, Promise<PDFFont>>();
   if (fonts) pdfDoc.registerFontkit(fonts.fontkit);
-  return (bold, italic) => {
-    const key = `${bold ? 'b' : ''}${italic ? 'i' : ''}`;
+  return (fontFamily, bold, italic) => {
+    const family = fontFamilyKey(fontFamily);
+    const style = fontStyleKey(bold, italic);
+    const key = `${family}:${style}`;
     let font = cache.get(key);
     if (!font) {
-      if (fonts) {
-        const bytes = bold && italic ? fonts.boldItalic : bold ? fonts.bold : italic ? fonts.italic : fonts.regular;
-        font = pdfDoc.embedFont(bytes, { subset: true });
-      } else {
-        font = pdfDoc.embedFont(
-          bold && italic ? StandardFonts.HelveticaBoldOblique
-            : bold ? StandardFonts.HelveticaBold
-              : italic ? StandardFonts.HelveticaOblique
-                : StandardFonts.Helvetica,
-        );
-      }
+      font = fonts
+        ? fonts.load(family, style).then((bytes) => pdfDoc.embedFont(bytes, { subset: true }))
+        : pdfDoc.embedFont(STANDARD_FONTS[family][style]);
       cache.set(key, font);
     }
     return font;
@@ -364,7 +375,7 @@ async function exportText(
   info: PdfPageExportContext,
 ): Promise<void> {
   const { bounds, content, fontSize, bold, italic, color, opacity, align } = annotation;
-  const font = await resolveFont(bold, italic);
+  const font = await resolveFont(annotation.fontFamily, bold, italic);
   try {
     font.encodeText(content.replace(/\n/g, ' '));
   } catch (cause) {
@@ -390,92 +401,62 @@ async function exportText(
     });
   }
 
+  // Border
+  const borderWidth = annotation.borderWidth ?? 0;
+  if (borderWidth > 0 && annotation.borderColor && annotation.borderColor !== 'transparent') {
+    const box = annotationRectToExportRect(bounds);
+    page.drawRectangle({
+      x: box.x + borderWidth / 2,
+      y: box.y + borderWidth / 2,
+      width: Math.max(0, box.width - borderWidth),
+      height: Math.max(0, box.height - borderWidth),
+      borderColor: parseCssColor(annotation.borderColor),
+      borderWidth,
+      borderOpacity: opacity,
+    });
+  }
+
   const textColor = parseCssColor(color);
-  const lineHeight = fontSize * 1.4;
+  const lineHeight = fontSize * LINE_HEIGHT;
+  const measure = (text: string) => font.widthOfTextAtSize(text, fontSize);
+  const innerWidth = Math.max(0.1, bounds.width - TEXT_PADDING * 2);
 
-  // Split on explicit newlines first
-  const paragraphs = content.split('\n');
-  let lineIndex = 0;
-  const PADDING = 4; // PDF points
-  const maxWidth = Math.max(0.1, bounds.width - PADDING * 2);
-
-  // We draw from the TOP of the bounds downward.
-  // In pdf-lib (Y-up), the top of the bounds in lib coords is bounds.y + bounds.height.
-  // Each line descends by lineHeight.
+  // Draw from the TOP of the bounds downward (pdf-lib is Y-up).
   const topLibPt = toLib(bounds.x, bounds.y + bounds.height, info);
+  const bottomY = toLib(bounds.x, bounds.y, info).y;
 
-  for (const paragraph of paragraphs) {
-    // Simple word-wrap
-    const wrappedLines = wrapTextPdfLib(paragraph, maxWidth, fontSize, font);
-    for (const line of wrappedLines) {
-      const lineY = topLibPt.y - PADDING - lineIndex * lineHeight - fontSize;
-      if (lineY < toLib(bounds.x, bounds.y, info).y) break; // clamp to bounds
+  layoutTextLines(content, annotation.listStyle, innerWidth, measure).some((line, lineIndex) => {
+    const lineY = topLibPt.y - TEXT_PADDING - lineIndex * lineHeight - fontSize;
+    if (lineY < bottomY) return true; // clamp to bounds
 
-      // X alignment
-      let textX = topLibPt.x + PADDING;
-      if (align === 'center' || align === 'right') {
-        const textWidth = font.widthOfTextAtSize(line, fontSize);
-        if (align === 'center') {
-          textX = topLibPt.x + (maxWidth - textWidth) / 2 + PADDING;
-        } else {
-          textX = topLibPt.x + maxWidth - textWidth + PADDING;
-        }
-      }
+    const textWidth = measure(line.text);
+    let textX = topLibPt.x + TEXT_PADDING + line.indent;
+    if (align === 'center') {
+      textX = topLibPt.x + TEXT_PADDING + line.indent + (innerWidth - line.indent - textWidth) / 2;
+    } else if (align === 'right') {
+      textX = topLibPt.x + bounds.width - TEXT_PADDING - textWidth;
+    }
 
-      page.drawText(line, {
-        x: textX,
-        y: lineY,
-        size: fontSize,
-        font,
+    if (line.marker) {
+      page.drawText(line.marker, { x: topLibPt.x + TEXT_PADDING, y: lineY, size: fontSize, font, color: textColor, opacity });
+    }
+    if (line.text) {
+      page.drawText(line.text, { x: textX, y: lineY, size: fontSize, font, color: textColor, opacity });
+    }
+
+    if (annotation.underline && line.text) {
+      page.drawLine({
+        start: { x: textX, y: lineY - 1 },
+        end:   { x: textX + textWidth, y: lineY - 1 },
+        thickness: 0.5,
         color: textColor,
         opacity,
       });
-
-      // Underline
-      if (annotation.underline) {
-        const textWidth = font.widthOfTextAtSize(line, fontSize);
-        page.drawLine({
-          start: { x: textX, y: lineY - 1 },
-          end:   { x: textX + textWidth, y: lineY - 1 },
-          thickness: 0.5,
-          color: textColor,
-          opacity,
-        });
-      }
-
-      lineIndex++;
     }
-  }
+    return false;
+  });
 }
 
-/**
- * Simple word-wrap for pdf-lib text.
- * Uses pdf-lib font.widthOfTextAtSize for accurate measurement.
- */
-function wrapTextPdfLib(
-  text: string,
-  maxWidth: number,
-  fontSize: number,
-  font: Awaited<ReturnType<PDFDocument['embedFont']>>,
-): string[] {
-  if (!text) return [''];
-  const words = text.split(' ');
-  const lines: string[] = [];
-  let currentLine = '';
-
-  for (const word of words) {
-    const testLine = currentLine ? `${currentLine} ${word}` : word;
-    const width = font.widthOfTextAtSize(testLine, fontSize);
-    if (width > maxWidth && currentLine) {
-      lines.push(currentLine);
-      currentLine = word;
-    } else {
-      currentLine = testLine;
-    }
-  }
-  if (currentLine) lines.push(currentLine);
-  return lines.length > 0 ? lines : [''];
-}
 
 // ─── Shape annotation ──────────────────────────────────────────────────────────
 
@@ -737,6 +718,7 @@ function validateAnnotation(annotation: Annotation, pageIndex: number): void {
       assertFinite(annotation.bounds.y, 'text bounds y');
       assertPositive(annotation.fontSize, 'text font size');
       if (annotation.backgroundColor !== 'transparent') parseCssColor(annotation.backgroundColor);
+      if (annotation.borderColor && annotation.borderColor !== 'transparent') parseCssColor(annotation.borderColor);
       return;
     case 'shape':
       validatePoint(annotation.startPoint, 'shape startPoint');
@@ -872,7 +854,8 @@ export async function exportAnnotatedPdf(
     const page = pages[pageIndex];
     const info = createPdfPageExportContext(page);
 
-    const pageAnnotations = snapshot.get(pageIndex) || [];
+    // Hidden annotations (Annotations panel) are left out of the output.
+    const pageAnnotations = (snapshot.get(pageIndex) || []).filter((annotation) => !annotation.hidden);
     if (pageAnnotations.length === 0) continue;
 
     for (const annotation of pageAnnotations) {

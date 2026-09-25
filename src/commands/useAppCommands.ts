@@ -5,6 +5,7 @@ import { useUIStore } from '../store/uiStore';
 import { useSelectionStore } from '../store/selectionStore';
 import { useDocumentSessionStore, documentSessionStore } from '../store/documentSessionStore';
 import { useAnnotationStore } from '../store/annotationStore';
+import { useSearchStore } from '../store/searchStore';
 import {
   APP_COMMANDS,
   isAppCommandId,
@@ -23,6 +24,15 @@ import {
   isTemporaryHandShortcut,
 } from './keyboardShortcuts';
 import { requestActiveInteractionCancellation } from './interactionCancellation';
+import {
+  copySelection,
+  cutSelection,
+  duplicateSelection,
+  getActiveSelection,
+  isOwnClipboardMarker,
+  pasteAnnotations,
+} from './clipboardCommands';
+import { SHOW_RECOVERY_EVENT } from '../components/RecoveryDialog/recoveryEvents';
 import {
   insertImageFromFile,
   captureScreenToImage,
@@ -113,6 +123,18 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
       case 'file.open':
         document.dispatchEvent(new CustomEvent('app:openFile'));
         return;
+      case 'file.recoveredDocuments':
+        window.dispatchEvent(new CustomEvent(SHOW_RECOVERY_EVENT));
+        return;
+      case 'help.checkForUpdates':
+        void window.electronAPI?.checkForUpdates?.();
+        return;
+      case 'help.about':
+        void window.electronAPI?.showAbout?.();
+        return;
+      case 'help.crashReports':
+        void window.electronAPI?.openCrashReports?.();
+        return;
       case 'file.close':
         if (docId) void closeDocumentById(docId);
         return;
@@ -196,6 +218,36 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
         selectionStore.clearSelection(activeIdentity);
         return;
       }
+      case 'page.insertBlank':
+        void import('./pageCommands').then((m) => m.insertBlankPage());
+        return;
+      case 'page.duplicate':
+        void import('./pageCommands').then((m) => m.duplicatePages());
+        return;
+      case 'page.delete':
+        void import('./pageCommands').then((m) => m.deletePages());
+        return;
+      case 'page.rotateLeft':
+        void import('./pageCommands').then((m) => m.rotatePages(-90));
+        return;
+      case 'page.rotateRight':
+        void import('./pageCommands').then((m) => m.rotatePages(90));
+        return;
+      case 'page.insertFromPdf':
+        void import('./pageCommands').then((m) => m.insertPagesFromPdf());
+        return;
+      case 'page.exportSelected':
+        void import('./pageCommands').then((m) => m.exportSelectedPages());
+        return;
+      case 'edit.find':
+      case 'view.sidebarSearch':
+        ui.setActiveSidebarPanel('search');
+        ui.setSidebarOpen(true);
+        useSearchStore.getState().requestFocus();
+        return;
+      case 'edit.duplicate':
+        duplicateSelection();
+        return;
       case 'tool.extractText':
       case 'tool.zoom':
       case 'tool.stamp':
@@ -225,8 +277,6 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
         return;
       case 'view.sidebarBookmarks':
       case 'view.sidebarOutline':
-      case 'view.sidebarAnnotations':
-      case 'view.sidebarSearch':
       case 'view.layoutSingle':
       case 'view.layoutTwoPage':
       case 'view.annotations':
@@ -256,6 +306,10 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
         return;
       case 'view.sidebarPages':
         ui.setActiveSidebarPanel('pages');
+        ui.setSidebarOpen(true);
+        return;
+      case 'view.sidebarAnnotations':
+        ui.setActiveSidebarPanel('annotations');
         ui.setSidebarOpen(true);
         return;
       case 'view.zoomIn': {
@@ -401,8 +455,26 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
       useUIStore.getState().setTemporaryTool(null);
     }
 
+    // ⌘C / ⌘X arrive as DOM copy/cut events (native Edit menu roles), so text
+    // fields keep their normal behaviour and annotations use the same keys.
+    function onCopyOrCut(event: ClipboardEvent) {
+      if (isEditableTarget(event.target) || !getActiveSelection()) return;
+      const marker = event.type === 'cut' ? cutSelection() : copySelection();
+      if (!marker) return;
+      event.clipboardData?.setData('text/plain', marker);
+      event.preventDefault();
+    }
+
     async function onPaste(event: ClipboardEvent) {
       if (isEditableTarget(event.target)) {
+        return;
+      }
+
+      // Annotations copied in MaliPDF (the system clipboard still holds our marker).
+      if (isOwnClipboardMarker(event.clipboardData?.getData('text/plain'))) {
+        event.preventDefault();
+        useUIStore.getState().setActiveTool('select');
+        pasteAnnotations();
         return;
       }
 
@@ -435,11 +507,15 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
     window.addEventListener('keyup', onKeyUp);
     window.addEventListener('blur', onWindowBlur);
     window.addEventListener('paste', onPaste);
+    window.addEventListener('copy', onCopyOrCut);
+    window.addEventListener('cut', onCopyOrCut);
     return () => {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
       window.removeEventListener('blur', onWindowBlur);
       window.removeEventListener('paste', onPaste);
+      window.removeEventListener('copy', onCopyOrCut);
+      window.removeEventListener('cut', onCopyOrCut);
       useUIStore.getState().setTemporaryTool(null);
     };
   }, [executeCommand]);

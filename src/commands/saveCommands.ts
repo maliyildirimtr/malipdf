@@ -3,6 +3,7 @@ import { useAnnotationStore } from '../store/annotationStore';
 import { buildAnnotationsMap, exportAnnotatedPdf, loadDefaultExportFonts } from '../pdf/annotationExporter';
 
 import { useAssetStore } from '../store/assetStore';
+import { removeRecoverySnapshot } from '../document/autoSave';
 
 async function performSave(docId: string, saveAs: boolean): Promise<boolean> {
   const { documents, updateDocument } = useDocumentStore.getState();
@@ -48,6 +49,11 @@ async function performSave(docId: string, saveAs: boolean): Promise<boolean> {
       saveStatus: 'idle',
       title: filePath.split(/[\\/]/).pop() || doc.title,
     });
+    // Saved state no longer needs a crash-recovery copy (unless edited meanwhile).
+    const latest = useDocumentStore.getState().documents.get(docId);
+    if (latest && latest.currentStateId === latest.savedStateId) {
+      await removeRecoverySnapshot(docId);
+    }
 
     return true;
   } catch (error) {

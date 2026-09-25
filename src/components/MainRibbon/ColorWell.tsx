@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { ColorPickerPopup } from '../Properties/ColorPickerPopup';
+import { useUIStore } from '../../store/uiStore';
 import styles from './MainRibbon.module.css';
 
 export interface ColorWellProps {
@@ -79,7 +80,10 @@ export function ColorWell({
         onColorSelect={(c) => {
           onChange(c);
         }}
-        onColorCommit={onCommit}
+        onColorCommit={(c) => {
+          useUIStore.getState().addRecentColor(c);
+          onCommit?.(c);
+        }}
         onClose={() => setIsOpen(false)}
         allowTransparent={allowTransparent}
       />

@@ -25,6 +25,9 @@ import {
   type NativeMenuNode,
 } from './nativeMenuSchema';
 import { setupPptxIpc } from './services/pptx/pptxIpc';
+import { setupRecoveryIpc } from './services/recovery';
+import { setupUpdates } from './services/updates';
+import { logCrash, setupAppInfo } from './services/appInfo';
 import {
   FileAccessGrants,
   handleTrusted,
@@ -46,6 +49,22 @@ const fileGrants = new FileAccessGrants();
 
 installWebContentsPolicy(isDev);
 setupPptxIpc(isDev);
+setupRecoveryIpc(isDev);
+setupAppInfo(isDev);
+setupUpdates(isDev);
+
+// One MaliPDF at a time: a second instance would fight over crash-recovery
+// snapshots. Launching again just focuses the running window.
+if (!app.requestSingleInstanceLock()) {
+  app.exit(0);
+} else {
+  app.on('second-instance', () => {
+    if (!mainWindow) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  });
+}
 
 app.setName(APP_NAME);
 process.title = APP_NAME;
@@ -148,8 +167,29 @@ function createWindow() {
   });
 
   // A crashed renderer can never answer; do not trap the user.
-  mainWindow.webContents.on('render-process-gone', () => {
-    if (pendingLifecycleRequest) forceLifecycle(pendingLifecycleRequest.type);
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    if (pendingLifecycleRequest) {
+      forceLifecycle(pendingLifecycleRequest.type);
+      return;
+    }
+    if (details.reason === 'clean-exit') return;
+    logCrash('renderer-gone', { reason: details.reason, exitCode: details.exitCode });
+    const window = mainWindow;
+    if (!window || window.isDestroyed()) return;
+    // Unsaved work is in the auto-save recovery folder; reloading offers it back.
+    void dialog.showMessageBox(window, {
+      type: 'error',
+      title: 'MaliPDF',
+      message: 'MaliPDF stopped unexpectedly.',
+      detail: 'Reload to continue. Documents with unsaved changes can be restored from the last auto-save.',
+      buttons: ['Reload', 'Quit'],
+      defaultId: 0,
+      cancelId: 1,
+    }).then(({ response }) => {
+      if (window.isDestroyed()) return;
+      if (response === 0) window.webContents.reload();
+      else forceLifecycle('quit');
+    });
   });
 
   // Navigation, new windows, webviews and permissions are locked down for

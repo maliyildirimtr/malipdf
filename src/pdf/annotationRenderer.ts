@@ -33,6 +33,7 @@ import {
 } from './coordinateTransform';
 import type { DocumentIdentity } from '../types/documentSession';
 import { getCachedDecodedImage, requestImageDecode } from './imageRenderCache';
+import { cssFont, layoutTextLines, LINE_HEIGHT, TEXT_PADDING } from './textLayout';
 import { useAssetStore } from '../store/assetStore';
 
 
@@ -293,68 +294,46 @@ export function renderText(
     ctx.fillRect(0, 0, bounds.width, bounds.height);
   }
 
-  // Text
-  const fontStyle = [
-    annotation.italic ? 'italic' : '',
-    annotation.bold ? 'bold' : '',
-    `${annotation.fontSize}px`,
-    annotation.fontFamily,
-  ]
-    .filter(Boolean)
-    .join(' ');
+  // Border
+  const borderWidth = annotation.borderWidth ?? 0;
+  if (borderWidth > 0 && annotation.borderColor && annotation.borderColor !== 'transparent') {
+    ctx.strokeStyle = annotation.borderColor;
+    ctx.lineWidth = borderWidth;
+    ctx.strokeRect(borderWidth / 2, borderWidth / 2, bounds.width - borderWidth, bounds.height - borderWidth);
+  }
 
-  ctx.font = fontStyle;
+  // Text (shared layout with the exporter and auto-sizing)
+  ctx.font = cssFont(annotation);
   ctx.fillStyle = annotation.color;
   ctx.textBaseline = 'top';
+  const measure = (text: string) => ctx.measureText(text).width;
+  const innerWidth = bounds.width - TEXT_PADDING * 2;
+  const lineAdvance = annotation.fontSize * LINE_HEIGHT;
+  let lineY = TEXT_PADDING;
 
-  // Word wrap
-  const words = annotation.content.split('\n');
-  let lineY = 4;
-
-  for (const line of words) {
-    const textLines = wrapText(ctx, line, bounds.width - 8);
-    for (const textLine of textLines) {
-      let textX = 4;
-      if (annotation.align === 'center') {
-        textX = (bounds.width - ctx.measureText(textLine).width) / 2;
-      } else if (annotation.align === 'right') {
-        textX = bounds.width - ctx.measureText(textLine).width - 4;
-      }
-      ctx.fillText(textLine, textX, lineY);
-
-      if (annotation.underline) {
-        const textWidth = ctx.measureText(textLine).width;
-        ctx.beginPath();
-        ctx.moveTo(textX, lineY + annotation.fontSize + 1);
-        ctx.lineTo(textX + textWidth, lineY + annotation.fontSize + 1);
-        ctx.strokeStyle = annotation.color;
-        ctx.lineWidth = 1;
-        ctx.stroke();
-      }
-
-      lineY += annotation.fontSize * 1.4;
+  for (const line of layoutTextLines(annotation.content, annotation.listStyle, innerWidth, measure)) {
+    const textWidth = measure(line.text);
+    let textX = TEXT_PADDING + line.indent;
+    if (annotation.align === 'center') {
+      textX = TEXT_PADDING + line.indent + (innerWidth - line.indent - textWidth) / 2;
+    } else if (annotation.align === 'right') {
+      textX = bounds.width - TEXT_PADDING - textWidth;
     }
+    if (line.marker) ctx.fillText(line.marker, TEXT_PADDING, lineY);
+    ctx.fillText(line.text, textX, lineY);
+
+    if (annotation.underline && line.text) {
+      ctx.beginPath();
+      ctx.moveTo(textX, lineY + annotation.fontSize + 1);
+      ctx.lineTo(textX + textWidth, lineY + annotation.fontSize + 1);
+      ctx.strokeStyle = annotation.color;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+
+    lineY += lineAdvance;
   }
   ctx.restore();
-}
-
-function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
-  const words = text.split(' ');
-  const lines: string[] = [];
-  let currentLine = '';
-
-  for (const word of words) {
-    const testLine = currentLine ? `${currentLine} ${word}` : word;
-    const metrics = ctx.measureText(testLine);
-    if (metrics.width > maxWidth && currentLine) {
-      lines.push(currentLine);
-      currentLine = word;
-    } else {
-      currentLine = testLine;
-    }
-  }
-  if (currentLine) lines.push(currentLine);
-  return lines;
 }
 
 // ─── Shape ────────────────────────────────────────────────────────────────────

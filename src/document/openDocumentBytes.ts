@@ -9,6 +9,7 @@ export async function openDocumentBytes(
   name: string,
   filePath: string | null,
   data: ArrayBuffer,
+  options: { markDirty?: boolean } = {},
 ): Promise<string> {
   const bytes = new Uint8Array(data);
   const docId = nanoid();
@@ -23,7 +24,7 @@ export async function openDocumentBytes(
     title: name,
     filePath,
     currentStateId: initialStateId,
-    savedStateId: filePath ? initialStateId : null,
+    savedStateId: filePath && !options.markDirty ? initialStateId : null,
     saveStatus: 'idle',
     lastSaveError: null,
     sourceData: bytes,

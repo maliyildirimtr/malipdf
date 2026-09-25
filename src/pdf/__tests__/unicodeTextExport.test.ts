@@ -22,16 +22,15 @@ describe.skipIf(!fontkit)('Unicode text export (bundled fonts)', () => {
     const source = await doc.save();
     const fonts = {
       fontkit,
-      regular: font('LiberationSans-Regular.ttf'),
-      bold: font('LiberationSans-Bold.ttf'),
-      italic: font('LiberationSans-Italic.ttf'),
-      boldItalic: font('LiberationSans-BoldItalic.ttf'),
+      load: async (family: 'sans' | 'serif' | 'mono', style: string) => font(
+        `Liberation${{ sans: 'Sans', serif: 'Serif', mono: 'Mono' }[family]}-${{ regular: 'Regular', bold: 'Bold', italic: 'Italic', boldItalic: 'BoldItalic' }[style]}.ttf`,
+      ),
     };
     const texts: Annotation[] = [[false, false], [true, false], [false, true], [true, true]].map(([bold, italic], i) => ({
       id: `t${i}`, type: 'text', pageIndex: 0, color: '#000000', opacity: 1, locked: false, createdAt: 0, updatedAt: 0,
       bounds: { x: 10, y: 300 - i * 70, width: 300, height: 60 },
       content: 'Iğdır’da çalışan şoför İsmail ÖĞÜŞ\nikinci satır',
-      fontSize: 12, fontFamily: 'Inter', bold, italic, underline: false, align: 'left', backgroundColor: 'transparent',
+      fontSize: 12, fontFamily: ['Arial', 'Georgia, serif', 'Courier New', 'Inter'][i], bold, italic, underline: false, align: 'left', backgroundColor: 'transparent',
     }));
 
     const result = await exportAnnotatedPdf(source, new Map([[0, texts]]), { fonts });

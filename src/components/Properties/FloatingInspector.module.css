@@ -47,3 +47,34 @@
 .inspector svg {
   color: #e5e7eb !important;
 }
+
+/* Text controls */
+.select {
+  height: 24px;
+  padding: 0 4px;
+  border-radius: 6px;
+  border: 1px solid #374151;
+  background: #111827;
+  color: #e5e7eb;
+  font-size: 12px;
+}
+
+.toggle {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #e5e7eb;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.toggle:hover {
+  background: #374151;
+}
+
+.toggleOn {
+  background: #2563eb;
+  border-color: #3b82f6;
+}

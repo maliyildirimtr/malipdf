@@ -46,7 +46,7 @@ export function createNativeMenuSchema(isMac: boolean, isDev: boolean): readonly
     menus.push({
       label: 'MaliPDF',
       items: [
-        role('about'), separator(), role('services'), separator(),
+        role('about'), command('help.checkForUpdates', 'Check for Updates…'), separator(), role('services'), separator(),
         role('hide'), role('hideOthers'), role('unhide'), separator(), role('quit'),
       ],
     });
@@ -59,6 +59,7 @@ export function createNativeMenuSchema(isMac: boolean, isDev: boolean): readonly
         command('file.new', 'New Document…', { accelerator: 'CmdOrCtrl+N', enabled: true }),
         command('file.combine', 'Combine Files…', { enabled: false }),
         command('file.open', 'Open…', { accelerator: 'CmdOrCtrl+O' }),
+        command('file.recoveredDocuments', 'Recovered Documents…'),
         separator(),
         command('file.save', 'Save', { accelerator: 'CmdOrCtrl+S', enabled: false }),
         command('file.saveAs', 'Save As…', { accelerator: 'CmdOrCtrl+Shift+S', enabled: false }),
@@ -82,6 +83,8 @@ export function createNativeMenuSchema(isMac: boolean, isDev: boolean): readonly
         command('history.redo', 'Redo', { accelerator: 'CmdOrCtrl+Shift+Z', enabled: false }),
         separator(), role('cut'), role('copy'), role('paste'), role('selectAll'), separator(),
         command('edit.selectAll', 'Select All Annotations', { enabled: false }),
+        command('edit.find', 'Find…', { accelerator: 'CmdOrCtrl+F', enabled: false }),
+        command('edit.duplicate', 'Duplicate', { accelerator: 'CmdOrCtrl+D', enabled: false }),
         command('edit.deleteSelected', 'Delete Selected', { accelerator: 'Delete', enabled: false }),
         separator(),
         command('insert.image', 'Insert Image…', { accelerator: 'CmdOrCtrl+I', enabled: false }),
@@ -138,6 +141,21 @@ export function createNativeMenuSchema(isMac: boolean, isDev: boolean): readonly
       ],
     },
     {
+      label: 'Page',
+      items: [
+        command('page.insertBlank', 'Insert Blank Page', { accelerator: 'CmdOrCtrl+Shift+N', enabled: false }),
+        command('page.insertFromPdf', 'Insert Pages from PDF…', { enabled: false }),
+        command('page.duplicate', 'Duplicate Page', { enabled: false }),
+        separator(),
+        command('page.rotateLeft', 'Rotate Page Left', { accelerator: 'CmdOrCtrl+Shift+[', enabled: false }),
+        command('page.rotateRight', 'Rotate Page Right', { accelerator: 'CmdOrCtrl+Shift+]', enabled: false }),
+        separator(),
+        command('page.exportSelected', 'Export Selected Pages…', { enabled: false }),
+        separator(),
+        command('page.delete', 'Delete Page', { enabled: false }),
+      ],
+    },
+    {
       label: 'Extras',
       items: [command('extras.toolStyles', 'Tool Styles…', { enabled: false })],
     },
@@ -148,7 +166,13 @@ export function createNativeMenuSchema(isMac: boolean, isDev: boolean): readonly
     {
       label: 'Help',
       role: 'help',
-      items: [command('help.open', 'MaliPDF Help', { enabled: false })],
+      items: [
+        command('help.open', 'MaliPDF Help', { enabled: false }),
+        separator(),
+        ...(!isMac ? [command('help.checkForUpdates', 'Check for Updates…')] : []),
+        command('help.crashReports', 'Show Crash Reports'),
+        ...(!isMac ? [separator(), command('help.about', 'About MaliPDF')] : []),
+      ],
     },
   );
 

@@ -11,6 +11,7 @@ import { releaseCanvas } from '../../pdf/canvasMemory';
 import { getPageSlotSize } from '../../pdf/pageVirtualization';
 import type { PageLayout } from '../../types/documentSession';
 import AnnotationCanvas from '../AnnotationCanvas/AnnotationCanvas';
+import { SearchHighlights } from './SearchHighlights';
 import styles from './PDFPage.module.css';
 
 interface PDFPageProps {
@@ -58,6 +59,8 @@ const PDFPage = React.memo<PDFPageProps>(function PDFPage({
   );
   const width = transform?.cssWidth ?? slotSize.width;
   const height = transform?.cssHeight ?? slotSize.height;
+
+  const searchIdentity = useMemo(() => ({ docId, instanceId }), [docId, instanceId]);
 
   const setSlotRef = useCallback((element: HTMLDivElement | null) => {
     onSlotElement?.(pageIndex, element);
@@ -126,6 +129,11 @@ const PDFPage = React.memo<PDFPageProps>(function PDFPage({
               ref={pdfCanvasRef}
               className={styles.pdfCanvas}
               style={{ width, height }}
+            />
+            <SearchHighlights
+              identity={searchIdentity}
+              pageIndex={pageIndex}
+              transform={transform}
             />
             <AnnotationCanvas
               docId={docId}

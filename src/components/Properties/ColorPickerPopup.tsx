@@ -20,6 +20,7 @@ export function ColorPickerPopup({
   allowTransparent = false,
 }: ColorPickerPopupProps) {
   const favoriteColors = useUIStore(state => state.favoriteColors);
+  const recentColors = useUIStore(state => state.recentColors);
   const addFavoriteColor = useUIStore(state => state.addFavoriteColor);
   const removeFavoriteColor = useUIStore(state => state.removeFavoriteColor);
 
@@ -149,6 +150,23 @@ export function ColorPickerPopup({
           ))}
         </div>
         
+        {recentColors.length > 0 && (
+          <>
+            <div className={styles.myColorsHeader}>Recent:</div>
+            <div className={styles.grid}>
+              {recentColors.map((c) => (
+                <button
+                  key={`recent-${c}`}
+                  className={`${styles.swatch} ${currentColor === c ? styles.selected : ''}`}
+                  style={{ backgroundColor: c }}
+                  onClick={() => handleSelectColor(c)}
+                  aria-label={`Select recent color ${c}`}
+                />
+              ))}
+            </div>
+          </>
+        )}
+
         <div className={styles.myColorsHeader}>My Colors:</div>
         <div className={styles.grid}>
           {Array.from({ length: 16 }).map((_, i) => {

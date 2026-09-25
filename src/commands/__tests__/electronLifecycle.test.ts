@@ -11,6 +11,9 @@ const mocks = vi.hoisted(() => {
   mApp.quit = vi.fn();
   mApp.whenReady = vi.fn().mockResolvedValue(undefined);
   mApp.getPath = vi.fn().mockReturnValue('/tmp');
+  mApp.requestSingleInstanceLock = vi.fn().mockReturnValue(true);
+  mApp.setAboutPanelOptions = vi.fn();
+  mApp.showAboutPanel = vi.fn();
 
   const mSession = {
     defaultSession: {
@@ -88,6 +91,9 @@ vi.mock('electron', () => ({
   Menu: mocks.mockMenu,
   BrowserWindow: mocks.MockBrowserWindow,
   session: mocks.mockSession,
+  crashReporter: { start: vi.fn() },
+  shell: { openPath: vi.fn(), openExternal: vi.fn(), showItemInFolder: vi.fn() },
+  net: { fetch: vi.fn() },
 }));
 
 const { mockApp, mockIpcMain, MockBrowserWindow, mockFs } = mocks;

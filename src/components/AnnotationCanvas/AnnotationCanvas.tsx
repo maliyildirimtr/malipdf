@@ -34,6 +34,7 @@ import React, {
   useState,
 } from 'react';
 import type {
+  TextAnnotation,
   Annotation,
   InputPoint,
   ToolType,
@@ -45,7 +46,7 @@ import type { DocumentIdentity } from '../../types/documentSession';
 import { useAnnotationStore } from '../../store/annotationStore';
 import { useSelectionStore } from '../../store/selectionStore';
 import { useAssetStore } from '../../store/assetStore';
-import { useHistoryStore, makeAddAction, makeRemoveAction, makeMoveAction, makeBatchAction, type HistoryActionDraft } from '../../store/historyStore';
+import { useHistoryStore, makeAddAction, makeRemoveAction, makeMoveAction, makeBatchAction, makeUpdateAction, type HistoryActionDraft } from '../../store/historyStore';
 import { useDocumentStore } from '../../store/documentStore';
 import {
   normalizeAndCreateImageAsset,
@@ -93,6 +94,8 @@ import {
 } from '../../pdf/canvasMemory';
 import { CANCEL_ACTIVE_INTERACTION_EVENT } from '../../commands';
 import { errorMessage, notifyUser } from '../../utils/notify';
+import { isEditableTarget } from '../../commands/keyboardShortcuts';
+import { autoSizeTextBox, canvasMeasure, cssFont, LINE_HEIGHT, MAX_AUTO_TEXT_WIDTH, TEXT_PADDING } from '../../pdf/textLayout';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -116,11 +119,19 @@ type InteractionMode =
 
 // ─── Text overlay state ───────────────────────────────────────────────────────
 
+type TextStyle = Pick<TextAnnotation,
+  'fontFamily' | 'fontSize' | 'bold' | 'italic' | 'underline' | 'align'
+  | 'color' | 'backgroundColor' | 'borderColor' | 'borderWidth' | 'listStyle'>;
+
 interface TextOverlay {
   x: number;   // CSS pixels (left)
   y: number;   // CSS pixels (top)
-  pdfX: number;
-  pdfY: number;
+  pdfX: number; // PDF x of the box's left edge
+  pdfY: number; // PDF y of the box's TOP edge
+  /** Set when editing an existing annotation. */
+  editingId?: string;
+  initial: string;
+  style: TextStyle;
 }
 
 // ─── Cursor map ───────────────────────────────────────────────────────────────
@@ -187,6 +198,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
   const rafId            = useRef<number | null>(null);
   const pendingRender    = useRef(false);
   const textEditingRef   = useRef(false);
+  const editingTextIdRef = useRef<string | null>(null);
   const suppressTextBlurCommitRef = useRef(false);
   const activePointerIdRef = useRef<number | null>(null);
   const gestureToolRef   = useRef<ToolType | null>(null);
@@ -253,11 +265,21 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
 
     document.addEventListener('pointerdown', clearWhenOutside);
     return () => document.removeEventListener('pointerdown', clearWhenOutside);
-  }, [identity, selectedIdsArray.length]);
+  }, [identity, selectedIdsArray, docId, pageIndex]);
 
   // Handle global Escape (cancel drawing/gesture)
   useEffect(() => {
     const handleGlobalKeydown = (e: KeyboardEvent) => {
+      if (e.key === 'Enter' && !e.metaKey && !e.ctrlKey && !e.altKey
+        && mode.current === 'idle' && !textEditingRef.current
+        && selectedIdsArray.length === 1 && !isEditableTarget(e.target)) {
+        const selected = getPageAnnotations(docId, pageIndex).find((a) => a.id === selectedIdsArray[0]);
+        if (selected?.type === 'text') {
+          e.preventDefault();
+          openTextEditor(selected);
+          return;
+        }
+      }
       if (e.key === 'Escape') {
         if (mode.current !== 'idle') {
           cancelActiveInteraction();
@@ -320,6 +342,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
 
     const committedAnnotations: Annotation[] = [];
     for (const a of currentAnnotations) {
+      if (a.hidden || a.id === editingTextIdRef.current) continue;
       if (activeIds.includes(a.id)) continue;
       
       const eraseHit = eraserHitsRef.current.get(a.id);
@@ -612,6 +635,11 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
 
     // ── Text ──
     if (interactionTool === 'text') {
+      const existing = hitTestAnnotations(pdfPt, getPageAnnotations(docId, pageIndex), transform);
+      if (existing?.type === 'text') {
+        openTextEditor(existing);
+        return;
+      }
       openTextOverlay(screenX, screenY, pdfPt.x, pdfPt.y);
       return;
     }
@@ -661,6 +689,11 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
       // The user requested: "Preferred: Cmd+click, Shift+click. Windows support gerekiyorsa platform-safe Ctrl semantics ayrıca ele alınabilir. Current Phase 7 macOS behavior must remain predictable."
       // Let's use metaKey or shiftKey for additive.
       const isModifier = e.metaKey || e.shiftKey;
+
+      if (hit && hit.type === 'text' && e.detail >= 2 && !isModifier) {
+        openTextEditor(hit);
+        return;
+      }
 
       if (hit) {
         let newIds = [...activeIds];
@@ -1028,7 +1061,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     }
 
     for (const ann of originalEraserSnapshotRef.current) {
-      if (ann.locked) continue;
+      if (ann.locked || ann.hidden) continue;
       
       // If already deleted in this sweep, skip
       const existingHit = eraserHitsRef.current.get(ann.id);
@@ -1169,6 +1202,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     
     // Maintain z-order (same order as annotations array)
     for (const ann of annotations) {
+      if (ann.hidden || ann.locked) continue;
       if (hitTestMarquee(selectionRect, ann)) {
         newSelection.push(ann.id);
       }
@@ -1279,6 +1313,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     if (hadTextEditor) {
       suppressTextBlurCommitRef.current = true;
       textEditingRef.current = false;
+      editingTextIdRef.current = null;
       setTextOverlay(null);
     }
 
@@ -1332,44 +1367,119 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
 
   // ── Text overlay ──────────────────────────────────────────────────────────
 
-  function openTextOverlay(screenX: number, screenY: number, pdfX: number, pdfY: number) {
+  function beginTextEditing(overlay: TextOverlay) {
     suppressTextBlurCommitRef.current = false;
     textEditingRef.current = true;
+    editingTextIdRef.current = overlay.editingId ?? null;
     setIsDrawing(true);
     onInteractionPinChange?.(true);
-    setTextOverlay({ x: screenX, y: screenY, pdfX, pdfY });
+    setTextOverlay(overlay);
+    if (overlay.editingId) redrawAnnotationLayer();
     // Focus textarea on next tick
-    setTimeout(() => textareaRef.current?.focus(), 50);
+    setTimeout(() => {
+      const textarea = textareaRef.current;
+      if (!textarea) return;
+      textarea.focus();
+      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+    }, 50);
+  }
+
+  function openTextOverlay(screenX: number, screenY: number, pdfX: number, pdfY: number) {
+    const opts = toolOptions.text;
+    beginTextEditing({
+      x: screenX,
+      y: screenY,
+      pdfX,
+      pdfY,
+      initial: '',
+      style: {
+        fontFamily: opts.fontFamily,
+        fontSize: opts.fontSize,
+        bold: opts.bold,
+        italic: opts.italic,
+        underline: opts.underline,
+        align: opts.align,
+        color: opts.color,
+        backgroundColor: opts.backgroundColor,
+        borderColor: opts.borderColor ?? 'transparent',
+        borderWidth: opts.borderWidth ?? 0,
+        listStyle: opts.listStyle ?? 'none',
+      },
+    });
+  }
+
+  /** Edit an existing text annotation in place (double-click, Enter, or Text tool click). */
+  function openTextEditor(annotation: TextAnnotation) {
+    if (annotation.locked) return;
+    useSelectionStore.getState().clearSelection(identity);
+    const top = annotation.bounds.y + annotation.bounds.height;
+    const screen = pdfToScreen(annotation.bounds.x, top, transform);
+    beginTextEditing({
+      x: screen.x,
+      y: screen.y,
+      pdfX: annotation.bounds.x,
+      pdfY: top,
+      editingId: annotation.id,
+      initial: annotation.content,
+      style: {
+        fontFamily: annotation.fontFamily,
+        fontSize: annotation.fontSize,
+        bold: annotation.bold,
+        italic: annotation.italic,
+        underline: annotation.underline,
+        align: annotation.align,
+        color: annotation.color,
+        backgroundColor: annotation.backgroundColor,
+        borderColor: annotation.borderColor ?? 'transparent',
+        borderWidth: annotation.borderWidth ?? 0,
+        listStyle: annotation.listStyle ?? 'none',
+      },
+    });
   }
 
   function commitText(content: string, overlay: TextOverlay) {
-    if (!content.trim()) return; // Discard empty annotations
-    const id = nanoid();
+    const { style } = overlay;
+    const size = autoSizeTextBox({ content, fontSize: style.fontSize, listStyle: style.listStyle }, canvasMeasure(style));
+    const bounds = { x: overlay.pdfX, y: overlay.pdfY - size.height, width: size.width, height: size.height };
     const now = Date.now();
-    const opts = toolOptions.text;
-    const textHeight = opts.fontSize * 4;
-    const ann = {
-      id, pageIndex, type: 'text' as const,
-      bounds: {
-        x: overlay.pdfX,
-        y: overlay.pdfY - textHeight,
-        width: 200,
-        height: textHeight,
-      },
+
+    if (overlay.editingId) {
+      const before = getPageAnnotations(docId, pageIndex).find((a) => a.id === overlay.editingId);
+      if (!before || before.type !== 'text') return;
+      if (!content.trim()) {
+        // Emptied → delete (undo restores it in place).
+        const index = getPageAnnotations(docId, pageIndex).findIndex((a) => a.id === before.id);
+        useAnnotationStore.getState().removeAnnotation(docId, pageIndex, before.id);
+        pushHistory(makeRemoveAction(docId, before, index));
+        return;
+      }
+      if (content === before.content) return;
+      const after: TextAnnotation = { ...before, content, bounds, updatedAt: now };
+      replaceAnnotation(docId, pageIndex, after);
+      pushHistory(makeUpdateAction(docId, before, after));
+      return;
+    }
+
+    if (!content.trim()) return; // Discard empty annotations
+    const ann: TextAnnotation = {
+      id: nanoid(), pageIndex, type: 'text',
+      bounds,
       content,
-      fontSize: opts.fontSize,
-      fontFamily: opts.fontFamily,
-      bold: opts.bold,
-      italic: opts.italic,
-      underline: opts.underline,
-      align: opts.align,
-      color: opts.color,
-      backgroundColor: opts.backgroundColor,
+      ...style,
       opacity: 1,
       locked: false, createdAt: now, updatedAt: now,
     };
     addAnnotation(docId, ann);
     pushHistory(makeAddAction(docId, ann));
+  }
+
+  function endTextEditing() {
+    textEditingRef.current = false;
+    editingTextIdRef.current = null;
+    setTextOverlay(null);
+    setIsDrawing(false);
+    onInteractionPinChange?.(false);
+    redrawAnnotationLayer();
   }
 
   function onTextKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -1388,12 +1498,9 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
       e.preventDefault();
       const content = e.currentTarget.value;
       if (textOverlay) commitText(content, textOverlay);
-      
+
       suppressTextBlurCommitRef.current = true;
-      textEditingRef.current = false;
-      setTextOverlay(null);
-      setIsDrawing(false);
-      onInteractionPinChange?.(false);
+      endTextEditing();
     }
   }
 
@@ -1401,11 +1508,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     if (suppressTextBlurCommitRef.current) return;
     const content = e.currentTarget.value;
     if (textOverlay) commitText(content, textOverlay);
-    
-    textEditingRef.current = false;
-    setTextOverlay(null);
-    setIsDrawing(false);
-    onInteractionPinChange?.(false);
+    endTextEditing();
   }
 
   // ── Drag & Drop handler ───────────────────────────────────────────────────
@@ -1539,30 +1642,36 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
       {textOverlay && (
         <textarea
           ref={textareaRef}
+          defaultValue={textOverlay.initial}
           onKeyDown={onTextKeyDown}
           onBlur={onTextBlur}
+          aria-label={textOverlay.editingId ? 'Edit text annotation' : 'New text annotation'}
+          spellCheck={false}
           style={{
             position: 'absolute',
             left: textOverlay.x,
             top: textOverlay.y,
-            minWidth: 200,
-            minHeight: toolOptions.text.fontSize * 4,
-            fontSize: toolOptions.text.fontSize * scale,
-            fontFamily: toolOptions.text.fontFamily,
-            fontWeight: toolOptions.text.bold ? 'bold' : 'normal',
-            fontStyle: toolOptions.text.italic ? 'italic' : 'normal',
-            textDecoration: toolOptions.text.underline ? 'underline' : 'none',
-            textAlign: toolOptions.text.align,
-            color: toolOptions.text.color,
-            backgroundColor: toolOptions.text.backgroundColor || 'transparent',
+            // Grows with the content like the committed (auto-sized) box.
+            fieldSizing: 'content',
+            minWidth: 40,
+            maxWidth: MAX_AUTO_TEXT_WIDTH * scale,
+            minHeight: textOverlay.style.fontSize * LINE_HEIGHT * scale + TEXT_PADDING * 2 * scale,
+            font: cssFont({ ...textOverlay.style, fontSize: textOverlay.style.fontSize * scale }),
+            lineHeight: LINE_HEIGHT,
+            textDecoration: textOverlay.style.underline ? 'underline' : 'none',
+            textAlign: textOverlay.style.align,
+            color: textOverlay.style.color,
+            backgroundColor: textOverlay.style.backgroundColor || 'transparent',
             border: '1px dashed #007aff',
+            boxSizing: 'border-box',
             outline: 'none',
             resize: 'none',
             overflow: 'hidden',
-            padding: 4,
+            whiteSpace: 'pre-wrap',
+            padding: TEXT_PADDING * scale,
             pointerEvents: 'auto',
             zIndex: 10,
-          }}
+          } as React.CSSProperties}
         />
       )}
 

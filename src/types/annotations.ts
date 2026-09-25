@@ -63,6 +63,8 @@ export type ShapeBorderStyle = 'solid' | 'dashed' | 'dotted' | 'dash-dot' | 'das
 
 export type TextAlign = 'left' | 'center' | 'right';
 
+export type TextListStyle = 'none' | 'bullet' | 'number';
+
 // ─── Base annotation ──────────────────────────────────────────────────────────
 
 interface BaseAnnotation {
@@ -72,6 +74,8 @@ interface BaseAnnotation {
   color: string;                   // CSS hex color
   opacity: number;                 // 0–1
   locked: boolean;
+  /** Hidden in the view and left out of Save/Export (Annotations panel). */
+  hidden?: boolean;
   readonly createdAt: number;      // Date.now()
   updatedAt: number;
 }
@@ -107,6 +111,9 @@ export interface TextAnnotation extends BaseAnnotation {
   underline: boolean;
   align: TextAlign;
   backgroundColor: string;        // CSS color or 'transparent'
+  borderColor?: string;           // CSS color or 'transparent' (default)
+  borderWidth?: number;           // PDF points
+  listStyle?: TextListStyle;      // default 'none'
 }
 
 // ─── Shape annotation ─────────────────────────────────────────────────────────
@@ -199,6 +206,9 @@ export interface TextOptions {
   align: TextAlign;
   color: string;
   backgroundColor: string;
+  borderColor?: string;
+  borderWidth?: number;
+  listStyle?: TextListStyle;
 }
 
 export interface ShapeOptions {
@@ -365,6 +375,20 @@ declare global {
       captureScreen: () => Promise<{ success: boolean; data?: ArrayBuffer; mimeType?: string; width?: number; height?: number; error?: string }>;
       captureRegion: () => Promise<{ success: boolean; canceled?: boolean; data?: ArrayBuffer; mimeType?: string; width?: number; height?: number; error?: string }>;
       readClipboardImage: () => Promise<{ data: ArrayBuffer; mimeType: string } | null>;
+      recoveryWrite: (
+        docId: string,
+        meta: string,
+        source: Uint8Array | null,
+        assets: { id: string; mimeType: string; width: number; height: number; data: Uint8Array }[],
+      ) => Promise<boolean>;
+      recoveryRemove: (docId: string) => Promise<boolean>;
+      checkForUpdates: () => Promise<boolean>;
+      showAbout: () => Promise<boolean>;
+      openCrashReports: () => Promise<boolean>;
+      recoveryList: () => Promise<Array<{
+        docId: string; title: string; filePath: string | null; savedAt: number; pageCount: number; annotationCount: number;
+      }>>;
+      recoveryLoad: (docId: string) => Promise<{ meta: string; source: ArrayBuffer; assets: { id: string; data: ArrayBuffer }[] }>;
       pptxIsAvailable: () => Promise<boolean>;
       pptxStartConversion: (jobId: string) => Promise<{ buffer: ArrayBuffer; name: string } | null>;
       pptxCancelConversion: (jobId: string) => Promise<void>;
