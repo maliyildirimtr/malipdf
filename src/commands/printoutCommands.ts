@@ -1,7 +1,8 @@
 import { useDocumentStore } from '../store/documentStore';
 import { useAnnotationStore } from '../store/annotationStore';
 import { useHistoryStore, makeMutateDocumentBytesAction } from '../store/historyStore';
-import { insertBlankPagesAfter, insertPdfPages } from '../document/documentMutator';
+import { insertBlankPagesAfter } from '../document/documentMutator';
+import type { Annotation, DocumentAnnotationState, ImageAnnotation } from '../types/annotations';
 import { remapDocumentStateForInsertion, remapAnnotationsForInsertion } from '../pdf/pageRemap';
 import { nanoid } from '../utils/nanoid';
 import { generatePrintoutPages } from '../pdf/printoutGenerator';
@@ -10,13 +11,19 @@ import { useAssetStore } from '../store/assetStore';
 
 let nextRequestId = 1;
 
+/** True while a printout import is still running (only one job at a time). */
+function isImportBusy(): boolean {
+  const status = useImportJobStore.getState().job?.status;
+  return status !== undefined && status !== 'completed' && status !== 'cancelled' && status !== 'failed';
+}
+
 export async function insertPdfPrintout(
   docId: string,
   printoutData: Uint8Array,
 ): Promise<boolean> {
   const docStore = useDocumentStore.getState();
   const activeDoc = docStore.documents.get(docId);
-  if (!activeDoc) return false;
+  if (!activeDoc || isImportBusy()) return false;
 
   const targetIdentity = { docId, instanceId: activeDoc.instanceId };
   const targetPageIndex = activeDoc.activePageIndex;
@@ -44,139 +51,149 @@ async function runPrintoutPipeline(
   requestId: number,
   abortController: AbortController
 ): Promise<boolean> {
-  const assetStore = useAssetStore.getState();
-  const annotationStore = useAnnotationStore.getState();
-  const historyStore = useHistoryStore.getState();
-
   let generatedPages: import('../pdf/printoutGenerator').PreparedPrintoutPage[] = [];
 
   try {
     generatedPages = await generatePrintoutPages({
       sourcePdfBytes: printoutData,
       signal: abortController.signal,
+      onTotalPages: (total) => useImportJobStore.getState().setTotalPages(total),
       onProgress: () => useImportJobStore.getState().incrementCompleted(),
     });
   } catch (err) {
     if (abortController.signal.aborted) {
-      // Handled by cancelJob
+      // cancelJob already marked the job; remove the overlay shortly after.
+      scheduleJobClear(requestId);
       return false;
     }
     console.error('Printout generation failed:', err);
-    useImportJobStore.getState().updateStatus('failed', String(err));
+    useImportJobStore.getState().updateStatus('failed', err instanceof Error ? err.message : String(err));
     return false;
   }
 
-  // Verification step
   useImportJobStore.getState().updateStatus('committing');
-  const currentDocStore = useDocumentStore.getState();
-  const currentDoc = currentDocStore.documents.get(docId);
-  
-  if (!currentDoc || currentDoc.instanceId !== targetIdentity.instanceId) {
-    // Document was closed or reloaded differently. Discard.
+
+  const initialDoc = useDocumentStore.getState().documents.get(docId);
+  if (!initialDoc || initialDoc.instanceId !== targetIdentity.instanceId) {
+    // Document was closed or replaced while rendering. Discard.
     useImportJobStore.getState().clearJob();
+    return false;
+  }
+
+  // Page insertion is based on the bytes as they are right now.
+  const baseSourceData = initialDoc.sourceData;
+  const insertAfter = Math.min(targetPageIndex, initialDoc.pageCount - 1);
+
+  let mutatedBytes: Uint8Array;
+  try {
+    mutatedBytes = await insertBlankPagesAfter(
+      baseSourceData,
+      insertAfter,
+      generatedPages.map(p => ({ width: p.widthPdfPoints, height: p.heightPdfPoints })),
+    );
+  } catch (error) {
+    console.error('Printout page insertion failed:', error);
+    useImportJobStore.getState().updateStatus('failed', error instanceof Error ? error.message : String(error));
+    return false;
+  }
+
+  // ── Synchronous commit section: re-read every store AFTER the last await ──
+  const currentDoc = useDocumentStore.getState().documents.get(docId);
+  if (!currentDoc || currentDoc.instanceId !== targetIdentity.instanceId) {
+    useImportJobStore.getState().clearJob();
+    return false;
+  }
+  if (currentDoc.sourceData !== baseSourceData) {
+    // Another page mutation (or undo/redo of one) happened meanwhile; the
+    // computed bytes would silently drop it.
+    useImportJobStore.getState().updateStatus('failed', 'The document changed while the printout was being inserted. Please try again.');
     return false;
   }
 
   const beforeSourceData = currentDoc.sourceData;
   const beforePageCount = currentDoc.pageCount;
   const beforePageRotations = currentDoc.pageRotations;
-  const beforeAnnotations = Array.from(annotationStore.docAnnotations.get(docId)?.pages.values() ?? [])
-    .flatMap(p => p.annotations);
+  const beforeAnnotations = Array.from(
+    useAnnotationStore.getState().docAnnotations.get(docId)?.pages.values() ?? [],
+  ).flatMap(p => p.annotations);
 
-  const newAssetIds: string[] = [];
+  const afterDocState = remapDocumentStateForInsertion(currentDoc, insertAfter, generatedPages.length);
+  const now = Date.now();
+  const newAnnotations: ImageAnnotation[] = generatedPages.map((p, i) => ({
+    id: nanoid(),
+    type: 'image',
+    pageIndex: insertAfter + 1 + i,
+    color: '#000000',
+    opacity: 1,
+    locked: false,
+    createdAt: now,
+    updatedAt: now,
+    x: 0,
+    y: 0,
+    width: p.widthPdfPoints,
+    height: p.heightPdfPoints,
+    assetId: p.asset.id,
+  }));
+  const afterAnnotations: Annotation[] = [
+    ...remapAnnotationsForInsertion(beforeAnnotations, insertAfter, generatedPages.length),
+    ...newAnnotations,
+  ];
 
-  try {
-    // Register assets first
-    for (const page of generatedPages) {
-      assetStore.addAsset(targetIdentity, page.asset);
-      newAssetIds.push(page.asset.id);
-    }
-
-    // Mutate bytes
-    const pageSpecs = generatedPages.map(p => ({
-      width: p.widthPdfPoints,
-      height: p.heightPdfPoints,
-    }));
-    
-    const mutatedBytes = await insertBlankPagesAfter(
-      beforeSourceData,
-      targetPageIndex,
-      pageSpecs
-    );
-
-    // Remap state
-    const afterDocState = remapDocumentStateForInsertion(currentDoc, targetPageIndex, generatedPages.length);
-    let afterAnnotations = remapAnnotationsForInsertion(beforeAnnotations, targetPageIndex, generatedPages.length);
-
-    // Add printout annotations
-    const newAnnotations: import('../types/annotations').Annotation[] = [];
-    for (let i = 0; i < generatedPages.length; i++) {
-      const p = generatedPages[i];
-      const insertedIndex = targetPageIndex + 1 + i;
-      newAnnotations.push({
-        id: nanoid(),
-        type: 'image',
-        pageIndex: insertedIndex,
-        x: 0,
-        y: 0,
-        width: p.widthPdfPoints,
-        height: p.heightPdfPoints,
-        assetId: p.asset.id,
-      } as import('../types/annotations').ImageAnnotation);
-    }
-    
-    afterAnnotations = [...afterAnnotations, ...newAnnotations];
-
-    // Apply remap immediately
-    currentDocStore.updateDocument(docId, {
-      sourceData: mutatedBytes,
-      sourceRevision: currentDoc.sourceRevision + 1,
-      pageCount: afterDocState.pageCount,
-      activePageIndex: targetPageIndex + 1, // navigate to first inserted page
-      pageRotations: afterDocState.pageRotations,
-    });
-
-    useAnnotationStore.setState((state) => {
-      const docs = new Map(state.docAnnotations);
-      const docState = docs.get(docId) ?? { pages: new Map() };
-      
-      const newDocState = { pages: new Map() };
-      for (const ann of afterAnnotations) {
-        if (!newDocState.pages.has(ann.pageIndex)) {
-          newDocState.pages.set(ann.pageIndex, { pageIndex: ann.pageIndex, annotations: [] });
-        }
-        newDocState.pages.get(ann.pageIndex)!.annotations.push(ann);
-      }
-      docs.set(docId, newDocState);
-      return { docAnnotations: docs };
-    });
-
-    historyStore.push(makeMutateDocumentBytesAction(
-      docId,
-      beforeSourceData,
-      mutatedBytes,
-      beforeAnnotations,
-      afterAnnotations,
-      beforePageRotations,
-      afterDocState.pageRotations,
-      beforePageCount,
-      afterDocState.pageCount,
-    ));
-
-    useImportJobStore.getState().updateStatus('completed');
-    setTimeout(() => useImportJobStore.getState().clearJob(), 2000);
-    return true;
-  } catch (error) {
-    console.error('Commit failed, rolling back:', error);
-    
-    // Remove newly registered assets
-    for (const assetId of newAssetIds) {
-      assetStore.removeAsset(targetIdentity, assetId);
-    }
-    
-    useImportJobStore.getState().updateStatus('failed', 'Commit failed');
-    return false;
+  const assetStore = useAssetStore.getState();
+  for (const page of generatedPages) {
+    assetStore.addAsset(targetIdentity, page.asset);
   }
+
+  useDocumentStore.getState().updateDocument(docId, {
+    sourceData: mutatedBytes,
+    sourceRevision: currentDoc.sourceRevision + 1,
+    pageCount: afterDocState.pageCount,
+    activePageIndex: insertAfter + 1, // navigate to first inserted page
+    pageRotations: afterDocState.pageRotations,
+  });
+
+  useAnnotationStore.setState((state) => {
+    const docs = new Map(state.docAnnotations);
+    docs.set(docId, groupByPage(afterAnnotations));
+    return { docAnnotations: docs };
+  });
+
+  useHistoryStore.getState().push(makeMutateDocumentBytesAction(
+    docId,
+    beforeSourceData,
+    mutatedBytes,
+    beforeAnnotations,
+    afterAnnotations,
+    beforePageRotations,
+    afterDocState.pageRotations,
+    beforePageCount,
+    afterDocState.pageCount,
+  ));
+
+  useImportJobStore.getState().updateStatus('completed');
+  scheduleJobClear(requestId);
+  return true;
+}
+
+function groupByPage(annotations: readonly Annotation[]): DocumentAnnotationState {
+  const pages = new Map<number, { pageIndex: number; annotations: Annotation[] }>();
+  for (const ann of annotations) {
+    let page = pages.get(ann.pageIndex);
+    if (!page) {
+      page = { pageIndex: ann.pageIndex, annotations: [] };
+      pages.set(ann.pageIndex, page);
+    }
+    page.annotations.push(ann);
+  }
+  return { pages };
+}
+
+/** Clears the overlay after a short delay, unless a newer job replaced it. */
+function scheduleJobClear(requestId: number, delayMs = 2000): void {
+  setTimeout(() => {
+    const store = useImportJobStore.getState();
+    if (store.job?.requestId === requestId) store.clearJob();
+  }, delayMs);
 }
 
 export async function insertPrintoutFromFile(): Promise<void> {
@@ -196,18 +213,7 @@ export async function insertPptxPrintoutFromFile(): Promise<void> {
   if (!activeDocId) return;
 
   const activeDoc = docStore.documents.get(activeDocId);
-  if (!activeDoc) return;
-
-  if (!window.electronAPI?.pptxIsAvailable) {
-    console.error('PPTX conversion API is not available.');
-    return;
-  }
-
-  const isAvailable = await window.electronAPI.pptxIsAvailable();
-  if (!isAvailable) {
-    console.error('LibreOffice is not installed or available for PPTX conversion.');
-    return;
-  }
+  if (!activeDoc || isImportBusy()) return;
 
   const targetIdentity = { docId: activeDocId, instanceId: activeDoc.instanceId };
   const targetPageIndex = activeDoc.activePageIndex;
@@ -216,13 +222,35 @@ export async function insertPptxPrintoutFromFile(): Promise<void> {
 
   const importJobStore = useImportJobStore.getState();
   importJobStore.startJob(requestId, targetIdentity, targetPageIndex, abortController);
-  importJobStore.updateStatus('converting');
+
+  if (!window.electronAPI?.pptxIsAvailable) {
+    importJobStore.updateStatus('failed', 'PowerPoint import is not available in this build. Rebuild the Electron main process (npm run build:electron).');
+    return;
+  }
+
+  let isAvailable = false;
+  try {
+    isAvailable = await window.electronAPI.pptxIsAvailable();
+  } catch {
+    isAvailable = false;
+  }
+  if (!isAvailable) {
+    useImportJobStore.getState().updateStatus('failed', 'LibreOffice was not found. Install LibreOffice to import PowerPoint files.');
+    return;
+  }
+  if (abortController.signal.aborted) {
+    scheduleJobClear(requestId);
+    return;
+  }
+
+  useImportJobStore.getState().updateStatus('converting');
 
   try {
     const result = await window.electronAPI.pptxStartConversion(requestId.toString());
     
     if (abortController.signal.aborted || !result) {
-      if (!abortController.signal.aborted) importJobStore.clearJob();
+      if (abortController.signal.aborted) scheduleJobClear(requestId);
+      else useImportJobStore.getState().clearJob();
       return;
     }
 
@@ -238,9 +266,10 @@ export async function insertPptxPrintoutFromFile(): Promise<void> {
     );
   } catch (error) {
     if (abortController.signal.aborted) {
+      scheduleJobClear(requestId);
       return;
     }
     console.error('PPTX Conversion failed:', error);
-    importJobStore.updateStatus('failed', error instanceof Error ? error.message : String(error));
+    useImportJobStore.getState().updateStatus('failed', error instanceof Error ? error.message : String(error));
   }
 }

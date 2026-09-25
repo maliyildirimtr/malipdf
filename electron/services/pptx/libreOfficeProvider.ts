@@ -41,7 +41,8 @@ export class LibreOfficeProvider implements PptxConversionProvider {
     const profileUri = `file://${os.platform() === 'win32' ? '/' : ''}${profileDir.replace(/\\/g, '/')}`;
 
     const args = [
-      `--env:UserInstallation=${profileUri}`,
+      // LibreOffice only recognises the single-dash form of bootstrap variables.
+      `-env:UserInstallation=${profileUri}`,
       '--headless',
       '--nologo',
       '--nofirststartwizard',

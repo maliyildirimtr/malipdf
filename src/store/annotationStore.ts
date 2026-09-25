@@ -13,13 +13,16 @@ interface AnnotationStore {
   removeDocument: (docId: string) => void;
 
   // CRUD
-  addAnnotation: (docId: string, annotation: Annotation) => void;
+  /** Adds an annotation; `index` inserts at that z-order position (default: top). */
+  addAnnotation: (docId: string, annotation: Annotation, index?: number) => void;
   removeAnnotation: (docId: string, pageIndex: number, annotationId: string) => void;
   updateAnnotation: (docId: string, pageIndex: number, annotationId: string, patch: Partial<Annotation>) => void;
   replaceAnnotation: (docId: string, pageIndex: number, annotation: Annotation) => void;
 
   // Batch
   removeAnnotations: (docId: string, pageIndex: number, ids: string[]) => void;
+  /** Replaces a page's annotation list in one update (order = z-order). */
+  setPageAnnotations: (docId: string, pageIndex: number, annotations: Annotation[]) => void;
 
   // Queries
   getPageAnnotations: (docId: string, pageIndex: number) => Annotation[];
@@ -71,13 +74,19 @@ export const useAnnotationStore = create<AnnotationStore>()(
       });
     },
 
-    addAnnotation: (docId, annotation) => {
+    addAnnotation: (docId, annotation, index) => {
       set((state) => {
         const docs = new Map(state.docAnnotations);
         const docState = cloneDocAnnotations(docs, docId);
 
         const page = { ...getOrCreatePage(docState, annotation.pageIndex) };
-        page.annotations = [...page.annotations, annotation];
+        const annotations = [...page.annotations];
+        if (index === undefined || index >= annotations.length) {
+          annotations.push(annotation);
+        } else {
+          annotations.splice(Math.max(0, index), 0, annotation);
+        }
+        page.annotations = annotations;
         docState.pages.set(annotation.pageIndex, page);
         docs.set(docId, docState);
 
@@ -152,6 +161,16 @@ export const useAnnotationStore = create<AnnotationStore>()(
         docState.pages.set(pageIndex, updated);
         docs.set(docId, docState);
 
+        return { docAnnotations: docs };
+      });
+    },
+
+    setPageAnnotations: (docId, pageIndex, annotations) => {
+      set((state) => {
+        const docs = new Map(state.docAnnotations);
+        const docState = cloneDocAnnotations(docs, docId);
+        docState.pages.set(pageIndex, { pageIndex, annotations: [...annotations] });
+        docs.set(docId, docState);
         return { docAnnotations: docs };
       });
     },

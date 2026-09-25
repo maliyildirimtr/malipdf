@@ -3,6 +3,7 @@ import { LibreOfficeProvider } from '../libreOfficeProvider';
 import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import EventEmitter from 'events';
 
 vi.mock('child_process', () => ({
@@ -31,6 +32,9 @@ describe('LibreOfficeProvider', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.restoreAllMocks();
+    // Pin the platform so the hard-coded macOS path is probed on every OS.
+    vi.spyOn(os, 'platform').mockReturnValue('darwin');
     provider = new LibreOfficeProvider();
     
     // Mock access to return true for the first hardcoded path
@@ -67,7 +71,7 @@ describe('LibreOfficeProvider', () => {
     expect(spawn).toHaveBeenCalledWith(
       expect.any(String),
       expect.arrayContaining([
-        expect.stringContaining('--env:UserInstallation='),
+        expect.stringContaining('-env:UserInstallation=file://'),
         '--headless',
         '--nologo',
         '--convert-to',

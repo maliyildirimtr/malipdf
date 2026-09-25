@@ -37,6 +37,11 @@ export interface ElectronAPI {
   captureScreen: () => Promise<{ success: boolean; data?: ArrayBuffer; mimeType?: string; width?: number; height?: number; error?: string }>;
   captureRegion: () => Promise<{ success: boolean; canceled?: boolean; data?: ArrayBuffer; mimeType?: string; width?: number; height?: number; error?: string }>;
   readClipboardImage: () => Promise<{ data: ArrayBuffer; mimeType: string } | null>;
+
+  // PPTX Printout
+  pptxIsAvailable: () => Promise<boolean>;
+  pptxStartConversion: (jobId: string) => Promise<{ buffer: ArrayBuffer; name: string } | null>;
+  pptxCancelConversion: (jobId: string) => Promise<void>;
 }
 
 const electronAPI: ElectronAPI = {
@@ -65,8 +70,8 @@ const electronAPI: ElectronAPI = {
 
   // PPTX Printout
   pptxIsAvailable: () => ipcRenderer.invoke('pptx:isAvailable'),
-  pptxStartConversion: (jobId: string) => ipcRenderer.invoke('pptx:startConversion', jobId),
-  pptxCancelConversion: (jobId: string) => ipcRenderer.invoke('pptx:cancelConversion', jobId),
+  pptxStartConversion: (jobId) => ipcRenderer.invoke('pptx:startConversion', jobId),
+  pptxCancelConversion: (jobId) => ipcRenderer.invoke('pptx:cancelConversion', jobId),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);

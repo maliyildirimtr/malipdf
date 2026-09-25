@@ -19,8 +19,10 @@ import {
   useDocumentSessionStore,
 } from '../../store/documentSessionStore';
 import {
+  getLoadedRevision,
   getPage,
   reconcilePageCache,
+  reloadDocument,
   requestPageEviction,
 } from '../../pdf/documentManager';
 import { calcFitPageScale, calcFitWidthScale } from '../../pdf/renderer';
@@ -167,28 +169,21 @@ export function DocumentArea() {
   }, [openFileDialog]);
 
   // ── Reload source when changed ────────────────────────────────────────────
-  const lastReloadRef = useRef<number>(1);
-  
-  useEffect(() => {
-    if (activeDoc) {
-      lastReloadRef.current = activeDoc.sourceRevision;
-    }
-  }, [activeIdentityKey]);
+  // The pdf.js proxy is tracked per document (DocumentManager.loadedRevision),
+  // so a page mutation committed while the document was in the background is
+  // picked up as soon as it becomes active again.
 
   useEffect(() => {
     if (!activeIdentity || !activeDoc) return;
-    if (activeDoc.sourceRevision <= lastReloadRef.current) return;
-    
-    lastReloadRef.current = activeDoc.sourceRevision;
     const identity = activeIdentity;
-    const data = activeDoc.sourceData;
-    
-    import('../../pdf/documentManager').then(({ reloadDocument }) => {
-      reloadDocument(identity, data).then((newPageCount) => {
-        documentSessionStore.getState().reloadSession(identity, newPageCount);
-      }).catch(err => {
-        console.error('Failed to reload document bytes:', err);
-      });
+    const revision = activeDoc.sourceRevision;
+    if (getLoadedRevision(identity) >= revision) return;
+
+    reloadDocument(identity, activeDoc.sourceData, revision).then((newPageCount) => {
+      if (newPageCount === null) return; // superseded by a newer reload
+      documentSessionStore.getState().reloadSession(identity, newPageCount);
+    }).catch(err => {
+      console.error('Failed to reload document bytes:', err);
     });
   }, [activeIdentityKey, activeDoc?.sourceRevision, activeDoc?.sourceData]);
 
@@ -582,7 +577,7 @@ export function DocumentArea() {
     >
       {isDragOver && (
         <div className="drop-overlay">
-          <div className="drop-overlay__text">Drop PDF to open</div>
+          <div className="drop-overlay__text">Drop PDF to insert as printout pages</div>
         </div>
       )}
 

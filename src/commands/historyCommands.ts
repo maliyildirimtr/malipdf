@@ -70,7 +70,7 @@ function applyUndoAction(
       }
       return;
     case 'REMOVE_ANNOTATION':
-      if (action.before) annotations.addAnnotation(action.docId, action.before);
+      if (action.before) addAt(annotations, action.docId, action.before, action.index);
       return;
     case 'UPDATE_ANNOTATION':
     case 'MOVE_ANNOTATION':
@@ -87,6 +87,7 @@ function applyUndoAction(
             sourceRevision: currentDoc.sourceRevision + 1,
             pageRotations: action.beforePageRotations,
             pageCount: action.beforePageCount,
+            activePageIndex: Math.max(0, Math.min(currentDoc.activePageIndex, action.beforePageCount - 1)),
           });
         }
         
@@ -128,7 +129,7 @@ function applyRedoAction(
   const { annotations, document } = dependencies;
   switch (action.type) {
     case 'ADD_ANNOTATION':
-      if (action.after) annotations.addAnnotation(action.docId, action.after);
+      if (action.after) addAt(annotations, action.docId, action.after, action.index);
       return;
     case 'REMOVE_ANNOTATION':
       if (action.before && action.pageIndex !== undefined && action.annotationId !== undefined) {
@@ -150,6 +151,7 @@ function applyRedoAction(
             sourceRevision: currentDoc.sourceRevision + 1,
             pageRotations: action.afterPageRotations,
             pageCount: action.afterPageCount,
+            activePageIndex: Math.max(0, Math.min(currentDoc.activePageIndex, action.afterPageCount - 1)),
           });
         }
         
@@ -182,6 +184,16 @@ function applyRedoAction(
       }
       return;
   }
+}
+
+function addAt(
+  annotations: HistoryCommandDependencies['annotations'],
+  docId: string,
+  annotation: Annotation,
+  index: number | undefined,
+): void {
+  if (index === undefined) annotations.addAnnotation(docId, annotation);
+  else annotations.addAnnotation(docId, annotation, index);
 }
 
 function replace(

@@ -35,7 +35,7 @@ import {
   PDFName,
   PDFNumber,
 } from 'pdf-lib';
-import type { PDFPage, PDFImage } from 'pdf-lib';
+import type { PDFPage, PDFImage, PDFFont } from 'pdf-lib';
 import type {
   Annotation,
   StrokeAnnotation,
@@ -43,10 +43,12 @@ import type {
   TextAnnotation,
   ShapeAnnotation,
   ImageAnnotation,
+  FreeformAnnotation,
   InputPoint,
   DocumentAnnotationState,
 } from '../types/annotations';
 import type { ImageAsset } from '../store/assetStore';
+import type { ExportFontSet } from './exportFonts';
 
 export type ImageAssetResolver =
   | Map<string, ImageAsset>
@@ -54,6 +56,52 @@ export type ImageAssetResolver =
 
 export interface ExportAnnotatedPdfOptions {
   assets?: ImageAssetResolver;
+  /**
+   * Unicode fonts for Text annotations (see exportFonts.ts). Without them the
+   * exporter falls back to Standard 14 Helvetica, which only covers WinAnsi.
+   */
+  fonts?: ExportFontSet;
+}
+
+/**
+ * Loads the bundled Unicode export fonts without ever throwing. Returns
+ * undefined when @pdf-lib/fontkit is not installed; Save/Export then fall back
+ * to Standard 14 fonts and report a clear error only if a text needs them.
+ */
+export async function loadDefaultExportFonts(): Promise<ExportFontSet | undefined> {
+  try {
+    const module = await import('./exportFonts');
+    return await module.loadExportFonts();
+  } catch (error) {
+    console.warn('[Export] Unicode export fonts unavailable:', error);
+    return undefined;
+  }
+}
+
+type TextFontResolver = (bold: boolean, italic: boolean) => Promise<PDFFont>;
+
+function createTextFontResolver(pdfDoc: PDFDocument, fonts: ExportFontSet | undefined): TextFontResolver {
+  const cache = new Map<string, Promise<PDFFont>>();
+  if (fonts) pdfDoc.registerFontkit(fonts.fontkit);
+  return (bold, italic) => {
+    const key = `${bold ? 'b' : ''}${italic ? 'i' : ''}`;
+    let font = cache.get(key);
+    if (!font) {
+      if (fonts) {
+        const bytes = bold && italic ? fonts.boldItalic : bold ? fonts.bold : italic ? fonts.italic : fonts.regular;
+        font = pdfDoc.embedFont(bytes, { subset: true });
+      } else {
+        font = pdfDoc.embedFont(
+          bold && italic ? StandardFonts.HelveticaBoldOblique
+            : bold ? StandardFonts.HelveticaBold
+              : italic ? StandardFonts.HelveticaOblique
+                : StandardFonts.Helvetica,
+        );
+      }
+      cache.set(key, font);
+    }
+    return font;
+  };
 }
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -311,24 +359,22 @@ function exportHighlight(
  */
 async function exportText(
   page: PDFPage,
-  pdfDoc: PDFDocument,
+  resolveFont: TextFontResolver,
   annotation: TextAnnotation,
   info: PdfPageExportContext,
 ): Promise<void> {
   const { bounds, content, fontSize, bold, italic, color, opacity, align } = annotation;
-  // Map to closest available StandardFonts
-  let fontName: StandardFonts;
-  if (bold && italic) {
-    fontName = StandardFonts.HelveticaBoldOblique;
-  } else if (bold) {
-    fontName = StandardFonts.HelveticaBold;
-  } else if (italic) {
-    fontName = StandardFonts.HelveticaOblique;
-  } else {
-    fontName = StandardFonts.Helvetica;
+  const font = await resolveFont(bold, italic);
+  try {
+    font.encodeText(content.replace(/\n/g, ' '));
+  } catch (cause) {
+    throw new Error(
+      'Text contains characters the built-in PDF font cannot encode '
+      + '(for example Turkish ğ, ş, İ, ı). Unicode export fonts are not available; '
+      + 'run "npm install" so @pdf-lib/fontkit is installed.',
+      { cause },
+    );
   }
-
-  const font = await pdfDoc.embedFont(fontName);
 
   // Background fill
   if (annotation.backgroundColor !== 'transparent') {
@@ -595,6 +641,35 @@ function exportArrow(
   page.drawLine({ start: end, end: wing2, thickness: lineWidth, color, opacity, lineCap: LineCapStyle.Round });
 }
 
+// ─── Freeform (polygon) annotation export ────────────────────────────────────
+
+/**
+ * Draw a closed polygon. drawSvgPath uses a local SVG (Y-down) axis anchored at
+ * (x, y) = (0, 0); negating Y maps canonical PDF user-space points back 1:1.
+ */
+function exportFreeform(
+  page: PDFPage,
+  annotation: FreeformAnnotation,
+  _info: PdfPageExportContext,
+): void {
+  const { points, color, strokeWidth, fillColor, opacity } = annotation;
+  if (points.length < 2) return;
+  const path = points
+    .map((p, index) => `${index === 0 ? 'M' : 'L'} ${p.x} ${-p.y}`)
+    .join(' ') + ' Z';
+  const hasFill = fillColor !== 'transparent';
+  page.drawSvgPath(path, {
+    x: 0,
+    y: 0,
+    borderColor: parseCssColor(color),
+    borderWidth: strokeWidth,
+    borderLineCap: LineCapStyle.Round,
+    color: hasFill ? parseCssColor(fillColor) : undefined,
+    opacity,
+    borderOpacity: opacity,
+  });
+}
+
 // ─── Image annotation export ──────────────────────────────────────────────────
 
 function exportImage(
@@ -672,6 +747,12 @@ function validateAnnotation(annotation: Annotation, pageIndex: number): void {
       }
       if (annotation.fillColor !== 'transparent') parseCssColor(annotation.fillColor);
       return;
+    case 'freeform':
+      assertPositive(annotation.strokeWidth, 'freeform stroke width');
+      if (annotation.points.length < 2) throw new Error('Freeform requires at least two points.');
+      annotation.points.forEach((value, index) => validatePoint(value, `freeform point ${index}`));
+      if (annotation.fillColor !== 'transparent') parseCssColor(annotation.fillColor);
+      return;
     case 'image':
       assertPositive(annotation.width, 'image width');
       assertPositive(annotation.height, 'image height');
@@ -702,6 +783,11 @@ function cloneAnnotation(annotation: Annotation): Annotation {
         startPoint: Object.freeze({ ...annotation.startPoint }),
         endPoint: Object.freeze({ ...annotation.endPoint }),
       }) as Annotation;
+    case 'freeform':
+      return Object.freeze({
+        ...annotation,
+        points: Object.freeze(annotation.points.map((value) => Object.freeze({ ...value }))),
+      }) as unknown as Annotation;
     case 'image':
       return Object.freeze({ ...annotation }) as Annotation;
     default:
@@ -717,21 +803,6 @@ export function createAnnotationSnapshot(annotations: DocumentAnnotations): Docu
     snapshot.set(pageIndex, Object.freeze(pageAnnotations.map(cloneAnnotation)));
   }
   return snapshot;
-}
-
-function annotationCount(annotations: DocumentAnnotations): number {
-  let count = 0;
-  for (const pageAnnotations of annotations.values()) count += pageAnnotations.length;
-  return count;
-}
-
-function assertSourceNotPreviouslyFlattened(pdfDoc: PDFDocument, count: number): void {
-  if (count > 0 && pdfDoc.catalog.get(EXPORT_MARKER)) {
-    throw new AnnotationExportError(
-      'SOURCE_ALREADY_FLATTENED',
-      'The source PDF already contains a MaliPDF flattened export. Reusing it with live annotations would duplicate content.',
-    );
-  }
 }
 
 function markFlattenedExport(pdfDoc: PDFDocument, count: number): void {
@@ -756,7 +827,6 @@ export async function exportAnnotatedPdf(
 ): Promise<ExportResult> {
   // Capture annotation state synchronously, before the first async boundary.
   const snapshot = createAnnotationSnapshot(annotations);
-  const requestedAnnotationCount = annotationCount(snapshot);
 
   // Load a copy so pdf-lib can never detach or mutate DocumentState.sourceData.
   const pdfDoc = await PDFDocument.load(sourceData.slice(), {
@@ -764,7 +834,11 @@ export async function exportAnnotatedPdf(
   });
 
   const pages = pdfDoc.getPages();
-  assertSourceNotPreviouslyFlattened(pdfDoc, requestedAnnotationCount);
+  const resolveTextFont = createTextFontResolver(pdfDoc, options?.fonts);
+  // A source that already carries a MaliPDF export marker (a file saved earlier
+  // and reopened) is valid input: its earlier annotations are now static page
+  // content, and only the current live annotations are flattened on top.
+  // In-session saves never feed flattened output back in as sourceData.
 
   for (const [pageIndex, pageAnnotations] of snapshot) {
     if (!Number.isInteger(pageIndex) || pageIndex < 0 || pageIndex >= pages.length) {
@@ -811,10 +885,13 @@ export async function exportAnnotatedPdf(
             exportHighlight(page, annotation, info);
             break;
           case 'text':
-            await exportText(page, pdfDoc, annotation, info);
+            await exportText(page, resolveTextFont, annotation, info);
             break;
           case 'shape':
             exportShape(page, annotation, info);
+            break;
+          case 'freeform':
+            exportFreeform(page, annotation, info);
             break;
           case 'image': {
             let pdfImg = embeddedImages.get(annotation.assetId);

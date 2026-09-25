@@ -36,18 +36,56 @@ process.title = APP_NAME;
 
 let mainWindow: BrowserWindow | null = null;
 
-let activeCloseRequest: {
-  id: string;
-  type: 'window-close' | 'quit';
-  status: 'pending';
-  timeoutId?: NodeJS.Timeout;
-} | null = null;
+// ─── Close / quit handshake ──────────────────────────────────────────────────
+// The renderer owns dirty-document prompts. Closing the window or quitting
+// asks it first; it answers through 'app:confirmLifecycle'. The permission
+// flags are one-shot and are reset whenever a window is closed, so the app can
+// always be quit again afterwards (previously a stale "authorized" request
+// blocked every later quit, including SIGTERM from `npm run dev`).
+type LifecycleRequestType = 'window-close' | 'quit';
+let pendingLifecycleRequest: { id: string; type: LifecycleRequestType } | null = null;
+let allowWindowClose = false;
+let allowQuit = false;
+
+function rendererCanAnswer(): boolean {
+  return !!mainWindow
+    && !mainWindow.isDestroyed()
+    && !mainWindow.webContents.isDestroyed()
+    && !mainWindow.webContents.isCrashed();
+}
+
+function startLifecycleRequest(type: LifecycleRequestType): void {
+  if (pendingLifecycleRequest) {
+    // A quit supersedes a pending window close; the renderer's answer applies.
+    if (type === 'quit') pendingLifecycleRequest.type = 'quit';
+    return;
+  }
+  const id = crypto.randomUUID();
+  pendingLifecycleRequest = { id, type };
+  sendCommand(type === 'quit' ? 'app.requestQuit' : 'app.requestCloseWindow', id);
+}
+
+/** Carry out a close/quit the renderer approved (or can no longer answer). */
+function forceLifecycle(type: LifecycleRequestType): void {
+  pendingLifecycleRequest = null;
+  if (type === 'quit') {
+    allowQuit = true;
+    app.quit();
+  } else if (mainWindow && !mainWindow.isDestroyed()) {
+    allowWindowClose = true;
+    mainWindow.close();
+  }
+}
 
 function sendCommand(commandId: string, payload?: unknown) {
   mainWindow?.webContents.send(COMMAND_EXECUTE_CHANNEL, commandId, payload);
 }
 
 function createWindow() {
+  // A new window means the app keeps running; any earlier quit permission is void.
+  allowQuit = false;
+  allowWindowClose = false;
+  pendingLifecycleRequest = null;
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -80,30 +118,30 @@ function createWindow() {
   });
 
   mainWindow.on('close', (event) => {
-    // If there is an active request that was authorized, we let it close.
-    if (activeCloseRequest?.status === 'pending') {
-      event.preventDefault();
-      return;
-    }
-    
-    // If not authorized yet, we start a new handshake
-    if (!activeCloseRequest) {
-      event.preventDefault();
-      const requestId = crypto.randomUUID();
-      activeCloseRequest = { id: requestId, type: 'window-close', status: 'pending' };
-      activeCloseRequest.timeoutId = setTimeout(() => {
-        // Timeout -> CANCEL CLOSE -> KEEP WINDOW OPEN
-        if (activeCloseRequest?.id === requestId) {
-          activeCloseRequest = null;
-        }
-      }, 5000);
-      sendCommand('app.requestCloseWindow', requestId);
-    }
+    if (allowQuit || allowWindowClose || !rendererCanAnswer()) return;
+    event.preventDefault();
+    startLifecycleRequest('window-close');
   });
 
   mainWindow.on('closed', () => {
     mainWindow = null;
+    allowWindowClose = false;
+    pendingLifecycleRequest = null;
   });
+
+  // A crashed renderer can never answer; do not trap the user.
+  mainWindow.webContents.on('render-process-gone', () => {
+    if (pendingLifecycleRequest) forceLifecycle(pendingLifecycleRequest.type);
+  });
+
+  // Never let the app window navigate away from the app (e.g. a file dropped
+  // outside a drop zone) or open new windows.
+  const appUrl = isDev ? 'http://localhost:5173' : null;
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    const allowed = appUrl ? url.startsWith(appUrl) : false;
+    if (!allowed) event.preventDefault();
+  });
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
 
   buildMenu();
 }
@@ -279,6 +317,7 @@ ipcMain.handle('app:getVersion', () => {
 // ─── Image & Screenshot Handlers ─────────────────────────────────────────────
 
 const CAPTURE_SETTLE_DELAY_MS = 250;
+const REGION_SELECTION_TIMEOUT_MS = 120_000;
 
 function compositorDelay(ms = CAPTURE_SETTLE_DELAY_MS): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -607,9 +646,29 @@ ipcMain.handle('screenshot:captureRegion', async () => {
 
     await overlayWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(overlayHtml));
     overlayWindow.show();
+    if (process.platform === 'darwin') app.focus({ steal: true });
     overlayWindow.focus();
 
-    const selection: any = await overlayWindow.webContents.executeJavaScript('window.waitForSelection()');
+    // The selection promise alone can hang forever (overlay loses key focus so
+    // Esc never arrives, or it is closed), leaving MaliPDF hidden. Cancel on
+    // close, on focus loss after it was focused, and after a generous timeout.
+    const overlay = overlayWindow;
+    const selection: any = await new Promise((resolve) => {
+      let settled = false;
+      let wasFocused = overlay.isFocused();
+      const finish = (value: unknown) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(value);
+      };
+      const timer = setTimeout(() => finish({ canceled: true }), REGION_SELECTION_TIMEOUT_MS);
+      overlay.once('closed', () => finish({ canceled: true }));
+      overlay.on('focus', () => { wasFocused = true; });
+      overlay.on('blur', () => { if (wasFocused) finish({ canceled: true }); });
+      overlay.webContents.executeJavaScript('window.waitForSelection()')
+        .then(finish, () => finish({ canceled: true }));
+    });
 
     if (!selection || selection.canceled) {
       return { success: false, canceled: true };
@@ -658,9 +717,6 @@ ipcMain.handle('screenshot:captureRegion', async () => {
 
 // ─── App lifecycle ────────────────────────────────────────────────────────────
 
-let isQuitting = false;
-let isWindowClosing = false;
-
 app.whenReady().then(() => {
   createWindow();
 
@@ -670,52 +726,43 @@ app.whenReady().then(() => {
 });
 
 app.on('before-quit', (event) => {
-  // If there is an active request that was authorized, let it quit
-  if (activeCloseRequest?.type === 'quit' && activeCloseRequest.status !== 'pending') {
+  if (allowQuit) return;
+  // No window (e.g. macOS after closing it) or no live renderer: nothing
+  // unsaved can be protected, so quit normally.
+  if (!rendererCanAnswer()) {
+    allowQuit = true;
     return;
   }
-  
   event.preventDefault();
-  
-  if (!activeCloseRequest) {
-    const requestId = crypto.randomUUID();
-    activeCloseRequest = { id: requestId, type: 'quit', status: 'pending' };
-    activeCloseRequest.timeoutId = setTimeout(() => {
-      // Timeout -> CANCEL CLOSE -> KEEP APP OPEN
-      if (activeCloseRequest?.id === requestId) {
-        activeCloseRequest = null;
-      }
-    }, 5000);
-    sendCommand('app.requestQuit', requestId);
-  }
+  startLifecycleRequest('quit');
 });
+
+// Terminal signals (Ctrl+C, `concurrently -k`, kill). In development exit
+// immediately so no Electron process is ever left behind. In production ask
+// the renderer like a normal quit.
+for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+  process.on(signal, () => {
+    if (isDev) {
+      app.exit(0);
+    } else {
+      app.quit();
+    }
+  });
+}
 
 app.on('window-all-closed', () => {
   // Only for normal platform behavior, no persistence handshake here.
   if (process.platform !== 'darwin') app.quit();
 });
 
-ipcMain.on('app:confirmLifecycle', (_event, requestId: string, allow: boolean) => {
-  if (activeCloseRequest?.id !== requestId || activeCloseRequest.status !== 'pending') {
-    // Stale or duplicate ALLOW message, ignore.
-    return;
-  }
-  
-  const type = activeCloseRequest.type;
-  clearTimeout(activeCloseRequest.timeoutId);
-  
-  if (!allow) {
-    // Renderer cancelled the close sequence.
-    activeCloseRequest = null;
-    return;
-  }
-  
-  // ALLOW: open guard and re-trigger
-  activeCloseRequest.status = 'authorized' as any;
-  
-  if (type === 'quit') {
-    app.quit();
-  } else {
-    mainWindow?.close();
-  }
+ipcMain.on('app:confirmLifecycle', (_event, requestId: unknown, allow: unknown) => {
+  // No timeout: the renderer may be showing Save / Don't Save dialogs for as
+  // long as the user needs. Stale or duplicate answers are ignored.
+  if (!pendingLifecycleRequest || pendingLifecycleRequest.id !== requestId) return;
+
+  const { type } = pendingLifecycleRequest;
+  pendingLifecycleRequest = null;
+  if (allow !== true) return; // user cancelled
+
+  forceLifecycle(type);
 });

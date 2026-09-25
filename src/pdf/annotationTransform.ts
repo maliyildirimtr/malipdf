@@ -96,3 +96,60 @@ export function scaleAnnotationFromBounds(
     }
   }
 }
+
+export type ResizeHandleId = 'nw' | 'n' | 'ne' | 'w' | 'e' | 'sw' | 's' | 'se';
+
+/**
+ * Target bounds for a resize gesture, in PDF user space (y grows UP).
+ *
+ * Handle names are visual at 0° (see getResizeHandles): 'n' sits on the top
+ * edge (y + height) and 's' on the bottom edge (y). Dragging a handle moves
+ * that edge; the opposite edge stays anchored.
+ *
+ * With `lockAspect` (single image, corner handle, no Shift) the size follows
+ * the pointer while keeping the original aspect ratio, anchored at the corner
+ * opposite the dragged one.
+ */
+export function computeResizeTargetBounds(
+  original: PdfRect,
+  handleId: ResizeHandleId,
+  pointer: PdfPoint,
+  lockAspect = false,
+): PdfRect {
+  const left = original.x;
+  const right = original.x + original.width;
+  const bottom = original.y;
+  const top = original.y + original.height;
+
+  let x1 = left;
+  let x2 = right;
+  let y1 = bottom;
+  let y2 = top;
+
+  if (handleId.includes('n')) y2 = pointer.y;
+  if (handleId.includes('s')) y1 = pointer.y;
+  if (handleId.includes('w')) x1 = pointer.x;
+  if (handleId.includes('e')) x2 = pointer.x;
+
+  const isCorner = handleId.length === 2;
+  if (lockAspect && isCorner && original.width > 0 && original.height > 0) {
+    const aspect = original.width / original.height;
+    const rawW = Math.abs(x2 - x1);
+    const rawH = Math.abs(y2 - y1);
+    const lockedW = Math.max(10, Math.max(rawW, rawH * aspect));
+    const lockedH = Math.max(10, lockedW / aspect);
+
+    // Anchor = corner opposite the dragged handle.
+    if (handleId.includes('e')) { x1 = left; x2 = left + lockedW; }
+    else { x2 = right; x1 = right - lockedW; }
+    if (handleId.includes('n')) { y1 = bottom; y2 = bottom + lockedH; }
+    else { y2 = top; y1 = top - lockedH; }
+  }
+
+  return {
+    x: Math.min(x1, x2),
+    y: Math.min(y1, y2),
+    width: Math.abs(x2 - x1),
+    height: Math.abs(y2 - y1),
+  };
+}

@@ -18,7 +18,7 @@ import {
   CanvasBufferLru,
   releaseCanvas,
 } from '../../pdf/canvasMemory';
-import { documentSessionStore } from '../../store/documentSessionStore';
+import { documentSessionStore, useDocumentSessionStore } from '../../store/documentSessionStore';
 import {
   documentIdentityKey,
   sameDocumentIdentity,
@@ -77,6 +77,11 @@ export function PageSidebar() {
   const identity: DocumentIdentity | null = activeDoc
     ? { docId: activeDoc.id, instanceId: activeDoc.instanceId }
     : null;
+  // Bumped by documentSessionStore.reloadSession after the pdf.js proxy was
+  // rebuilt from new bytes.
+  const bytesRevision = useDocumentSessionStore((state) => (
+    identity ? state.sessions.get(documentIdentityKey(identity))?.requestRevision ?? 0 : 0
+  ));
 
   return (
     <div className={`${styles.sidebar} ${sidebarOpen ? styles.sidebarExpanded : ''}`}>
@@ -105,7 +110,9 @@ export function PageSidebar() {
       {sidebarOpen && <div className={styles.panelContent}>
         {activeSidebarPanel === 'pages' && activeDoc && identity && (
           <PagesPanel
-            key={documentIdentityKey(identity)}
+            // Remount thumbnails when the PDF bytes were reloaded (page insertion,
+            // undo/redo of one) so no page shows another page's stale image.
+            key={`${documentIdentityKey(identity)}:${bytesRevision}`}
             identity={identity}
             pageCount={activeDoc.pageCount}
             activePage={activeDoc.activePageIndex}

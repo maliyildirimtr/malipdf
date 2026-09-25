@@ -31,6 +31,8 @@ export function WidthControl({ value, constraint, onChange, onCommit, onCancel }
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listId = useRef(`width-presets-${Math.random().toString(36).slice(2)}`);
+  // Set by Escape so the blur that follows does not commit the typed text.
+  const skipNextBlurCommitRef = useRef(false);
 
   const presets = WIDTH_PRESETS.filter(
     preset => preset >= constraint.min && preset <= constraint.max,
@@ -56,6 +58,10 @@ export function WidthControl({ value, constraint, onChange, onCommit, onCancel }
   }, [isOpen]);
 
   const commitInput = () => {
+    if (skipNextBlurCommitRef.current) {
+      skipNextBlurCommitRef.current = false;
+      return;
+    }
     const parsed = parseValue(inputValue);
     if (!Number.isFinite(parsed)) {
       setInputValue(formatValue(value));
@@ -65,6 +71,11 @@ export function WidthControl({ value, constraint, onChange, onCommit, onCancel }
     const clamped = Math.max(constraint.min, Math.min(constraint.max, parsed));
     const normalized = Math.round(clamped * 100) / 100;
     setInputValue(formatValue(normalized));
+    if (normalized === value) {
+      // Nothing changed: drop any live preview instead of creating an undo step.
+      onCancel?.();
+      return;
+    }
     onCommit(normalized);
   };
 
@@ -89,6 +100,7 @@ export function WidthControl({ value, constraint, onChange, onCommit, onCancel }
       setInputValue(formatValue(value));
       setIsOpen(false);
       onCancel?.();
+      skipNextBlurCommitRef.current = true;
       inputRef.current?.blur();
     } else if (event.key === 'ArrowDown') {
       event.preventDefault();

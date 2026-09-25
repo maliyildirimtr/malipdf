@@ -146,6 +146,7 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
         ui.setNewDocumentDialogOpen(true);
         return;
       case 'file.combine':
+        return; // not implemented (command is 'unavailable')
       case 'file.save':
         if (docId) void saveDocument(docId);
         return;
@@ -173,29 +174,25 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
         const annotationsStore = useAnnotationStore.getState();
         const historyStore = useHistoryStore.getState();
         const annotations = annotationsStore.getPageAnnotations(docId, sel.pageIndex);
-        
+        const selected = new Set(sel.selectedIds);
+
+        // Remove in z-order and record each position against the list as it
+        // is at that moment, so undo re-inserts every annotation exactly.
+        const remaining: typeof annotations = [];
         const actions: import('../store/historyStore').HistoryActionDraft[] = [];
-        for (const id of sel.selectedIds) {
-          const ann = annotations.find(a => a.id === id);
-          if (ann) {
-            annotationsStore.removeAnnotation(docId, sel.pageIndex, id);
-            actions.push({
-              type: 'REMOVE_ANNOTATION',
-              docId,
-              pageIndex: sel.pageIndex,
-              annotationId: id,
-              before: ann,
-              after: null,
-            });
+        for (const ann of annotations) {
+          if (!selected.has(ann.id)) {
+            remaining.push(ann);
+            continue;
           }
+          actions.push(makeRemoveAction(docId, ann, remaining.length));
         }
-        
-        if (actions.length === 1) {
-          historyStore.push(makeRemoveAction(docId, actions[0].before!));
-        } else if (actions.length > 1) {
-          historyStore.push(makeBatchAction(docId, actions));
+
+        if (actions.length > 0) {
+          annotationsStore.setPageAnnotations(docId, sel.pageIndex, remaining);
+          historyStore.push(actions.length === 1 ? actions[0] : makeBatchAction(docId, actions));
         }
-        
+
         selectionStore.clearSelection(activeIdentity);
         return;
       }
@@ -241,11 +238,19 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
       case 'help.open':
         return;
       case 'history.undo':
-        if (docId) executeUndo(docId);
+      case 'history.redo': {
+        // ⌘Z inside a text field edits that field, not the document history.
+        if (isEditableTarget(document.activeElement)) {
+          document.execCommand(commandId === 'history.undo' ? 'undo' : 'redo');
+          return;
+        }
+        // Never rewrite history under an in-progress gesture (drag, erase, …).
+        if (ui.isDrawing) return;
+        if (!docId) return;
+        if (commandId === 'history.undo') executeUndo(docId);
+        else executeRedo(docId);
         return;
-      case 'history.redo':
-        if (docId) executeRedo(docId);
-        return;
+      }
       case 'view.sidebar':
         ui.toggleSidebar();
         return;
@@ -304,68 +309,40 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
 
   useEffect(() => {
     if (!window.electronAPI?.updateCommandStates) return;
-    
-    // We must subscribe to the documents list explicitly to detect dirty state changes.
-    // The previous implementation missed this subscription.
-    const unsubscribe = useDocumentStore.subscribe((docState) => {
-      let hasAnyDirtyDocument = false;
-      let activeDocIsDirty = false;
-      const activeDocId = docState.activeDocId;
-      
-      for (const doc of docState.documents.values()) {
-        const dirty = doc.currentStateId !== doc.savedStateId;
-        if (dirty) hasAnyDirtyDocument = true;
-        if (dirty && doc.id === activeDocId) activeDocIsDirty = true;
-      }
-      
-      const activeIdentity = documentSessionStore.getState().activeIdentity;
-      let hasSelection = false;
-      if (activeIdentity) {
-        const sel = useSelectionStore.getState().getSelection(activeIdentity);
-        if (sel && sel.selectedIds.length > 0) hasSelection = true;
-      }
-      
+
+    // Native menu enabled/checked state is derived from four stores. Recompute
+    // on any of their changes, but only cross IPC when something actually
+    // changed (scrolling alone updates documentStore on every frame).
+    let lastSent = '';
+    const syncMenuState = () => {
       const context = {
-        hasDocument: activeDocId !== null,
-        canUndo: activeDocId ? (useHistoryStore.getState().histories.get(activeDocId)?.undoStack.length ?? 0) > 0 : false,
-        canRedo: activeDocId ? (useHistoryStore.getState().histories.get(activeDocId)?.redoStack.length ?? 0) > 0 : false,
-        hasSelection,
+        ...currentAvailabilityContext(),
         activeTool: useUIStore.getState().activeTool,
         sidebarOpen: useUIStore.getState().sidebarOpen,
         workspaceMode: useUIStore.getState().workspaceMode,
-        isDirty: activeDocIsDirty,
-        hasAnyDirtyDocument,
       };
-      
-      window.electronAPI.updateCommandStates(
-        (Object.keys(APP_COMMANDS) as AppCommandId[]).map((commandId) => ({
-          commandId,
-          enabled: isCommandAvailable(commandId, context),
-          checked: isCommandChecked(commandId, context),
-        })),
-      );
-    });
-    
-    // Also subscribe to history and UI stores so that undo/redo and selection trigger menu updates
-    const unsubscribeHistory = useHistoryStore.subscribe(() => {
-       // Since the updater logic is complex, we just trigger a dummy document update to re-run the menu sync
-       useDocumentStore.setState(s => ({ ...s }));
-    });
-    const unsubscribeUI = useUIStore.subscribe(() => {
-       useDocumentStore.setState(s => ({ ...s }));
-    });
-    const unsubscribeSelection = useSelectionStore.subscribe(() => {
-       useDocumentStore.setState(s => ({ ...s }));
-    });
-    
-    // Initial sync
-    useDocumentStore.setState(s => ({ ...s }));
-    
+      const states = (Object.keys(APP_COMMANDS) as AppCommandId[]).map((commandId) => ({
+        commandId,
+        enabled: isCommandAvailable(commandId, context),
+        checked: isCommandChecked(commandId, context),
+      }));
+      const serialized = JSON.stringify(states);
+      if (serialized === lastSent) return;
+      lastSent = serialized;
+      window.electronAPI.updateCommandStates(states);
+    };
+
+    const unsubscribers = [
+      useDocumentStore.subscribe(syncMenuState),
+      useHistoryStore.subscribe(syncMenuState),
+      useUIStore.subscribe(syncMenuState),
+      useSelectionStore.subscribe(syncMenuState),
+      documentSessionStore.subscribe(syncMenuState),
+    ];
+    syncMenuState();
+
     return () => {
-      unsubscribe();
-      unsubscribeHistory();
-      unsubscribeUI();
-      unsubscribeSelection();
+      for (const unsubscribe of unsubscribers) unsubscribe();
     };
   }, []);
 
@@ -397,17 +374,8 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
         }
       }
 
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'v') {
-        if (!isEditableTarget(event.target)) {
-          if (window.electronAPI?.readClipboardImage) {
-            void window.electronAPI.readClipboardImage().then((clip) => {
-              if (clip && clip.data && clip.data.byteLength > 0) {
-                void insertImageFromBytes(clip.data, clip.mimeType || 'image/png');
-              }
-            });
-          }
-        }
-      }
+      // ⌘V is handled only by the 'paste' listener below (the native Edit ▸
+      // Paste role fires it). Handling the keydown too inserted images twice.
 
       if (event.key === 'Escape'
         && !isEditableTarget(event.target)

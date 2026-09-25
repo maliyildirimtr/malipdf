@@ -285,6 +285,13 @@ export interface HistoryAction {
   docId: string;
   pageIndex?: number;
   annotationId?: string;
+  /**
+   * Array position of the annotation on its page (z-order). For REMOVE it is the
+   * position it was removed from; for ADD the position it was inserted at.
+   * Undo/redo re-inserts at this position so stacking order is preserved.
+   * Undefined means "append" (legacy behaviour).
+   */
+  index?: number;
   before?: Annotation | null;   // State before action
   after?: Annotation | null;    // State after action
   actions?: Omit<HistoryAction, 'beforeStateId' | 'afterStateId'>[]; // For batch actions

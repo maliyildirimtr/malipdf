@@ -74,7 +74,7 @@ import {
 } from '../../pdf/annotationRenderer';
 import { FloatingInspector } from '../Properties/FloatingInspector';
 import { getAnnotationBounds, getGroupBounds } from '../../pdf/annotationGeometry';
-import { translateAnnotation, scaleAnnotationFromBounds } from '../../pdf/annotationTransform';
+import { translateAnnotation, scaleAnnotationFromBounds, computeResizeTargetBounds } from '../../pdf/annotationTransform';
 import {
   hitTestAnnotations,
   hitTestSelectedBounds,
@@ -84,7 +84,7 @@ import {
   rectsIntersect,
   hitTestMarquee,
 } from '../../pdf/annotationHitTest';
-import { splitStrokePath, generateId } from '../../pdf/eraserGeometry';
+import { eraseStrokePath, generateId } from '../../pdf/eraserGeometry';
 import type { ResizeHandle } from '../../pdf/annotationHitTest';
 import { nanoid } from '../../utils/nanoid';
 import {
@@ -201,16 +201,23 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
   // React state only for text overlay (needs DOM update)
   const [textOverlay, setTextOverlay] = useState<TextOverlay | null>(null);
 
-  const { toolOptions, activeTool, temporaryTool, setIsDrawing } = useUIStore();
+  // Narrow selectors: whole-store subscriptions re-rendered every mounted page
+  // on any unrelated UI / annotation / history change.
+  const toolOptions = useUIStore(state => state.toolOptions);
+  const activeTool = useUIStore(state => state.activeTool);
+  const temporaryTool = useUIStore(state => state.temporaryTool);
+  const setIsDrawing = useUIStore(state => state.setIsDrawing);
   const interactionTool = temporaryTool ?? activeTool;
-  const { addAnnotation, removeAnnotation, replaceAnnotation, getPageAnnotations } = useAnnotationStore();
+  const addAnnotation = useAnnotationStore(state => state.addAnnotation);
+  const replaceAnnotation = useAnnotationStore(state => state.replaceAnnotation);
+  const getPageAnnotations = useAnnotationStore(state => state.getPageAnnotations);
   // IMPORTANT: fallback MUST be the stable EMPTY_ANNOTATIONS constant (never `|| []`).
   // Returning a new `[]` literal every render causes an infinite re-render loop
   // because Zustand uses reference equality to detect changes.
   const annotations = useAnnotationStore(
     state => state.docAnnotations.get(docId)?.pages.get(pageIndex)?.annotations ?? EMPTY_ANNOTATIONS
   );
-  const { push: pushHistory } = useHistoryStore();
+  const pushHistory = useHistoryStore(state => state.push);
   const identity: DocumentIdentity = useMemo(
     () => ({ docId, instanceId }),
     [docId, instanceId],
@@ -425,9 +432,8 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
         opacity: toolOptions.shape.opacity, locked: false, createdAt: 0, updatedAt: 0
       };
       
-      const dpr = window.devicePixelRatio || 1;
       ctx.save();
-      ctx.scale(dpr, dpr);
+      ctx.scale(dpr, dpr); // same clamped output scale as the canvas backing store
       renderFreeform(ctx, tempAnn, transform);
       ctx.restore();
     } else if (m === 'shapeDrawing' && shapeStart.current) {
@@ -813,7 +819,6 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     if (m === 'moving' && moveAnchor.current) {
       moveAnchor.current = { screenX, screenY, pdfX: pdfPt.x, pdfY: pdfPt.y };
       schedulePreviewRender();
-      console.log('onPointerMove tracking move... dx:', moveAnchor.current.pdfX - (shapeStart.current?.pdfX ?? 0));
       return;
     }
 
@@ -853,9 +858,9 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     }
 
     if (m === 'freeformDrawing') {
-      const startPtPdf = activePoints.current[0];
-      if (startPtPdf && activePoints.current.length >= 3) {
-        const startPtScreen = pdfToScreen(startPtPdf.x, startPtPdf.y, transform);
+      // activePoints are screen-space (CSS px) while drawing a polygon.
+      const startPtScreen = activePoints.current[0];
+      if (startPtScreen && activePoints.current.length >= 3) {
         const { screenX, screenY } = getPagePoint(e);
         const distToStart = Math.hypot(screenX - startPtScreen.x, screenY - startPtScreen.y);
         if (distToStart < 12) {
@@ -882,6 +887,14 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
   }
 
   function onPointerCancel() {
+    cancelActiveInteraction();
+  }
+
+  // Capture lost without a pointerup/pointercancel (OS focus change, window
+  // hidden for a screenshot, …): abandon the gesture instead of leaving it armed.
+  function onLostPointerCapture(e: React.PointerEvent<HTMLDivElement>) {
+    if (activePointerIdRef.current !== e.pointerId) return;
+    if (mode.current === 'idle' || mode.current === 'freeformDrawing') return;
     cancelActiveInteraction();
   }
 
@@ -999,6 +1012,11 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     // ensuring we don't double-split or lose track of original annotations.
     let changed = false;
 
+    const sweepMinX = Math.min(prevPdfPt.x, currentPdfPt.x);
+    const sweepMaxX = Math.max(prevPdfPt.x, currentPdfPt.x);
+    const sweepMinY = Math.min(prevPdfPt.y, currentPdfPt.y);
+    const sweepMaxY = Math.max(prevPdfPt.y, currentPdfPt.y);
+
     // For object erasing, we can use the existing eraserHitTest on current and prev points
     const objectHits = new Set<string>();
     if (toolOptions.eraser.mode === 'object') {
@@ -1021,20 +1039,26 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
            changed = true;
         }
       } else if (toolOptions.eraser.mode === 'stroke' && (ann.type === 'stroke' || ann.type === 'highlight')) {
+        // Cheap reject: skip strokes whose padded bounds miss the eraser capsule.
+        const bounds = getAnnotationBounds(ann);
+        const reach = eraserRadiusPdf;
+        if (bounds.x - reach > sweepMaxX || bounds.x + bounds.width + reach < sweepMinX
+          || bounds.y - reach > sweepMaxY || bounds.y + bounds.height + reach < sweepMinY) {
+          continue;
+        }
+
         // Find existing segments or use original points
         const pointsToSplit = (existingHit?.type === 'split') ? existingHit.segments : [ann.points];
-        
-        let newSegments: InputPoint[][] = [];
+
+        const newSegments: InputPoint[][] = [];
         let didSplit = false;
-        
+
         for (const segment of pointsToSplit) {
-          const splitResult = splitStrokePath(segment, ann.width, prevPdfPt, currentPdfPt, eraserRadiusPdf);
-          if (splitResult.length !== 1 || splitResult[0].length !== segment.length) {
-            didSplit = true;
-          }
-          newSegments.push(...splitResult);
+          const result = eraseStrokePath(segment, ann.width, prevPdfPt, currentPdfPt, eraserRadiusPdf);
+          if (result.erased) didSplit = true;
+          newSegments.push(...result.segments);
         }
-        
+
         if (didSplit) {
           if (newSegments.length === 0) {
              eraserHitsRef.current.set(ann.id, { type: 'delete' });
@@ -1056,57 +1080,57 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
 
   function commitEraser() {
     if (eraserHitsRef.current.size === 0) return;
-    
-    const { addAnnotation, removeAnnotation } = useAnnotationStore.getState();
-    const actions: HistoryActionDraft[] = [];
 
-    for (const [id, hit] of Array.from(eraserHitsRef.current.entries())) {
-      const originalAnn = originalEraserSnapshotRef.current.find(a => a.id === id);
-      if (!originalAnn) continue;
-      
-      if (hit.type === 'delete') {
-        removeAnnotation(docId, pageIndex, id);
-        actions.push({
-          type: 'REMOVE_ANNOTATION',
-          docId,
-          pageIndex,
-          annotationId: id,
-          before: originalAnn,
-          after: null,
-        });
-      } else if (hit.type === 'split' && (originalAnn.type === 'stroke' || originalAnn.type === 'highlight')) {
-        // Remove original
-        removeAnnotation(docId, pageIndex, id);
-        actions.push({
-          type: 'REMOVE_ANNOTATION',
-          docId,
-          pageIndex,
-          annotationId: id,
-          before: originalAnn,
-          after: null,
-        });
-        
-        // Add new segments
+    const annotationStore = useAnnotationStore.getState();
+    const current = annotationStore.getPageAnnotations(docId, pageIndex);
+    const nextAnnotations: Annotation[] = [];
+    const actions: HistoryActionDraft[] = [];
+    const now = Date.now();
+
+    // Walk the page in z-order. Split pieces take the erased stroke's place and
+    // every action records its array index, so undo/redo restore stacking
+    // order exactly (actions replay sequentially against the evolving list).
+    for (const ann of current) {
+      const hit = eraserHitsRef.current.get(ann.id);
+      const original = hit ? originalEraserSnapshotRef.current.find(a => a.id === ann.id) : undefined;
+      if (!hit || !original) {
+        nextAnnotations.push(ann);
+        continue;
+      }
+
+      const position = nextAnnotations.length;
+      actions.push({
+        type: 'REMOVE_ANNOTATION',
+        docId,
+        pageIndex,
+        annotationId: ann.id,
+        index: position,
+        before: ann,
+        after: null,
+      });
+
+      if (hit.type === 'split' && (original.type === 'stroke' || original.type === 'highlight')) {
         for (const pts of hit.segments) {
-          const newId = generateId();
-          const newAnn = { ...originalAnn, id: newId, points: pts, updatedAt: Date.now() };
-          addAnnotation(docId, newAnn);
+          const piece = { ...original, id: generateId(), points: pts, updatedAt: now } as Annotation;
           actions.push({
             type: 'ADD_ANNOTATION',
             docId,
             pageIndex,
-            annotationId: newId,
+            annotationId: piece.id,
+            index: nextAnnotations.length,
             before: null,
-            after: newAnn,
+            after: piece,
           });
+          nextAnnotations.push(piece);
         }
       }
     }
-    
+
     if (actions.length > 0) {
+      annotationStore.setPageAnnotations(docId, pageIndex, nextAnnotations);
       pushHistory(makeBatchAction(docId, actions));
     }
-    
+
     eraserHitsRef.current.clear();
     originalEraserSnapshotRef.current = [];
     lastEraserPointRef.current = null;
@@ -1227,51 +1251,17 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     if (!originalGroupBounds.current || !resizeHandle.current || !moveAnchor.current) {
       return { x: 0, y: 0, width: 0, height: 0 };
     }
-    const ob = originalGroupBounds.current;
-    let { x: x1, y: y1 } = ob;
-    let x2 = ob.x + ob.width;
-    let y2 = ob.y + ob.height;
-    
-    const { pdfX, pdfY } = moveAnchor.current;
-    const handleId = resizeHandle.current.id;
-    
-    if (handleId.includes('n')) y1 = pdfY;
-    if (handleId.includes('s')) y2 = pdfY;
-    if (handleId.includes('w')) x1 = pdfX;
-    if (handleId.includes('e')) x2 = pdfX;
-    
-    // Single image aspect ratio locking on corner handles (Correction 18)
-    if (gestureSelectedIdsRef.current.length === 1 && ['nw', 'ne', 'sw', 'se'].includes(handleId) && !shiftKeyRef.current) {
-      const singleAnn = moveBefore.current.get(gestureSelectedIdsRef.current[0]);
-      if (singleAnn?.type === 'image' && ob.width > 0 && ob.height > 0) {
-        const aspect = ob.width / ob.height;
-        const rawW = Math.abs(x2 - x1);
-        const rawH = Math.abs(y2 - y1);
-        const lockedW = Math.max(10, Math.round(Math.max(rawW, rawH * aspect)));
-        const lockedH = Math.max(10, Math.round(lockedW / aspect));
-
-        if (handleId === 'se') {
-          x2 = ob.x + lockedW;
-          y2 = ob.y + lockedH;
-        } else if (handleId === 'sw') {
-          x1 = ob.x + ob.width - lockedW;
-          y2 = ob.y + lockedH;
-        } else if (handleId === 'ne') {
-          x2 = ob.x + lockedW;
-          y1 = ob.y + ob.height - lockedH;
-        } else if (handleId === 'nw') {
-          x1 = ob.x + ob.width - lockedW;
-          y1 = ob.y + ob.height - lockedH;
-        }
-      }
-    }
-
-    return {
-      x: Math.min(x1, x2),
-      y: Math.min(y1, y2),
-      width: Math.abs(x2 - x1),
-      height: Math.abs(y2 - y1)
-    };
+    const singleAnn = gestureSelectedIdsRef.current.length === 1
+      ? moveBefore.current.get(gestureSelectedIdsRef.current[0])
+      : undefined;
+    // Single image: corner handles keep the aspect ratio unless Shift is held.
+    const lockAspect = singleAnn?.type === 'image' && !shiftKeyRef.current;
+    return computeResizeTargetBounds(
+      originalGroupBounds.current,
+      resizeHandle.current.id,
+      { x: moveAnchor.current.pdfX, y: moveAnchor.current.pdfY },
+      lockAspect,
+    );
   }
 
   function cancelActiveInteraction(): boolean {
@@ -1330,6 +1320,14 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     document.addEventListener(CANCEL_ACTIVE_INTERACTION_EVENT, handleCancelRequest);
     return () => document.removeEventListener(CANCEL_ACTIVE_INTERACTION_EVENT, handleCancelRequest);
   });
+
+  // Page unmounted mid-gesture (tab switch, virtualization): do not leave the
+  // app believing a drawing is still in progress.
+  useEffect(() => () => {
+    if (mode.current !== 'idle' || textEditingRef.current) {
+      useUIStore.getState().setIsDrawing(false);
+    }
+  }, []);
 
   // ── Text overlay ──────────────────────────────────────────────────────────
 
@@ -1444,7 +1442,9 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
         const buffer = await file.arrayBuffer();
         const asset = await normalizeAndCreateImageAsset(buffer, mime);
 
-        if (!isInsertTargetValid(targetSnapshot)) return;
+        // Target gone (closed/reloaded): stop, but still record history for
+        // images already added so nothing is left untracked.
+        if (!isInsertTargetValid(targetSnapshot)) break;
 
         const bounds = calculateDefaultImageBounds(
           asset.width,
@@ -1587,6 +1587,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerCancel}
+        onLostPointerCapture={onLostPointerCapture}
         onContextMenu={(e) => e.preventDefault()}
         onDragOver={(e) => {
           if (e.dataTransfer.types.includes('Files')) {

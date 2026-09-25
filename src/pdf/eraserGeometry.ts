@@ -229,3 +229,47 @@ export function splitStrokePath(
 export function generateId(): string {
   return crypto.randomUUID();
 }
+
+export interface StrokeEraseResult {
+  /** True only when the eraser actually touched this stroke. */
+  readonly erased: boolean;
+  /** Remaining pieces. When `erased` is false this is the untouched input. */
+  readonly segments: InputPoint[][];
+}
+
+/**
+ * Erase-aware wrapper around splitStrokePath.
+ *
+ * splitStrokePath always resamples its input, so its output can never be
+ * compared with the input to decide whether anything was erased. This first
+ * runs an exact swept-capsule test on the original polyline and returns the
+ * original points unchanged when the eraser did not touch the stroke.
+ */
+export function eraseStrokePath(
+  points: InputPoint[],
+  strokeWidth: number,
+  eraserStart: PdfPoint,
+  eraserEnd: PdfPoint,
+  eraserRadius: number,
+): StrokeEraseResult {
+  if (points.length === 0) return { erased: false, segments: [] };
+  const combinedRadius = eraserRadius + strokeWidth / 2;
+
+  let touched = false;
+  if (points.length === 1) {
+    touched = sweptPathIntersectsPoint(points[0], eraserStart, eraserEnd, combinedRadius);
+  } else {
+    for (let i = 1; i < points.length; i++) {
+      if (sweptPathIntersectsSegment(points[i - 1], points[i], eraserStart, eraserEnd, combinedRadius)) {
+        touched = true;
+        break;
+      }
+    }
+  }
+
+  if (!touched) return { erased: false, segments: [points] };
+  return {
+    erased: true,
+    segments: splitStrokePath(points, strokeWidth, eraserStart, eraserEnd, eraserRadius),
+  };
+}

@@ -334,13 +334,12 @@ describe('annotation exporter safety contract', () => {
     expect((snapshot.get(0)?.[0] as StrokeAnnotation).points[0].x).toBe(anchor.x);
   });
 
-  it('rejects re-flattening an already exported source with the same live annotation set', async () => {
-    const annotations = mapOf(shape('line'));
-    const first = await exportAnnotatedPdf(await createSource({}), annotations);
-    await expect(exportAnnotatedPdf(first.data, annotations)).rejects.toMatchObject({
-      name: 'AnnotationExportError',
-      code: 'SOURCE_ALREADY_FLATTENED',
-    });
+  it('allows saving new live annotations on top of a previously saved (flattened) MaliPDF file', async () => {
+    const first = await exportAnnotatedPdf(await createSource({}), mapOf(shape('line')));
+    const second = await exportAnnotatedPdf(first.data, mapOf(shape('rectangle')));
+    expect(second.annotationCount).toBe(1);
+    const reloaded = await PDFDocument.load(second.data);
+    expect(reloaded.getPageCount()).toBe(1);
   });
 });
 

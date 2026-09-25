@@ -28,7 +28,7 @@ import { useDocumentStore } from './store/documentStore';
 import { useAnnotationStore } from './store/annotationStore';
 import { useAssetStore } from './store/assetStore';
 import { useImportJobStore } from './store/importJobStore';
-import { exportAndSave } from './pdf/annotationExporter';
+import { exportAndSave, loadDefaultExportFonts } from './pdf/annotationExporter';
 import { useAppCommands } from './commands';
 import { NewDocumentDialog } from './components/NewDocumentDialog/NewDocumentDialog';
 
@@ -47,7 +47,7 @@ let toastCounter = 0;
 // ─── Import Job Overlay ───────────────────────────────────────────────────────
 
 function ImportJobOverlay() {
-  const { job, cancelJob } = useImportJobStore();
+  const { job, cancelJob, clearJob } = useImportJobStore();
 
   if (!job) return null;
 
@@ -55,7 +55,7 @@ function ImportJobOverlay() {
     <div style={styles.importOverlay}>
       <div style={styles.importBox}>
         <div style={styles.importHeader}>
-          <strong>Importing Printout…</strong>
+          <strong>{job.status === 'failed' ? 'Printout Import' : 'Importing Printout…'}</strong>
           {job.status === 'failed' ? (
             <span style={{ color: '#fca5a5' }}>Failed</span>
           ) : job.status === 'cancelled' ? (
@@ -80,6 +80,11 @@ function ImportJobOverlay() {
         {(job.status === 'loading' || job.status === 'converting' || job.status === 'preparing' || job.status === 'rendering') && (
           <button style={styles.cancelButton} onClick={cancelJob}>
             Cancel
+          </button>
+        )}
+        {(job.status === 'failed' || job.status === 'cancelled' || job.status === 'completed') && (
+          <button style={styles.cancelButton} onClick={clearJob}>
+            Dismiss
           </button>
         )}
       </div>
@@ -129,6 +134,20 @@ export default function App() {
     return () => mediaQuery.removeEventListener('change', applyTheme);
   }, [theme, setResolvedTheme]);
 
+  // ── Save error surfacing ───────────────────────────────────────────────
+  // saveCommands records failures on the document; show each new one once.
+
+  useEffect(() => {
+    return useDocumentStore.subscribe((state, previous) => {
+      for (const doc of state.documents.values()) {
+        if (doc.saveStatus !== 'error') continue;
+        const before = previous.documents.get(doc.id);
+        if (before?.saveStatus === 'error' && before.lastSaveError === doc.lastSaveError) continue;
+        showToast('error', `Save failed (${doc.title}): ${doc.lastSaveError ?? 'Unknown error'}`);
+      }
+    });
+  }, [showToast]);
+
   // ── Export PDF handler ────────────────────────────────────────────────
 
   const handleExportPdf = useCallback(async () => {
@@ -157,7 +176,9 @@ export default function App() {
     try {
       const baseName = activeDoc.title.replace(/\.pdf$/i, '') + '_annotated.pdf';
       const assets = useAssetStore.getState().getAssetsForDocument({ docId: activeDoc.id, instanceId: activeDoc.instanceId });
-      const saved = await exportAndSave(activeDoc.sourceData, docAnnotState, baseName, { assets });
+      const hasText = [...docAnnotState.pages.values()].some((page) => page.annotations.some((a) => a.type === 'text'));
+      const fonts = hasText ? await loadDefaultExportFonts() : undefined;
+      const saved = await exportAndSave(activeDoc.sourceData, docAnnotState, baseName, { assets, fonts });
       if (saved) {
         showToast('success', 'PDF exported successfully.');
       }

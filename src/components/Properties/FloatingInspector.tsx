@@ -54,6 +54,14 @@ export const FloatingInspector = React.memo(function FloatingInspector({
       if ('opacity' in raw) patch.opacity = raw.opacity;
       return patch as Partial<Annotation>;
     }
+    if (ann.type === 'freeform') {
+      const patch: Record<string, unknown> = {};
+      if ('strokeWidth' in raw) patch.strokeWidth = raw.strokeWidth;
+      if ('color' in raw) patch.color = raw.color;
+      if ('opacity' in raw) patch.opacity = raw.opacity;
+      if ('fillColor' in raw) patch.fillColor = raw.fillColor;
+      return patch as Partial<Annotation>;
+    }
     if (ann.type === 'shape') {
       const patch: Partial<ShapeAnnotation> = {};
       if ('strokeWidth' in raw) patch.strokeWidth = raw.strokeWidth as number;
@@ -87,6 +95,11 @@ export const FloatingInspector = React.memo(function FloatingInspector({
     const patch = buildPatch(raw);
     // Clear transient first
     setTransientStyle(identity, pageIndex, ann.id, undefined);
+    // No real change (e.g. blur without editing): no store write, no undo step.
+    const changed = Object.entries(patch).some(
+      ([key, value]) => (ann as unknown as Record<string, unknown>)[key] !== value,
+    );
+    if (!changed) return;
     // Persist to store
     const after = { ...ann, ...patch } as Annotation;
     updateAnnotation(identity.docId, pageIndex, ann.id, patch);
@@ -207,6 +220,11 @@ export const FloatingInspector = React.memo(function FloatingInspector({
     currentOpacity = annotation.opacity ?? 1;
     currentBorderStyle = annotation.borderStyle || 'solid';
     currentFillColor = annotation.fillColor || 'transparent';
+  } else if (annotation.type === 'freeform') {
+    currentWidth = annotation.strokeWidth;
+    currentColor = annotation.color || '#000000';
+    currentOpacity = annotation.opacity ?? 1;
+    currentFillColor = annotation.fillColor || 'transparent';
   } else if (annotation.type === 'text') {
     currentColor = annotation.color || '#000000';
   } else if (annotation.type === 'image') {
@@ -218,8 +236,8 @@ export const FloatingInspector = React.memo(function FloatingInspector({
   const hasStrokeColor = annotation.type !== 'image';
   const hasWidth = annotation.type !== 'text' && annotation.type !== 'image';
   const hasBorderStyle = annotation.type === 'shape';
-  const hasFill = annotation.type === 'shape';
-  const hasOpacity = annotation.type === 'stroke' || annotation.type === 'highlight' || annotation.type === 'shape' || annotation.type === 'image';
+  const hasFill = annotation.type === 'shape' || annotation.type === 'freeform';
+  const hasOpacity = annotation.type === 'stroke' || annotation.type === 'highlight' || annotation.type === 'shape' || annotation.type === 'freeform' || annotation.type === 'image';
 
   const content = (
     <div
@@ -271,14 +289,14 @@ export const FloatingInspector = React.memo(function FloatingInspector({
               value={currentWidth}
               constraint={widthConstraint}
               onChange={(w) => {
-                if (annotation.type === 'shape') {
+                if (annotation.type === 'shape' || annotation.type === 'freeform') {
                   handlePropertyChange({ strokeWidth: w });
                 } else {
                   handlePropertyChange({ width: w });
                 }
               }}
               onCommit={(w) => {
-                if (annotation.type === 'shape') {
+                if (annotation.type === 'shape' || annotation.type === 'freeform') {
                   handlePropertyCommit({ strokeWidth: w });
                 } else {
                   handlePropertyCommit({ width: w });

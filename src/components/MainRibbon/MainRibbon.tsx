@@ -21,6 +21,7 @@ import {
   MoreHorizontal,
   MousePointer2,
   Pen,
+  Presentation,
   RectangleHorizontal,
   Redo2,
   RotateCcw,
@@ -218,6 +219,13 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
             icon={FileText}
             onCommand={runCommand}
             enabled={isEnabled('insert.printoutPdf')}
+          />
+          <CommandButton
+            commandId="insert.printoutPptx"
+            label="Insert PowerPoint…"
+            icon={Presentation}
+            onCommand={runCommand}
+            enabled={isEnabled('insert.printoutPptx')}
           />
           <CommandButton
             commandId="insert.screenshot"
@@ -421,7 +429,6 @@ function CommandButton({ commandId, label, shortcut, icon: Icon, enabled, onComm
       type="button"
       className={`${styles.commandButton} ${pressed ? styles.commandButtonPressed : ''} ${!enabled ? styles.commandButtonDisabled : ''} ${className}`}
       onClick={() => {
-        console.log(`[CommandButton] Clicked: ${commandId}, enabled: ${enabled}`);
         if (enabled) onCommand(commandId);
       }}
       title={title}
@@ -446,7 +453,6 @@ function ToolButton({ tool, activeTool, onCommand, enabled }: { tool: ToolType; 
       type="button"
       className={`${styles.commandButton} ${selected ? styles.toolButtonActive : ''} ${!enabled ? styles.commandButtonDisabled : ''}`}
       onClick={() => {
-        console.log(`[ToolButton] Clicked: ${definition.commandId}, enabled: ${enabled}`);
         if (enabled) onCommand(definition.commandId);
       }}
       title={title}

@@ -39,9 +39,15 @@ const mocks = vi.hoisted(() => {
     loadURL = vi.fn();
     show = vi.fn();
     close = vi.fn();
+    destroyed = false;
+    isDestroyed = () => this.destroyed;
     webContents = {
       send: vi.fn(),
       openDevTools: vi.fn(),
+      on: vi.fn(),
+      setWindowOpenHandler: vi.fn(),
+      isDestroyed: () => false,
+      isCrashed: () => false,
     };
   }
   
@@ -134,45 +140,63 @@ describe('Electron Main Process Guard & Lifecycle', () => {
   });
 
   describe('App Quit Guard', () => {
-    it('prevents quit and starts handshake, handles timeout, ignores stale allows', () => {
-      // 1. Initial quit attempt
+    const quitRequests = () => (MockBrowserWindow as any)._lastInstance.webContents.send.mock.calls
+      .filter((c: any) => c[0] === 'command:execute' && c[1] === 'app.requestQuit');
+    const closeRequests = () => (MockBrowserWindow as any)._lastInstance.webContents.send.mock.calls
+      .filter((c: any) => c[0] === 'command:execute' && c[1] === 'app.requestCloseWindow');
+
+    it('can still quit after the window was closed (macOS keeps the app alive)', () => {
+      const win = (MockBrowserWindow as any)._lastInstance;
+      const closeEvent = { preventDefault: vi.fn() };
+      win.emit('close', closeEvent);
+      expect(closeEvent.preventDefault).toHaveBeenCalled();
+      const closeId = closeRequests().at(-1)[2];
+      confirmLifecycleHandler(null, closeId, true);
+      expect(win.close).toHaveBeenCalled();
+
+      // Window actually goes away.
+      win.emit('close', { preventDefault: vi.fn() });
+      win.destroyed = true;
+      win.emit('closed');
+
+      // Quit (Cmd+Q / SIGTERM) must not be blocked by the old request.
       const quitEvent = { preventDefault: vi.fn() };
       mockApp.emit('before-quit', quitEvent);
-      
+      expect(quitEvent.preventDefault).not.toHaveBeenCalled();
+    });
+    it('asks the renderer, waits without a timeout, ignores stale answers, then quits', () => {
+      // The previous test closed the window; macOS re-creates it on activate.
+      mockApp.emit('activate');
+      const quitEvent = { preventDefault: vi.fn() };
+      mockApp.emit('before-quit', quitEvent);
       expect(quitEvent.preventDefault).toHaveBeenCalled();
-      
-      // A command is sent to the renderer with a UUID request ID
-      const sendCommandArgs = (MockBrowserWindow as any)._lastInstance.webContents.send.mock.calls.find((c: any) => c[0] === 'command:execute' && c[1] === 'app.requestQuit');
-      expect(sendCommandArgs).toBeDefined();
-      const requestId = sendCommandArgs[2];
+      const requestId = quitRequests()[0][2];
       expect(requestId).toHaveLength(36);
 
-      // 2. Timeout simulation -> stays running
-      vi.advanceTimersByTime(5000);
-      
-      // 3. Stale allow after timeout -> ignored
-      confirmLifecycleHandler(null, requestId, true);
-      expect(mockApp.quit).not.toHaveBeenCalled();
-      
-      // 4. Start a new quit attempt
-      const quitEvent2 = { preventDefault: vi.fn() };
-      mockApp.emit('before-quit', quitEvent2);
-      
-      const newSendCommandArgs = (MockBrowserWindow as any)._lastInstance.webContents.send.mock.calls.filter((c: any) => c[0] === 'command:execute' && c[1] === 'app.requestQuit')[1];
-      const newRequestId = newSendCommandArgs[2];
-      
-      // 5. Cancel response -> stays running
-      confirmLifecycleHandler(null, newRequestId, false);
-      expect(mockApp.quit).not.toHaveBeenCalled();
-      
-      // 6. Another quit attempt
-      const quitEvent3 = { preventDefault: vi.fn() };
-      mockApp.emit('before-quit', quitEvent3);
-      const finalRequestId = (MockBrowserWindow as any)._lastInstance.webContents.send.mock.calls.filter((c: any) => c[0] === 'command:execute' && c[1] === 'app.requestQuit')[2][2];
+      // A second quit while waiting does not start another request.
+      mockApp.emit('before-quit', { preventDefault: vi.fn() });
+      expect(quitRequests()).toHaveLength(1);
 
-      // 7. Successful allow -> app.quit() is called again
-      confirmLifecycleHandler(null, finalRequestId, true);
+      // The user may take a long time in the Save dialog: no timeout.
+      vi.advanceTimersByTime(60_000);
+
+      // Stale / foreign ids are ignored.
+      confirmLifecycleHandler(null, 'not-the-request', true);
+      expect(mockApp.quit).not.toHaveBeenCalled();
+
+      // Cancel keeps the app running and clears the request.
+      confirmLifecycleHandler(null, requestId, false);
+      expect(mockApp.quit).not.toHaveBeenCalled();
+
+      // A new attempt, allowed -> app.quit(), and the follow-up before-quit passes.
+      mockApp.emit('before-quit', { preventDefault: vi.fn() });
+      const secondId = quitRequests()[1][2];
+      confirmLifecycleHandler(null, secondId, true);
       expect(mockApp.quit).toHaveBeenCalledTimes(1);
+      const finalEvent = { preventDefault: vi.fn() };
+      mockApp.emit('before-quit', finalEvent);
+      expect(finalEvent.preventDefault).not.toHaveBeenCalled();
     });
+
   });
 });

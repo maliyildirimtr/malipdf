@@ -1,6 +1,6 @@
 import { loadPdfDocument, loadPage, renderPage } from './renderer';
 import { calculatePrintoutRasterSize } from './printoutRasterSize';
-import { nanoid } from 'nanoid';
+import { nanoid } from '../utils/nanoid';
 import type { ImageAsset } from '../store/assetStore';
 
 export const PRINT_OUT_TARGET_DPI = 144;
@@ -20,17 +20,20 @@ export interface PrintoutGeneratorOptions {
   sourcePdfBytes: Uint8Array;
   signal: AbortSignal;
   onProgress?: () => void;
+  onTotalPages?: (total: number) => void;
 }
 
 export async function generatePrintoutPages({
   sourcePdfBytes,
   signal,
   onProgress,
+  onTotalPages,
 }: PrintoutGeneratorOptions): Promise<PreparedPrintoutPage[]> {
   if (signal.aborted) throw new Error('Printout import cancelled');
 
   const pdfDoc = await loadPdfDocument(sourcePdfBytes);
   const totalPages = pdfDoc.numPages;
+  onTotalPages?.(totalPages);
 
   try {
     const results: PreparedPrintoutPage[] = new Array(totalPages);
@@ -104,9 +107,13 @@ async function generateSinglePage(
     });
 
     // Check for cancellation inside render
-    signal.addEventListener('abort', () => renderTask.cancel());
-
-    await renderTask.promise;
+    const cancelRender = () => renderTask.cancel();
+    signal.addEventListener('abort', cancelRender);
+    try {
+      await renderTask.promise;
+    } finally {
+      signal.removeEventListener('abort', cancelRender);
+    }
 
     if (signal.aborted) throw new Error('Printout import cancelled');
 

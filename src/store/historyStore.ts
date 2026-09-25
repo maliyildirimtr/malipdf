@@ -186,12 +186,14 @@ export function makeAddAction(
 export function makeRemoveAction(
   docId: string,
   annotation: Annotation,
+  index?: number,
 ): HistoryActionDraft {
   return {
     type: 'REMOVE_ANNOTATION',
     docId,
     pageIndex: annotation.pageIndex,
     annotationId: annotation.id,
+    ...(index === undefined ? {} : { index }),
     before: annotation,
     after: null,
   };
