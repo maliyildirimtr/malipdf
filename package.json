@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "concurrently -k \"npm run dev:vite\" \"npm run dev:electron\"",
     "dev:vite": "vite",
-    "dev:electron": "wait-on tcp:5173 && cross-env NODE_ENV=development electron .",
+    "dev:electron": "wait-on tcp:5173 && npm run build:electron && cross-env NODE_ENV=development electron .",
     "build": "npm run build:vite && npm run build:electron",
     "build:vite": "tsc && vite build",
     "build:electron": "tsc -p tsconfig.electron.json",
@@ -17,6 +17,7 @@
     "test:coordinate": "vitest run src/pdf/__tests__"
   },
   "dependencies": {
+    "@pdf-lib/fontkit": "^1.1.1",
     "lucide-react": "^0.441.0",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "4.4.168",

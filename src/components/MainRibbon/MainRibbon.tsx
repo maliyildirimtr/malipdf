@@ -6,17 +6,22 @@ import {
   ArrowRight,
   Check,
   Circle,
+  Crop,
   Eraser,
   Focus,
   FolderOpen,
+  FileText,
   Hand,
+  Hexagon,
   Highlighter,
+  Image as ImageIcon,
   Maximize2,
   Minus,
+  Monitor,
   MoreHorizontal,
   MousePointer2,
-  PanelLeft,
   Pen,
+  Presentation,
   RectangleHorizontal,
   Redo2,
   RotateCcw,
@@ -35,12 +40,12 @@ import { useDocumentStore } from '../../store/documentStore';
 import { useUIStore } from '../../store/uiStore';
 import type { TextAlign, ToolType } from '../../types/annotations';
 import { ColorWell } from './ColorWell';
-import { OpacityControl, StrokeWidthControl } from './PropertyControls';
+import { OpacityControl } from './PropertyControls';
+import { TOOL_WIDTH_CONSTRAINTS } from '../../constants/toolConstraints';
+import { WidthControl } from '../Properties/WidthControl';
+import { BorderStyleControl } from '../Properties/BorderStyleControl';
 import styles from './MainRibbon.module.css';
 
-const PEN_WIDTHS = [1, 2, 3, 5, 8] as const;
-const HIGHLIGHTER_WIDTHS = [10, 16, 22, 30] as const;
-const SHAPE_WIDTHS = [1, 2, 3, 4, 6] as const;
 const FONT_FAMILIES = ['Inter, sans-serif', 'Georgia, serif', 'Courier New, monospace'] as const;
 const FONT_SIZES = [10, 12, 14, 16, 18, 24, 32] as const;
 
@@ -61,12 +66,16 @@ const TOOL_DEFINITIONS: Record<ToolType, ToolDefinition> = {
   rectangle: { icon: Square, commandId: 'tool.rectangle' },
   roundedRect: { icon: RectangleHorizontal, commandId: 'tool.rectangle' },
   ellipse: { icon: Circle, commandId: 'tool.ellipse' },
+  freeform: { icon: Hexagon, commandId: 'tool.freeform' },
 };
 
 const DOCUMENT_COMMANDS = new Set<AppCommandId>([
   'file.export',
   'history.undo',
   'history.redo',
+  'insert.image',
+  'insert.screenshot',
+  'insert.regionScreenshot',
   'view.zoomIn',
   'view.zoomOut',
   'view.actualSize',
@@ -75,6 +84,7 @@ const DOCUMENT_COMMANDS = new Set<AppCommandId>([
   'view.rotateCCW',
   'view.rotateCW',
 ]);
+
 
 export interface MainRibbonProps {
   onCommand: (commandId: AppCommandId) => void;
@@ -95,11 +105,9 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
     toolOptions,
     updatePenOptions,
     updateHighlighterOptions,
+    updateEraserOptions,
     updateTextOptions,
     updateShapeOptions,
-    recentColorsByFamily,
-    rememberColor,
-    sidebarOpen,
     workspaceMode,
   } = useUIStore();
 
@@ -191,6 +199,48 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
           <ToolButton tool="arrow" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.arrow')} />
           <ToolButton tool="rectangle" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.rectangle')} />
           <ToolButton tool="ellipse" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.ellipse')} />
+          <ToolButton tool="freeform" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.freeform')} />
+        </ToolbarGroup>
+
+        <ToolbarSeparator />
+
+        <ToolbarGroup label="Insert">
+          <CommandButton
+            commandId="insert.image"
+            label="Insert Image…"
+            shortcut="⌘I"
+            icon={ImageIcon}
+            onCommand={runCommand}
+            enabled={isEnabled('insert.image')}
+          />
+          <CommandButton
+            commandId="insert.printoutPdf"
+            label="Insert PDF…"
+            icon={FileText}
+            onCommand={runCommand}
+            enabled={isEnabled('insert.printoutPdf')}
+          />
+          <CommandButton
+            commandId="insert.printoutPptx"
+            label="Insert PowerPoint…"
+            icon={Presentation}
+            onCommand={runCommand}
+            enabled={isEnabled('insert.printoutPptx')}
+          />
+          <CommandButton
+            commandId="insert.screenshot"
+            label="Display Screenshot"
+            icon={Monitor}
+            onCommand={runCommand}
+            enabled={isEnabled('insert.screenshot')}
+          />
+          <CommandButton
+            commandId="insert.regionScreenshot"
+            label="Capture Region"
+            icon={Crop}
+            onCommand={runCommand}
+            enabled={isEnabled('insert.regionScreenshot')}
+          />
         </ToolbarGroup>
 
         <div className={styles.primarySpacer} />
@@ -240,16 +290,6 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
       </div>
 
       <div className={styles.propertyShelf} role="toolbar" aria-label={`${activeCommand.shortLabel} properties`}>
-        <CommandButton
-          commandId="view.sidebar"
-          label={sidebarOpen ? 'Hide Sidebar' : 'Show Sidebar'}
-          shortcut="⌘B"
-          icon={PanelLeft}
-          onCommand={runCommand}
-          enabled={isEnabled('view.sidebar')}
-          pressed={sidebarOpen}
-        />
-        <ToolbarSeparator compact />
         <div className={styles.toolIdentity} aria-label={`Active tool: ${activeCommand.shortLabel}`}>
           <ActiveToolIcon size={17} aria-hidden="true" />
           <strong>{activeCommand.shortLabel}</strong>
@@ -263,9 +303,9 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
 
           {activeTool === 'pen' && (
             <>
-              <ColorWell label="Color" value={toolOptions.pen.color} colors={recentColorsByFamily.pen} onChange={(color) => updatePenOptions({ color })} />
+              <ColorWell label="Color" value={toolOptions.pen.color} onChange={(color) => updatePenOptions({ color })} />
               <PropertySeparator />
-              <StrokeWidthControl value={toolOptions.pen.width} options={PEN_WIDTHS} onChange={(width) => updatePenOptions({ width })} />
+              <WidthControl value={toolOptions.pen.width} constraint={TOOL_WIDTH_CONSTRAINTS.pen} onChange={(width) => updatePenOptions({ width })} onCommit={(width) => updatePenOptions({ width })} />
               <PropertySeparator />
               <OpacityControl value={toolOptions.pen.opacity} onChange={(opacity) => updatePenOptions({ opacity })} />
               <PropertySeparator />
@@ -279,19 +319,23 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
 
           {activeTool === 'highlighter' && (
             <>
-              <ColorWell label="Color" value={toolOptions.highlighter.color} colors={recentColorsByFamily.highlighter} onChange={(color) => updateHighlighterOptions({ color })} />
+              <ColorWell label="Color" value={toolOptions.highlighter.color} onChange={(color) => updateHighlighterOptions({ color })} />
               <PropertySeparator />
-              <StrokeWidthControl value={toolOptions.highlighter.width} options={HIGHLIGHTER_WIDTHS} onChange={(width) => updateHighlighterOptions({ width })} />
+              <WidthControl value={toolOptions.highlighter.width} constraint={TOOL_WIDTH_CONSTRAINTS.highlighter} onChange={(width) => updateHighlighterOptions({ width })} onCommit={(width) => updateHighlighterOptions({ width })} />
               <PropertySeparator />
               <OpacityControl value={toolOptions.highlighter.opacity} onChange={(opacity) => updateHighlighterOptions({ opacity })} />
             </>
           )}
 
           {activeTool === 'eraser' && (
-            <span className={styles.truthfulStatus} aria-label="Eraser mode: whole stroke">
-              <Check size={14} aria-hidden="true" />
-              Whole Stroke
-            </span>
+            <>
+              <div className={styles.propertySegment} role="group" aria-label="Eraser Mode">
+                <PropertyToggle label="Stroke Eraser" pressed={toolOptions.eraser.mode === 'stroke'} onChange={() => updateEraserOptions({ mode: 'stroke' })} />
+                <PropertyToggle label="Object Eraser" pressed={toolOptions.eraser.mode === 'object'} onChange={() => updateEraserOptions({ mode: 'object' })} />
+              </div>
+              <PropertySeparator />
+              <WidthControl value={toolOptions.eraser.size} constraint={TOOL_WIDTH_CONSTRAINTS.highlighter} onChange={(size) => updateEraserOptions({ size })} onCommit={(size) => updateEraserOptions({ size })} />
+            </>
           )}
 
           {activeTool === 'text' && (
@@ -309,7 +353,7 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
                 </select>
               </label>
               <PropertySeparator />
-              <ColorWell label="Text" value={toolOptions.text.color} colors={recentColorsByFamily.text} onChange={(color) => updateTextOptions({ color })} />
+              <ColorWell label="Text" value={toolOptions.text.color} onChange={(color) => updateTextOptions({ color })} />
               <PropertySeparator />
               <div className={styles.propertySegment} role="group" aria-label="Text style">
                 <PropertyToggle label="Bold" shortLabel="B" pressed={toolOptions.text.bold} onChange={(bold) => updateTextOptions({ bold })} bold />
@@ -325,36 +369,30 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
               <ColorWell
                 label="Background"
                 value={toolOptions.text.backgroundColor}
-                colors={recentColorsByFamily.text}
                 allowTransparent
-                onChange={(backgroundColor) => {
-                  updateTextOptions({ backgroundColor });
-                  if (backgroundColor !== 'transparent') rememberColor('text', backgroundColor);
-                }}
+                onChange={(backgroundColor) => updateTextOptions({ backgroundColor })}
               />
             </>
           )}
 
           {isShapeTool(activeTool) && (
             <>
-              <ColorWell label="Stroke" value={toolOptions.shape.color} colors={recentColorsByFamily.shape} onChange={(color) => updateShapeOptions({ color })} />
+              <ColorWell label="Stroke" value={toolOptions.shape.color} onChange={(color) => updateShapeOptions({ color })} />
               {isClosedShape(activeTool) && (
                 <>
                   <PropertySeparator />
                   <ColorWell
                     label="Fill"
                     value={toolOptions.shape.fillColor}
-                    colors={recentColorsByFamily.shape}
                     allowTransparent
-                    onChange={(fillColor) => {
-                      updateShapeOptions({ fillColor });
-                      if (fillColor !== 'transparent') rememberColor('shape', fillColor);
-                    }}
+                    onChange={(fillColor) => updateShapeOptions({ fillColor })}
                   />
                 </>
               )}
               <PropertySeparator />
-              <StrokeWidthControl value={toolOptions.shape.strokeWidth} options={SHAPE_WIDTHS} onChange={(strokeWidth) => updateShapeOptions({ strokeWidth })} />
+              <WidthControl value={toolOptions.shape.strokeWidth} constraint={TOOL_WIDTH_CONSTRAINTS.shape} onChange={(strokeWidth) => updateShapeOptions({ strokeWidth })} onCommit={(strokeWidth) => updateShapeOptions({ strokeWidth })} />
+              <PropertySeparator />
+              <BorderStyleControl value={toolOptions.shape.borderStyle} onChange={(borderStyle) => updateShapeOptions({ borderStyle })} onCommit={(borderStyle) => updateShapeOptions({ borderStyle })} />
               <PropertySeparator />
               <OpacityControl value={toolOptions.shape.opacity} onChange={(opacity) => updateShapeOptions({ opacity })} />
             </>
@@ -390,7 +428,9 @@ function CommandButton({ commandId, label, shortcut, icon: Icon, enabled, onComm
     <button
       type="button"
       className={`${styles.commandButton} ${pressed ? styles.commandButtonPressed : ''} ${!enabled ? styles.commandButtonDisabled : ''} ${className}`}
-      onClick={() => enabled && onCommand(commandId)}
+      onClick={() => {
+        if (enabled) onCommand(commandId);
+      }}
       title={title}
       aria-label={title}
       aria-pressed={pressed === undefined ? undefined : pressed}
@@ -412,7 +452,9 @@ function ToolButton({ tool, activeTool, onCommand, enabled }: { tool: ToolType; 
     <button
       type="button"
       className={`${styles.commandButton} ${selected ? styles.toolButtonActive : ''} ${!enabled ? styles.commandButtonDisabled : ''}`}
-      onClick={() => enabled && onCommand(definition.commandId)}
+      onClick={() => {
+        if (enabled) onCommand(definition.commandId);
+      }}
       title={title}
       aria-label={title}
       aria-pressed={selected}
@@ -579,9 +621,9 @@ function useDismissableDetails(ref: React.RefObject<HTMLDetailsElement>) {
 }
 
 function isShapeTool(tool: ToolType): boolean {
-  return tool === 'line' || tool === 'arrow' || tool === 'rectangle' || tool === 'roundedRect' || tool === 'ellipse';
+  return tool === 'line' || tool === 'arrow' || tool === 'rectangle' || tool === 'roundedRect' || tool === 'ellipse' || tool === 'freeform';
 }
 
 function isClosedShape(tool: ToolType): boolean {
-  return tool === 'rectangle' || tool === 'roundedRect' || tool === 'ellipse';
+  return tool === 'rectangle' || tool === 'roundedRect' || tool === 'ellipse' || tool === 'freeform';
 }

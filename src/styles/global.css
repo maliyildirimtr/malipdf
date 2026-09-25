@@ -225,15 +225,6 @@ button:disabled {
   color: var(--color-text-secondary);
 }
 
-@media (max-width: 1040px) {
-  .app-sidebar-chrome {
-    position: absolute;
-    inset: 0 auto 0 0;
-    z-index: 30;
-    box-shadow: var(--shadow-lg);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     scroll-behavior: auto !important;

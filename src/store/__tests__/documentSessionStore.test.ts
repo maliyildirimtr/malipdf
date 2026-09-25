@@ -138,6 +138,7 @@ describe('document session store', () => {
       scrollTop: 0,
       scrollLeft: 0,
       pageRotations: {},
+      sourceRevision: 1,
     });
     useDocumentStore.setState({
       documents: new Map([

@@ -1,0 +1,49 @@
+.inspector {
+  background: #1e2329; /* Dark pill background */
+  border: 1px solid #374151;
+  border-radius: 9999px; /* Pill shape */
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.3);
+  padding: 6px 12px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  pointer-events: auto; /* ensure we can click inside despite canvas */
+  color: #e5e7eb;
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .inspector {
+    background: #1e2329;
+    border-color: #374151;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.3);
+  }
+}
+
+.divider {
+  width: 1px;
+  height: 24px;
+  background-color: #374151;
+}
+
+.controlGroup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #9ca3af;
+  letter-spacing: 0.05em;
+}
+
+/* Force label and text colors to be legible in the dark pill inspector */
+.inspector span {
+  color: #e5e7eb !important;
+}
+.inspector svg {
+  color: #e5e7eb !important;
+}

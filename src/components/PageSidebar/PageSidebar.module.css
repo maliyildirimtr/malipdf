@@ -1,11 +1,16 @@
 .sidebar {
   display: flex;
   flex-direction: row;
-  width: 220px;
+  width: 42px;
   flex-shrink: 0;
   background: var(--color-sidebar-bg);
   border-right: 1px solid var(--color-sidebar-border);
   overflow: hidden;
+  transition: width var(--duration-slow) var(--ease-out);
+}
+
+.sidebarExpanded {
+  width: 220px;
 }
 
 /* ── Icon tab strip (leftmost column) ─────────── */
@@ -16,7 +21,7 @@
   align-items: center;
   padding: 8px 0;
   gap: 2px;
-  width: 36px;
+  width: 42px;
   flex-shrink: 0;
   border-right: 1px solid var(--color-border-subtle);
 }
@@ -25,8 +30,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 34px;
+  height: 34px;
   border-radius: var(--radius-md);
   color: var(--color-text-tertiary);
   background: transparent;
@@ -49,7 +54,8 @@
 /* ── Panel content ─────────────────────────────── */
 
 .panelContent {
-  flex: 1;
+  width: 178px;
+  flex: 0 0 178px;
   overflow: hidden;
   display: flex;
   flex-direction: column;

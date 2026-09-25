@@ -13,26 +13,12 @@ export type FocusToolbarSide = 'left' | 'right';
 export type ToolColorFamily = 'pen' | 'highlighter' | 'text' | 'shape';
 export type FocusShapeTool = Extract<ToolType, 'line' | 'arrow' | 'rectangle' | 'ellipse'>;
 
-export type RecentColorsByFamily = Record<ToolColorFamily, string[]>;
-
-const MAX_RECENT_COLORS = 6;
-
-const defaultRecentColors: RecentColorsByFamily = {
-  pen: ['#1a1a2e', '#e63946', '#457b9d', '#2a9d8f', '#f4a261', '#ffffff'],
-  highlighter: ['#FFEB3B', '#8ecae6', '#f4a261', '#e63946', '#2a9d8f'],
-  text: ['#1a1a2e', '#e63946', '#457b9d', '#2a9d8f', '#ffffff'],
-  shape: ['#e63946', '#1a1a2e', '#457b9d', '#2a9d8f', '#f4a261', '#ffffff'],
-};
+import { normalizeColor } from '../constants/palette';
 
 const SHAPE_TOOLS: readonly FocusShapeTool[] = ['line', 'arrow', 'rectangle', 'ellipse'];
 
 function isFocusShapeTool(tool: ToolType): tool is FocusShapeTool {
   return (SHAPE_TOOLS as readonly ToolType[]).includes(tool);
-}
-
-function withRecentColor(colors: string[], color: string): string[] {
-  return [color, ...colors.filter((candidate) => candidate.toLowerCase() !== color.toLowerCase())]
-    .slice(0, MAX_RECENT_COLORS);
 }
 
 // ─── Default tool options ─────────────────────────────────────────────────────
@@ -67,6 +53,13 @@ const defaultToolOptions: ToolOptions = {
   shape: {
     color: '#e63946',
     strokeWidth: 2,
+    borderStyle: 'solid',
+    fillColor: 'transparent',
+    opacity: 1,
+  },
+  freeform: {
+    color: '#4caf50',
+    strokeWidth: 2,
     fillColor: 'transparent',
     opacity: 1,
   },
@@ -88,6 +81,7 @@ interface UIStore {
   updateEraserOptions: (patch: Partial<ToolOptions['eraser']>) => void;
   updateTextOptions: (patch: Partial<ToolOptions['text']>) => void;
   updateShapeOptions: (patch: Partial<ToolOptions['shape']>) => void;
+  updateFreeformOptions: (patch: Partial<ToolOptions['freeform']>) => void;
 
   // Workspace chrome
   workspaceMode: WorkspaceMode;
@@ -99,8 +93,9 @@ interface UIStore {
   setFocusToolbarCollapsed: (collapsed: boolean) => void;
   toggleFocusToolbarCollapsed: () => void;
   lastShapeTool: FocusShapeTool;
-  recentColorsByFamily: RecentColorsByFamily;
-  rememberColor: (family: ToolColorFamily, color: string) => void;
+  favoriteColors: string[];
+  addFavoriteColor: (color: string) => void;
+  removeFavoriteColor: (color: string) => void;
 
   // Sidebar
   sidebarOpen: boolean;
@@ -115,12 +110,7 @@ interface UIStore {
   setTheme: (theme: Theme) => void;
   setResolvedTheme: (theme: 'light' | 'dark') => void;
 
-  // Selection state
-  selection: SelectionState;
-  setSelection: (ids: string[]) => void;
-  clearSelection: () => void;
-  addToSelection: (id: string) => void;
-  removeFromSelection: (id: string) => void;
+
 
   // UI state
   isDrawing: boolean;
@@ -144,7 +134,6 @@ export const useUIStore = create<UIStore>()(
         activeTool: 'select',
         setActiveTool: (tool) => set((state) => ({
           activeTool: tool,
-          selection: emptySelection(),
           lastShapeTool: isFocusShapeTool(tool)
             ? tool
             : state.lastShapeTool,
@@ -156,32 +145,24 @@ export const useUIStore = create<UIStore>()(
         updatePenOptions: (patch) =>
           set((s) => ({
             toolOptions: { ...s.toolOptions, pen: { ...s.toolOptions.pen, ...patch } },
-            recentColorsByFamily: patch.color
-              ? { ...s.recentColorsByFamily, pen: withRecentColor(s.recentColorsByFamily.pen, patch.color) }
-              : s.recentColorsByFamily,
           })),
         updateHighlighterOptions: (patch) =>
           set((s) => ({
             toolOptions: { ...s.toolOptions, highlighter: { ...s.toolOptions.highlighter, ...patch } },
-            recentColorsByFamily: patch.color
-              ? { ...s.recentColorsByFamily, highlighter: withRecentColor(s.recentColorsByFamily.highlighter, patch.color) }
-              : s.recentColorsByFamily,
           })),
         updateEraserOptions: (patch) =>
           set((s) => ({ toolOptions: { ...s.toolOptions, eraser: { ...s.toolOptions.eraser, ...patch } } })),
         updateTextOptions: (patch) =>
           set((s) => ({
             toolOptions: { ...s.toolOptions, text: { ...s.toolOptions.text, ...patch } },
-            recentColorsByFamily: patch.color
-              ? { ...s.recentColorsByFamily, text: withRecentColor(s.recentColorsByFamily.text, patch.color) }
-              : s.recentColorsByFamily,
           })),
         updateShapeOptions: (patch) =>
           set((s) => ({
             toolOptions: { ...s.toolOptions, shape: { ...s.toolOptions.shape, ...patch } },
-            recentColorsByFamily: patch.color
-              ? { ...s.recentColorsByFamily, shape: withRecentColor(s.recentColorsByFamily.shape, patch.color) }
-              : s.recentColorsByFamily,
+          })),
+        updateFreeformOptions: (patch) =>
+          set((s) => ({
+            toolOptions: { ...s.toolOptions, freeform: { ...s.toolOptions.freeform, ...patch } },
           })),
 
         workspaceMode: 'normal',
@@ -197,13 +178,17 @@ export const useUIStore = create<UIStore>()(
           focusToolbarCollapsed: !state.focusToolbarCollapsed,
         })),
         lastShapeTool: 'rectangle',
-        recentColorsByFamily: defaultRecentColors,
-        rememberColor: (family, color) => set((state) => ({
-          recentColorsByFamily: {
-            ...state.recentColorsByFamily,
-            [family]: withRecentColor(state.recentColorsByFamily[family], color),
-          },
-        })),
+        
+        favoriteColors: [],
+        addFavoriteColor: (color) => set((state) => {
+          const norm = normalizeColor(color);
+          if (state.favoriteColors.includes(norm)) return state;
+          return { favoriteColors: [...state.favoriteColors, norm] };
+        }),
+        removeFavoriteColor: (color) => set((state) => {
+          const norm = normalizeColor(color);
+          return { favoriteColors: state.favoriteColors.filter(c => c !== norm) };
+        }),
 
         sidebarOpen: false,
         activeSidebarPanel: 'pages',
@@ -216,20 +201,6 @@ export const useUIStore = create<UIStore>()(
         setTheme: (theme) => set({ theme }),
         setResolvedTheme: (theme) => set({ resolvedTheme: theme }),
 
-        selection: emptySelection(),
-        setSelection: (ids) =>
-          set({ selection: { selectedIds: new Set(ids), isMoving: false, isResizing: false, handle: null } }),
-        clearSelection: () => set({ selection: emptySelection() }),
-        addToSelection: (id) =>
-          set((s) => ({
-            selection: { ...s.selection, selectedIds: new Set([...s.selection.selectedIds, id]) },
-          })),
-        removeFromSelection: (id) =>
-          set((s) => {
-            const ids = new Set(s.selection.selectedIds);
-            ids.delete(id);
-            return { selection: { ...s.selection, selectedIds: ids } };
-          }),
 
         isDrawing: false,
         setIsDrawing: (drawing) => set({ isDrawing: drawing }),
@@ -242,20 +213,38 @@ export const useUIStore = create<UIStore>()(
       }),
       {
         name: 'malipedefe-ui',
-        // Only persist tool options and theme — not transient UI state
+        version: 1, // bump version for migration
+        migrate: (persistedState: any, version: number) => {
+          if (version === 0) {
+            // Migrate recentColorsByFamily to favoriteColors
+            const state = persistedState as any;
+            const oldRecents = state.recentColorsByFamily;
+            const newFavorites = new Set<string>();
+            if (oldRecents) {
+              for (const family of Object.values(oldRecents)) {
+                if (Array.isArray(family)) {
+                  family.forEach((color: string) => newFavorites.add(normalizeColor(color)));
+                }
+              }
+            }
+            state.favoriteColors = Array.from(newFavorites).slice(0, 18); // keep some reasonable max if it's huge
+            delete state.recentColorsByFamily;
+            return state;
+          }
+          return persistedState;
+        },
+        // Only persist tool options, theme and favorite colors — not transient UI state
         partialize: (state) => ({
           toolOptions: state.toolOptions,
           theme: state.theme,
           sidebarOpen: state.sidebarOpen,
           focusToolbarSide: state.focusToolbarSide,
           lastShapeTool: state.lastShapeTool,
-          recentColorsByFamily: state.recentColorsByFamily,
+          favoriteColors: state.favoriteColors,
         }),
       },
     ),
   ),
 );
 
-function emptySelection(): SelectionState {
-  return { selectedIds: new Set(), isMoving: false, isResizing: false, handle: null };
-}
+

@@ -23,6 +23,7 @@ export interface DocumentSessionStoreState {
     zoom: number,
   ) => void;
   removeSession: (identity: DocumentIdentity) => void;
+  reloadSession: (identity: DocumentIdentity, newPageCount: number) => void;
   setActiveIdentity: (
     identity: DocumentIdentity | null,
     activePageIndex?: number,
@@ -161,6 +162,45 @@ export function createDocumentSessionStore(): StoreApi<DocumentSessionStoreState
             ? null
             : state.activeIdentity,
         };
+      });
+    },
+
+    reloadSession: (identity, newPageCount) => {
+      set((state) => {
+        const key = documentIdentityKey(identity);
+        const oldSession = state.sessions.get(key);
+        if (!oldSession) return state;
+
+        // Clean up loaded pages
+        for (const entry of oldSession.pages.values()) {
+          if (entry.loadedPage) entry.loadedPage.page.cleanup();
+        }
+
+        const sessions = new Map(state.sessions);
+        const session: DocumentSession = {
+          ...oldSession,
+          pageCount: newPageCount,
+          pages: new Map(), // clear cached pages completely
+          pendingLoads: new Map(),
+          requestRevision: oldSession.requestRevision + 1,
+        };
+        
+        // Ensure active page is within bounds
+        if (session.activePageIndex >= newPageCount) {
+          session.activePageIndex = Math.max(0, newPageCount - 1);
+        }
+        
+        // Ensure visible pages are within bounds
+        const newVisible = new Set<number>();
+        for (const p of session.visiblePages) {
+          if (p < newPageCount) newVisible.add(p);
+        }
+        if (newVisible.size === 0) newVisible.add(session.activePageIndex);
+        session.visiblePages = newVisible;
+        
+        updateWindows(session);
+        sessions.set(key, session);
+        return { sessions };
       });
     },
 

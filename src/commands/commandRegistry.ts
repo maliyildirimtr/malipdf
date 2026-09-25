@@ -3,7 +3,7 @@ import type { WorkspaceMode } from '../store/uiStore';
 
 export type CanonicalTool = Extract<ToolType,
   'select' | 'hand' | 'pen' | 'highlighter' | 'eraser' | 'text' |
-  'line' | 'arrow' | 'rectangle' | 'ellipse'>;
+  'line' | 'arrow' | 'rectangle' | 'ellipse' | 'freeform'>;
 
 export type ToolCommandId = `tool.${CanonicalTool}`;
 
@@ -12,10 +12,10 @@ export type AppCommandId =
   | 'file.saveTemplate' | 'file.saveAll' | 'file.export' | 'file.close'
   | 'file.closeAll' | 'file.documentProperties' | 'file.print'
   | 'history.undo' | 'history.redo' | 'edit.selectAll' | 'edit.deleteSelected'
-  | ToolCommandId | 'tool.extractText' | 'tool.zoom' | 'tool.stamp'
-  | 'tool.polygon' | 'tool.dimension' | 'tool.lasso' | 'tool.snapshot'
+  | ToolCommandId | 'tool.polygon' | 'tool.extractText' | 'tool.zoom' | 'tool.stamp'
+  | 'tool.dimension' | 'tool.lasso' | 'tool.snapshot'
   | 'tool.crop' | 'tool.measure' | 'tool.formula' | 'tool.laserPointer'
-  | 'tool.pointer' | 'view.sidebar' | 'view.sidebarPages'
+  | 'tool.pointer' | 'insert.image' | 'insert.screenshot' | 'insert.regionScreenshot' | 'insert.printoutPdf' | 'insert.printoutPptx' | 'view.sidebar' | 'view.sidebarPages'
   | 'view.sidebarBookmarks' | 'view.sidebarOutline' | 'view.sidebarAnnotations'
   | 'view.sidebarSearch' | 'view.zoomIn' | 'view.zoomOut' | 'view.actualSize'
   | 'view.fitWidth' | 'view.fitPage' | 'view.layoutContinuous'
@@ -25,7 +25,7 @@ export type AppCommandId =
   | 'view.focusMode' | 'extras.favorites' | 'extras.toolStyles' | 'help.open'
   | 'app.requestQuit' | 'app.requestCloseWindow';
 
-export type CommandGroup = 'file' | 'history' | 'edit' | 'tool' | 'view' | 'extras' | 'help';
+export type CommandGroup = 'file' | 'history' | 'edit' | 'tool' | 'view' | 'insert' | 'extras' | 'help';
 export type CommandKind = 'action' | 'tool' | 'toggle' | 'radio';
 export type CommandAvailability = 'always' | 'document' | 'undo' | 'redo' | 'selection' | 'save' | 'saveAll' | 'unavailable';
 export type CommandIconId =
@@ -33,9 +33,9 @@ export type CommandIconId =
   | 'saveAll' | 'export' | 'close' | 'closeAll' | 'properties' | 'print'
   | 'undo' | 'redo' | 'selectAll' | 'delete' | 'select' | 'extractText'
   | 'hand' | 'zoom' | 'pen' | 'highlighter' | 'eraser' | 'text' | 'stamp'
-  | 'line' | 'arrow' | 'rectangle' | 'ellipse' | 'polygon' | 'dimension'
+  | 'line' | 'arrow' | 'rectangle' | 'ellipse' | 'freeform' | 'dimension'
   | 'lasso' | 'snapshot' | 'crop' | 'measure' | 'formula' | 'laserPointer'
-  | 'pointer' | 'sidebar' | 'zoomIn' | 'zoomOut' | 'actualSize' | 'fitWidth'
+  | 'pointer' | 'image' | 'screenshot' | 'regionScreenshot' | 'sidebar' | 'zoomIn' | 'zoomOut' | 'actualSize' | 'fitWidth'
   | 'fitPage' | 'layout' | 'rotateLeft' | 'rotateRight' | 'annotations'
   | 'toolbar' | 'fullscreen' | 'focus' | 'favorites' | 'toolStyles' | 'help';
 export type CommandCheckedState = 'activeTool' | 'sidebarOpen' | 'focusMode' | 'continuousLayout';
@@ -81,7 +81,7 @@ export const APP_COMMANDS = {
   'history.undo': command('history.undo', 'Undo', 'history', 'action', 'undo', { icon: 'undo', shortcut: '⌘Z', menuPlacements: ['edit'], toolbarPlacements: ['primary.history'] }),
   'history.redo': command('history.redo', 'Redo', 'history', 'action', 'redo', { icon: 'redo', shortcut: '⇧⌘Z', menuPlacements: ['edit'], toolbarPlacements: ['primary.history'] }),
   'edit.selectAll': command('edit.selectAll', 'Select All Annotations', 'edit', 'action', 'unavailable', { icon: 'selectAll', shortcut: '⌘A', menuPlacements: ['edit'] }),
-  'edit.deleteSelected': command('edit.deleteSelected', 'Delete Selected', 'edit', 'action', 'unavailable', { icon: 'delete', shortcut: '⌫', menuPlacements: ['edit'] }),
+  'edit.deleteSelected': command('edit.deleteSelected', 'Delete Selected', 'edit', 'action', 'selection', { icon: 'delete', shortcut: '⌫', menuPlacements: ['edit'] }),
   'tool.select': toolCommand('select', 'Select', 'V', 'select'),
   'tool.hand': toolCommand('hand', 'Hand / Pan', 'H', 'hand'),
   'tool.pen': toolCommand('pen', 'Pen', 'P', 'pen'),
@@ -92,10 +92,11 @@ export const APP_COMMANDS = {
   'tool.arrow': toolCommand('arrow', 'Arrow', 'A', 'arrow'),
   'tool.rectangle': toolCommand('rectangle', 'Rectangle', 'R', 'rectangle'),
   'tool.ellipse': toolCommand('ellipse', 'Ellipse', 'C', 'ellipse'),
+  'tool.freeform': toolCommand('freeform', 'Polygon', 'F', 'freeform'),
+  'tool.polygon': toolCommand('freeform', 'Polygon', 'F', 'freeform'),
   'tool.extractText': unavailableTool('tool.extractText', 'Extract Text', 'extractText'),
   'tool.zoom': unavailableTool('tool.zoom', 'Zoom Tool', 'zoom'),
   'tool.stamp': unavailableTool('tool.stamp', 'Stamp', 'stamp'),
-  'tool.polygon': unavailableTool('tool.polygon', 'Polygon', 'polygon'),
   'tool.dimension': unavailableTool('tool.dimension', 'Dimension', 'dimension'),
   'tool.lasso': unavailableTool('tool.lasso', 'Lasso Select', 'lasso'),
   'tool.snapshot': unavailableTool('tool.snapshot', 'Snapshot', 'snapshot'),
@@ -104,6 +105,11 @@ export const APP_COMMANDS = {
   'tool.formula': unavailableTool('tool.formula', 'Formula', 'formula'),
   'tool.laserPointer': unavailableTool('tool.laserPointer', 'Laser Pointer', 'laserPointer'),
   'tool.pointer': unavailableTool('tool.pointer', 'Pointer', 'pointer'),
+  'insert.image': command('insert.image', 'Insert Image…', 'insert', 'action', 'document', { icon: 'image', menuPlacements: ['edit'], toolbarPlacements: ['primary.insert'] }),
+  'insert.screenshot': command('insert.screenshot', 'Capture Screen', 'insert', 'action', 'document', { icon: 'screenshot', menuPlacements: ['edit'], toolbarPlacements: ['primary.insert'] }),
+  'insert.regionScreenshot': command('insert.regionScreenshot', 'Capture Region', 'insert', 'action', 'document', { icon: 'regionScreenshot', menuPlacements: ['edit'], toolbarPlacements: ['primary.insert'] }),
+  'insert.printoutPdf': command('insert.printoutPdf', 'Insert PDF Printout…', 'insert', 'action', 'document', { icon: 'newDocument', menuPlacements: ['edit'], toolbarPlacements: ['primary.insert'] }),
+  'insert.printoutPptx': command('insert.printoutPptx', 'Insert PowerPoint Printout…', 'insert', 'action', 'document', { icon: 'newDocument', menuPlacements: ['edit'], toolbarPlacements: ['primary.insert'] }),
   'view.sidebar': command('view.sidebar', 'Show Sidebar', 'view', 'toggle', 'document', { icon: 'sidebar', shortcut: '⌘B', checkedState: 'sidebarOpen', menuPlacements: ['view.sidebar'], toolbarPlacements: ['primary.view'] }),
   'view.sidebarPages': command('view.sidebarPages', 'Pages', 'view', 'radio', 'document', { icon: 'sidebar', menuPlacements: ['view.sidebar'] }),
   'view.sidebarBookmarks': command('view.sidebarBookmarks', 'Bookmarks', 'view', 'radio', 'unavailable', { icon: 'sidebar', menuPlacements: ['view.sidebar'] }),
@@ -157,6 +163,7 @@ export function isCommandAvailable(commandId: AppCommandId, context: CommandAvai
     case 'save': return context.isDirty === true;
     case 'saveAll': return context.hasAnyDirtyDocument === true;
     case 'unavailable': return false;
+    default: return false;
   }
 }
 

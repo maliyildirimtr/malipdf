@@ -186,12 +186,14 @@ export function makeAddAction(
 export function makeRemoveAction(
   docId: string,
   annotation: Annotation,
+  index?: number,
 ): HistoryActionDraft {
   return {
     type: 'REMOVE_ANNOTATION',
     docId,
     pageIndex: annotation.pageIndex,
     annotationId: annotation.id,
+    ...(index === undefined ? {} : { index }),
     before: annotation,
     after: null,
   };
@@ -239,6 +241,42 @@ export function makeResizeAction(
     annotationId: before.id,
     before,
     after,
+  };
+}
+
+export function makeBatchAction(
+  docId: string,
+  actions: HistoryActionDraft[],
+): HistoryActionDraft {
+  return {
+    type: 'BATCH_ACTION',
+    docId,
+    actions,
+  };
+}
+
+export function makeMutateDocumentBytesAction(
+  docId: string,
+  beforeSourceData: Uint8Array,
+  afterSourceData: Uint8Array,
+  beforeAnnotations: Annotation[],
+  afterAnnotations: Annotation[],
+  beforePageRotations: Record<number, number>,
+  afterPageRotations: Record<number, number>,
+  beforePageCount: number,
+  afterPageCount: number,
+): HistoryActionDraft {
+  return {
+    type: 'MUTATE_DOCUMENT_BYTES',
+    docId,
+    beforeSourceData,
+    afterSourceData,
+    beforeAnnotations,
+    afterAnnotations,
+    beforePageRotations,
+    afterPageRotations,
+    beforePageCount,
+    afterPageCount,
   };
 }
 

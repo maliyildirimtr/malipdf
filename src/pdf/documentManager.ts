@@ -27,6 +27,10 @@ interface CachedDocument {
   activeLoadCount: number;
   disposed: boolean;
   cleanupRetryTimer: ReturnType<typeof setTimeout> | null;
+  /** DocumentState.sourceRevision whose bytes the current proxy was built from. */
+  loadedRevision: number;
+  /** Highest sourceRevision a reload has been requested for. */
+  requestedRevision: number;
 }
 
 interface QueuedPageLoad {
@@ -78,9 +82,70 @@ export class DocumentManager {
       activeLoadCount: 0,
       disposed: false,
       cleanupRetryTimer: null,
+      loadedRevision: 1,
+      requestedRevision: 1,
     };
     this.documents.set(docId, cached);
     return { identity, pageCount: proxy.numPages };
+  }
+
+  /**
+   * Replace the pdf.js proxy with one built from `data` (DocumentState bytes at
+   * `revision`). Reloads may overlap (e.g. rapid Undo/Redo of a page insertion);
+   * only the newest requested revision is ever installed, so a slow older
+   * reload can never overwrite a newer one.
+   *
+   * Resolves with the new page count, or null when superseded by a newer reload.
+   */
+  async reloadDocument(
+    identity: DocumentIdentity,
+    data: Uint8Array,
+    revision?: number,
+  ): Promise<number | null> {
+    const cached = this.getRecord(identity);
+    if (!cached) throw new Error('Cannot reload document that is not open');
+
+    const targetRevision = revision ?? cached.requestedRevision + 1;
+    if (targetRevision <= cached.loadedRevision || targetRevision < cached.requestedRevision) {
+      return null;
+    }
+    cached.requestedRevision = targetRevision;
+
+    const proxy = await this.documentLoader(data);
+    if (!this.isCurrent(cached)) {
+      await proxy.destroy();
+      throw new Error('Document changed during reload');
+    }
+    if (cached.requestedRevision !== targetRevision || targetRevision <= cached.loadedRevision) {
+      // A newer reload was requested while this one was loading.
+      await proxy.destroy();
+      return null;
+    }
+
+    // Destroy old proxy and clear cache
+    const oldProxy = cached.proxy;
+    cached.pageCache.clear();
+    for (const queued of cached.loadQueue.splice(0)) {
+      cached.pendingLoads.delete(queued.pageIndex);
+      queued.resolve(null);
+    }
+    try {
+      await oldProxy.destroy();
+    } catch (e) {
+      console.warn('Failed to destroy old PDF document during reload:', e);
+    }
+
+    // Assign new proxy
+    cached.proxy = proxy;
+    cached.pageCount = proxy.numPages;
+    cached.loadedRevision = targetRevision;
+
+    return proxy.numPages;
+  }
+
+  /** sourceRevision the live proxy reflects (0 when the document is not open). */
+  getLoadedRevision(identity: DocumentIdentity): number {
+    return this.getRecord(identity)?.loadedRevision ?? 0;
   }
 
   async closeDocument(identity: DocumentIdentity): Promise<void> {
@@ -285,6 +350,8 @@ export class DocumentManager {
 const documentManager = new DocumentManager();
 
 export const openDocument = documentManager.openDocument.bind(documentManager);
+export const reloadDocument = documentManager.reloadDocument.bind(documentManager);
+export const getLoadedRevision = documentManager.getLoadedRevision.bind(documentManager);
 export const closeDocument = documentManager.closeDocument.bind(documentManager);
 export const getDocumentProxy = documentManager.getDocumentProxy.bind(documentManager);
 export const getPageCount = documentManager.getPageCount.bind(documentManager);

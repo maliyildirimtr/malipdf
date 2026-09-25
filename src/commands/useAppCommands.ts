@@ -1,6 +1,6 @@
 import { useCallback, useEffect } from 'react';
 import { useDocumentStore } from '../store/documentStore';
-import { useHistoryStore, makeRemoveAction } from '../store/historyStore';
+import { useHistoryStore, makeRemoveAction, makeBatchAction } from '../store/historyStore';
 import { useUIStore } from '../store/uiStore';
 import { useSelectionStore } from '../store/selectionStore';
 import { useDocumentSessionStore, documentSessionStore } from '../store/documentSessionStore';
@@ -23,6 +23,12 @@ import {
   isTemporaryHandShortcut,
 } from './keyboardShortcuts';
 import { requestActiveInteractionCancellation } from './interactionCancellation';
+import {
+  insertImageFromFile,
+  captureScreenToImage,
+  captureRegionToImage,
+  insertImageFromBytes,
+} from './imageCommands';
 
 export const DOCUMENT_VIEW_COMMAND_EVENT = 'malipdf:document-view-command';
 
@@ -95,6 +101,10 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
     }
 
     if (definition.tool) {
+      if (definition.tool !== ui.activeTool) {
+        const activeIdentity = documentSessionStore.getState().activeIdentity;
+        if (activeIdentity) useSelectionStore.getState().clearSelection(activeIdentity);
+      }
       ui.setActiveTool(definition.tool);
       return;
     }
@@ -136,6 +146,7 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
         ui.setNewDocumentDialogOpen(true);
         return;
       case 'file.combine':
+        return; // not implemented (command is 'unavailable')
       case 'file.save':
         if (docId) void saveDocument(docId);
         return;
@@ -150,6 +161,7 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
       case 'file.documentProperties':
       case 'file.print':
       case 'edit.selectAll':
+        return;
       case 'edit.deleteSelected': {
         const session = documentSessionStore.getState();
         const selectionStore = useSelectionStore.getState();
@@ -157,26 +169,36 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
         if (!activeIdentity || !docId) return;
         
         const sel = selectionStore.getSelection(activeIdentity);
-        if (!sel || sel.selectedIds.length === 0) return;
+        if (!sel || sel.selectedIds.length === 0 || sel.pageIndex === null) return;
         
         const annotationsStore = useAnnotationStore.getState();
         const historyStore = useHistoryStore.getState();
-        const annotations = annotationsStore.getPageAnnotations(docId, sel.pageIndex!);
-        
-        for (const id of sel.selectedIds) {
-          const ann = annotations.find(a => a.id === id);
-          if (ann) {
-            annotationsStore.removeAnnotation(docId, sel.pageIndex!, id);
-            historyStore.push(makeRemoveAction(docId, ann));
+        const annotations = annotationsStore.getPageAnnotations(docId, sel.pageIndex);
+        const selected = new Set(sel.selectedIds);
+
+        // Remove in z-order and record each position against the list as it
+        // is at that moment, so undo re-inserts every annotation exactly.
+        const remaining: typeof annotations = [];
+        const actions: import('../store/historyStore').HistoryActionDraft[] = [];
+        for (const ann of annotations) {
+          if (!selected.has(ann.id)) {
+            remaining.push(ann);
+            continue;
           }
+          actions.push(makeRemoveAction(docId, ann, remaining.length));
         }
+
+        if (actions.length > 0) {
+          annotationsStore.setPageAnnotations(docId, sel.pageIndex, remaining);
+          historyStore.push(actions.length === 1 ? actions[0] : makeBatchAction(docId, actions));
+        }
+
         selectionStore.clearSelection(activeIdentity);
         return;
       }
       case 'tool.extractText':
       case 'tool.zoom':
       case 'tool.stamp':
-      case 'tool.polygon':
       case 'tool.dimension':
       case 'tool.lasso':
       case 'tool.snapshot':
@@ -185,6 +207,22 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
       case 'tool.formula':
       case 'tool.laserPointer':
       case 'tool.pointer':
+        return;
+      case 'insert.image':
+        void insertImageFromFile();
+        return;
+      case 'insert.printoutPdf':
+        import('./printoutCommands').then(m => m.insertPrintoutFromFile());
+        return;
+      case 'insert.printoutPptx':
+        import('./printoutCommands').then(m => m.insertPptxPrintoutFromFile());
+        return;
+      case 'insert.screenshot':
+        void captureScreenToImage();
+        return;
+      case 'insert.regionScreenshot':
+        void captureRegionToImage();
+        return;
       case 'view.sidebarBookmarks':
       case 'view.sidebarOutline':
       case 'view.sidebarAnnotations':
@@ -200,11 +238,19 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
       case 'help.open':
         return;
       case 'history.undo':
-        if (docId) executeUndo(docId);
+      case 'history.redo': {
+        // ⌘Z inside a text field edits that field, not the document history.
+        if (isEditableTarget(document.activeElement)) {
+          document.execCommand(commandId === 'history.undo' ? 'undo' : 'redo');
+          return;
+        }
+        // Never rewrite history under an in-progress gesture (drag, erase, …).
+        if (ui.isDrawing) return;
+        if (!docId) return;
+        if (commandId === 'history.undo') executeUndo(docId);
+        else executeRedo(docId);
         return;
-      case 'history.redo':
-        if (docId) executeRedo(docId);
-        return;
+      }
       case 'view.sidebar':
         ui.toggleSidebar();
         return;
@@ -263,68 +309,40 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
 
   useEffect(() => {
     if (!window.electronAPI?.updateCommandStates) return;
-    
-    // We must subscribe to the documents list explicitly to detect dirty state changes.
-    // The previous implementation missed this subscription.
-    const unsubscribe = useDocumentStore.subscribe((docState) => {
-      let hasAnyDirtyDocument = false;
-      let activeDocIsDirty = false;
-      const activeDocId = docState.activeDocId;
-      
-      for (const doc of docState.documents.values()) {
-        const dirty = doc.currentStateId !== doc.savedStateId;
-        if (dirty) hasAnyDirtyDocument = true;
-        if (dirty && doc.id === activeDocId) activeDocIsDirty = true;
-      }
-      
-      const activeIdentity = documentSessionStore.getState().activeIdentity;
-      let hasSelection = false;
-      if (activeIdentity) {
-        const sel = useSelectionStore.getState().getSelection(activeIdentity);
-        if (sel && sel.selectedIds.length > 0) hasSelection = true;
-      }
-      
+
+    // Native menu enabled/checked state is derived from four stores. Recompute
+    // on any of their changes, but only cross IPC when something actually
+    // changed (scrolling alone updates documentStore on every frame).
+    let lastSent = '';
+    const syncMenuState = () => {
       const context = {
-        hasDocument: activeDocId !== null,
-        canUndo: activeDocId ? (useHistoryStore.getState().histories.get(activeDocId)?.undoStack.length ?? 0) > 0 : false,
-        canRedo: activeDocId ? (useHistoryStore.getState().histories.get(activeDocId)?.redoStack.length ?? 0) > 0 : false,
-        hasSelection,
+        ...currentAvailabilityContext(),
         activeTool: useUIStore.getState().activeTool,
         sidebarOpen: useUIStore.getState().sidebarOpen,
         workspaceMode: useUIStore.getState().workspaceMode,
-        isDirty: activeDocIsDirty,
-        hasAnyDirtyDocument,
       };
-      
-      window.electronAPI.updateCommandStates(
-        (Object.keys(APP_COMMANDS) as AppCommandId[]).map((commandId) => ({
-          commandId,
-          enabled: isCommandAvailable(commandId, context),
-          checked: isCommandChecked(commandId, context),
-        })),
-      );
-    });
-    
-    // Also subscribe to history and UI stores so that undo/redo and selection trigger menu updates
-    const unsubscribeHistory = useHistoryStore.subscribe(() => {
-       // Since the updater logic is complex, we just trigger a dummy document update to re-run the menu sync
-       useDocumentStore.setState(s => ({ ...s }));
-    });
-    const unsubscribeUI = useUIStore.subscribe(() => {
-       useDocumentStore.setState(s => ({ ...s }));
-    });
-    const unsubscribeSelection = useSelectionStore.subscribe(() => {
-       useDocumentStore.setState(s => ({ ...s }));
-    });
-    
-    // Initial sync
-    useDocumentStore.setState(s => ({ ...s }));
-    
+      const states = (Object.keys(APP_COMMANDS) as AppCommandId[]).map((commandId) => ({
+        commandId,
+        enabled: isCommandAvailable(commandId, context),
+        checked: isCommandChecked(commandId, context),
+      }));
+      const serialized = JSON.stringify(states);
+      if (serialized === lastSent) return;
+      lastSent = serialized;
+      window.electronAPI.updateCommandStates(states);
+    };
+
+    const unsubscribers = [
+      useDocumentStore.subscribe(syncMenuState),
+      useHistoryStore.subscribe(syncMenuState),
+      useUIStore.subscribe(syncMenuState),
+      useSelectionStore.subscribe(syncMenuState),
+      documentSessionStore.subscribe(syncMenuState),
+    ];
+    syncMenuState();
+
     return () => {
-      unsubscribe();
-      unsubscribeHistory();
-      unsubscribeUI();
-      unsubscribeSelection();
+      for (const unsubscribe of unsubscribers) unsubscribe();
     };
   }, []);
 
@@ -356,6 +374,9 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
         }
       }
 
+      // ⌘V is handled only by the 'paste' listener below (the native Edit ▸
+      // Paste role fires it). Handling the keydown too inserted images twice.
+
       if (event.key === 'Escape'
         && !isEditableTarget(event.target)
         && useUIStore.getState().workspaceMode === 'focus') {
@@ -380,16 +401,49 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
       useUIStore.getState().setTemporaryTool(null);
     }
 
+    async function onPaste(event: ClipboardEvent) {
+      if (isEditableTarget(event.target)) {
+        return;
+      }
+
+      if (event.clipboardData && event.clipboardData.items) {
+        for (let i = 0; i < event.clipboardData.items.length; i++) {
+          const item = event.clipboardData.items[i];
+          if (item.type.startsWith('image/')) {
+            const file = item.getAsFile();
+            if (file) {
+              event.preventDefault();
+              const buffer = await file.arrayBuffer();
+              void insertImageFromBytes(buffer, file.type || item.type);
+              return;
+            }
+          }
+        }
+      }
+
+      if (window.electronAPI?.readClipboardImage) {
+        const clip = await window.electronAPI.readClipboardImage();
+        if (clip && clip.data && clip.data.byteLength > 0) {
+          event.preventDefault();
+          void insertImageFromBytes(clip.data, clip.mimeType || 'image/png');
+          return;
+        }
+      }
+    }
+
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
     window.addEventListener('blur', onWindowBlur);
+    window.addEventListener('paste', onPaste);
     return () => {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
       window.removeEventListener('blur', onWindowBlur);
+      window.removeEventListener('paste', onPaste);
       useUIStore.getState().setTemporaryTool(null);
     };
   }, [executeCommand]);
 
   return { executeCommand, canExecute };
 }
+

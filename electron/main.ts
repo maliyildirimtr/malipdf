@@ -5,6 +5,10 @@ import {
   dialog,
   Menu,
   MenuItemConstructorOptions,
+  screen,
+  desktopCapturer,
+  clipboard,
+  systemPreferences,
 } from 'electron';
 import path from 'path';
 import fs from 'fs';
@@ -20,27 +24,68 @@ import {
   createNativeMenuSchema,
   type NativeMenuNode,
 } from './nativeMenuSchema';
+import { setupPptxIpc } from './services/pptx/pptxIpc';
 
 const isDev = process.env.NODE_ENV === 'development';
 const APP_NAME = 'MaliPDF';
+
+setupPptxIpc();
 
 app.setName(APP_NAME);
 process.title = APP_NAME;
 
 let mainWindow: BrowserWindow | null = null;
 
-let activeCloseRequest: {
-  id: string;
-  type: 'window-close' | 'quit';
-  status: 'pending';
-  timeoutId?: NodeJS.Timeout;
-} | null = null;
+// ─── Close / quit handshake ──────────────────────────────────────────────────
+// The renderer owns dirty-document prompts. Closing the window or quitting
+// asks it first; it answers through 'app:confirmLifecycle'. The permission
+// flags are one-shot and are reset whenever a window is closed, so the app can
+// always be quit again afterwards (previously a stale "authorized" request
+// blocked every later quit, including SIGTERM from `npm run dev`).
+type LifecycleRequestType = 'window-close' | 'quit';
+let pendingLifecycleRequest: { id: string; type: LifecycleRequestType } | null = null;
+let allowWindowClose = false;
+let allowQuit = false;
+
+function rendererCanAnswer(): boolean {
+  return !!mainWindow
+    && !mainWindow.isDestroyed()
+    && !mainWindow.webContents.isDestroyed()
+    && !mainWindow.webContents.isCrashed();
+}
+
+function startLifecycleRequest(type: LifecycleRequestType): void {
+  if (pendingLifecycleRequest) {
+    // A quit supersedes a pending window close; the renderer's answer applies.
+    if (type === 'quit') pendingLifecycleRequest.type = 'quit';
+    return;
+  }
+  const id = crypto.randomUUID();
+  pendingLifecycleRequest = { id, type };
+  sendCommand(type === 'quit' ? 'app.requestQuit' : 'app.requestCloseWindow', id);
+}
+
+/** Carry out a close/quit the renderer approved (or can no longer answer). */
+function forceLifecycle(type: LifecycleRequestType): void {
+  pendingLifecycleRequest = null;
+  if (type === 'quit') {
+    allowQuit = true;
+    app.quit();
+  } else if (mainWindow && !mainWindow.isDestroyed()) {
+    allowWindowClose = true;
+    mainWindow.close();
+  }
+}
 
 function sendCommand(commandId: string, payload?: unknown) {
   mainWindow?.webContents.send(COMMAND_EXECUTE_CHANNEL, commandId, payload);
 }
 
 function createWindow() {
+  // A new window means the app keeps running; any earlier quit permission is void.
+  allowQuit = false;
+  allowWindowClose = false;
+  pendingLifecycleRequest = null;
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -73,30 +118,30 @@ function createWindow() {
   });
 
   mainWindow.on('close', (event) => {
-    // If there is an active request that was authorized, we let it close.
-    if (activeCloseRequest?.status === 'pending') {
-      event.preventDefault();
-      return;
-    }
-    
-    // If not authorized yet, we start a new handshake
-    if (!activeCloseRequest) {
-      event.preventDefault();
-      const requestId = crypto.randomUUID();
-      activeCloseRequest = { id: requestId, type: 'window-close', status: 'pending' };
-      activeCloseRequest.timeoutId = setTimeout(() => {
-        // Timeout -> CANCEL CLOSE -> KEEP WINDOW OPEN
-        if (activeCloseRequest?.id === requestId) {
-          activeCloseRequest = null;
-        }
-      }, 5000);
-      sendCommand('app.requestCloseWindow', requestId);
-    }
+    if (allowQuit || allowWindowClose || !rendererCanAnswer()) return;
+    event.preventDefault();
+    startLifecycleRequest('window-close');
   });
 
   mainWindow.on('closed', () => {
     mainWindow = null;
+    allowWindowClose = false;
+    pendingLifecycleRequest = null;
   });
+
+  // A crashed renderer can never answer; do not trap the user.
+  mainWindow.webContents.on('render-process-gone', () => {
+    if (pendingLifecycleRequest) forceLifecycle(pendingLifecycleRequest.type);
+  });
+
+  // Never let the app window navigate away from the app (e.g. a file dropped
+  // outside a drop zone) or open new windows.
+  const appUrl = isDev ? 'http://localhost:5173' : null;
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    const allowed = appUrl ? url.startsWith(appUrl) : false;
+    if (!allowed) event.preventDefault();
+  });
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
 
   buildMenu();
 }
@@ -269,10 +314,408 @@ ipcMain.handle('app:getVersion', () => {
   return app.getVersion();
 });
 
-// ─── App lifecycle ────────────────────────────────────────────────────────────
+// ─── Image & Screenshot Handlers ─────────────────────────────────────────────
 
-let isQuitting = false;
-let isWindowClosing = false;
+const CAPTURE_SETTLE_DELAY_MS = 250;
+const REGION_SELECTION_TIMEOUT_MS = 120_000;
+
+function compositorDelay(ms = CAPTURE_SETTLE_DELAY_MS): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+let isCapturingSession = false;
+
+function getTargetDisplay(): Electron.Display {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    return screen.getDisplayMatching(mainWindow.getBounds());
+  }
+  return screen.getPrimaryDisplay();
+}
+
+// Open Image File Dialog
+ipcMain.handle('dialog:openImage', async () => {
+  if (!mainWindow) return null;
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Insert Image',
+    filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
+    properties: ['openFile'],
+  });
+
+  if (result.canceled || result.filePaths.length === 0) {
+    return null;
+  }
+
+  const filePath = result.filePaths[0];
+  const buffer = await fs.promises.readFile(filePath);
+  const ext = path.extname(filePath).toLowerCase();
+  let mimeType = 'image/png';
+  if (ext === '.jpg' || ext === '.jpeg') mimeType = 'image/jpeg';
+  else if (ext === '.webp') mimeType = 'image/webp';
+
+  return {
+    name: path.basename(filePath),
+    mimeType,
+    data: buffer.buffer.slice(
+      buffer.byteOffset,
+      buffer.byteOffset + buffer.byteLength,
+    ) as ArrayBuffer,
+  };
+});
+
+// Read Clipboard Image
+ipcMain.handle('clipboard:readImage', async () => {
+  const image = clipboard.readImage();
+  if (image.isEmpty()) return null;
+  const pngBuffer = image.toPNG();
+  return {
+    mimeType: 'image/png',
+    data: pngBuffer.buffer.slice(
+      pngBuffer.byteOffset,
+      pngBuffer.byteOffset + pngBuffer.byteLength,
+    ) as ArrayBuffer,
+  };
+});
+
+// Capture Display Screenshot
+ipcMain.handle('screenshot:captureDisplay', async () => {
+  if (isCapturingSession) {
+    return { success: false, error: 'Capture already in progress' };
+  }
+  isCapturingSession = true;
+
+  if (process.platform === 'darwin') {
+    const status = systemPreferences.getMediaAccessStatus('screen');
+    if (status === 'denied') {
+      isCapturingSession = false;
+      return { success: false, error: 'Screen recording permission denied in macOS System Settings.' };
+    }
+  }
+
+  const targetDisplay = getTargetDisplay();
+  const physicalWidth = Math.round(targetDisplay.bounds.width * targetDisplay.scaleFactor);
+  const physicalHeight = Math.round(targetDisplay.bounds.height * targetDisplay.scaleFactor);
+  const wasVisible = mainWindow?.isVisible() ?? false;
+
+  try {
+    if (mainWindow && wasVisible) {
+      mainWindow.hide();
+      await compositorDelay(CAPTURE_SETTLE_DELAY_MS);
+    }
+
+    const sources = await desktopCapturer.getSources({
+      types: ['screen'],
+      thumbnailSize: { width: physicalWidth, height: physicalHeight },
+      fetchWindowIcons: false,
+    });
+
+    let matchedSource = sources.find((s) => s.display_id === String(targetDisplay.id));
+    if (!matchedSource && sources.length > 0) {
+      matchedSource = sources[0];
+    }
+
+    if (!matchedSource || matchedSource.thumbnail.isEmpty()) {
+      return { success: false, error: 'Failed to capture display image.' };
+    }
+
+    const thumbnail = matchedSource.thumbnail;
+    const pngBuffer = thumbnail.toPNG();
+    const size = thumbnail.getSize();
+
+    return {
+      success: true,
+      data: pngBuffer.buffer.slice(
+        pngBuffer.byteOffset,
+        pngBuffer.byteOffset + pngBuffer.byteLength,
+      ) as ArrayBuffer,
+      mimeType: 'image/png',
+      width: size.width,
+      height: size.height,
+    };
+  } catch (error: any) {
+    return { success: false, error: error?.message || 'Screenshot failed' };
+  } finally {
+    if (mainWindow && !mainWindow.isDestroyed() && wasVisible) {
+      mainWindow.show();
+      mainWindow.focus();
+    }
+    isCapturingSession = false;
+  }
+});
+
+// Capture Region Screenshot via Temporary Full-Display Overlay Window
+ipcMain.handle('screenshot:captureRegion', async () => {
+  if (isCapturingSession) {
+    return { success: false, error: 'Capture already in progress' };
+  }
+  isCapturingSession = true;
+
+  if (process.platform === 'darwin') {
+    const status = systemPreferences.getMediaAccessStatus('screen');
+    if (status === 'denied') {
+      isCapturingSession = false;
+      return { success: false, error: 'Screen recording permission denied in macOS System Settings.' };
+    }
+  }
+
+  const targetDisplay = getTargetDisplay();
+  const physicalWidth = Math.round(targetDisplay.bounds.width * targetDisplay.scaleFactor);
+  const physicalHeight = Math.round(targetDisplay.bounds.height * targetDisplay.scaleFactor);
+  const wasVisible = mainWindow?.isVisible() ?? false;
+
+  let thumbnail: Electron.NativeImage | null = null;
+  let overlayWindow: BrowserWindow | null = null;
+
+  try {
+    if (mainWindow && wasVisible) {
+      mainWindow.hide();
+      await compositorDelay(CAPTURE_SETTLE_DELAY_MS);
+    }
+
+    const sources = await desktopCapturer.getSources({
+      types: ['screen'],
+      thumbnailSize: { width: physicalWidth, height: physicalHeight },
+      fetchWindowIcons: false,
+    });
+
+    let matchedSource = sources.find((s) => s.display_id === String(targetDisplay.id));
+    if (!matchedSource && sources.length > 0) {
+      matchedSource = sources[0];
+    }
+
+    if (!matchedSource || matchedSource.thumbnail.isEmpty()) {
+      return { success: false, error: 'Failed to capture display image.' };
+    }
+
+    thumbnail = matchedSource.thumbnail;
+    const bitmapSize = thumbnail.getSize();
+    const dataUrl = thumbnail.toDataURL();
+
+    overlayWindow = new BrowserWindow({
+      x: targetDisplay.bounds.x,
+      y: targetDisplay.bounds.y,
+      width: targetDisplay.bounds.width,
+      height: targetDisplay.bounds.height,
+      frame: false,
+      transparent: false,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      resizable: false,
+      movable: false,
+      hasShadow: false,
+      enableLargerThanScreen: true,
+      backgroundColor: '#000000',
+      show: false,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: false,
+      },
+    });
+
+    overlayWindow.setAlwaysOnTop(true, 'screen-saver');
+
+    const overlayHtml = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #000; cursor: crosshair; }
+  #snapshot { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: fill; pointer-events: none; }
+  #tint { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.35); pointer-events: none; }
+  #selection {
+    position: absolute;
+    display: none;
+    border: 2px solid #3b82f6;
+    background: transparent;
+    box-shadow: 0 0 0 99999px rgba(0,0,0,0.4);
+    pointer-events: none;
+  }
+  #hud {
+    position: absolute;
+    bottom: -28px;
+    left: 0;
+    padding: 3px 7px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 11px;
+    font-weight: 500;
+    color: #fff;
+    background: rgba(15, 23, 42, 0.9);
+    border-radius: 4px;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+  #guide {
+    position: fixed;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 6px 14px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 12px;
+    font-weight: 500;
+    color: #f1f5f9;
+    background: rgba(15, 23, 42, 0.85);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 20px;
+    pointer-events: none;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  }
+</style>
+</head>
+<body>
+  <img id="snapshot" src="${dataUrl}">
+  <div id="tint"></div>
+  <div id="selection"><span id="hud">0 × 0</span></div>
+  <div id="guide">Drag to select region • Press Esc to cancel</div>
+  <script>
+    let resolveSelection = null;
+    window.waitForSelection = function() {
+      return new Promise(function(resolve) {
+        resolveSelection = resolve;
+      });
+    };
+
+    let isDragging = false;
+    let startX = 0, startY = 0;
+    const selEl = document.getElementById('selection');
+    const hudEl = document.getElementById('hud');
+    const tintEl = document.getElementById('tint');
+
+    window.addEventListener('mousedown', function(e) {
+      if (e.button !== 0) return;
+      isDragging = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      tintEl.style.display = 'none';
+      selEl.style.display = 'block';
+      selEl.style.left = startX + 'px';
+      selEl.style.top = startY + 'px';
+      selEl.style.width = '0px';
+      selEl.style.height = '0px';
+      hudEl.textContent = '0 × 0';
+    });
+
+    window.addEventListener('mousemove', function(e) {
+      if (!isDragging) return;
+      const curX = e.clientX;
+      const curY = e.clientY;
+      const x = Math.min(startX, curX);
+      const y = Math.min(startY, curY);
+      const w = Math.abs(curX - startX);
+      const h = Math.abs(curY - startY);
+
+      selEl.style.left = x + 'px';
+      selEl.style.top = y + 'px';
+      selEl.style.width = w + 'px';
+      selEl.style.height = h + 'px';
+      hudEl.textContent = Math.round(w) + ' × ' + Math.round(h);
+    });
+
+    window.addEventListener('mouseup', function(e) {
+      if (!isDragging) return;
+      isDragging = false;
+      const curX = e.clientX;
+      const curY = e.clientY;
+      const x = Math.min(startX, curX);
+      const y = Math.min(startY, curY);
+      const w = Math.abs(curX - startX);
+      const h = Math.abs(curY - startY);
+
+      if (w < 4 || h < 4) {
+        selEl.style.display = 'none';
+        tintEl.style.display = 'block';
+        return;
+      }
+
+      if (resolveSelection) {
+        resolveSelection({ canceled: false, x: x, y: y, width: w, height: h });
+      }
+    });
+
+    window.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        if (resolveSelection) {
+          resolveSelection({ canceled: true });
+        }
+      }
+    });
+  </script>
+</body>
+</html>`;
+
+    await overlayWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(overlayHtml));
+    overlayWindow.show();
+    if (process.platform === 'darwin') app.focus({ steal: true });
+    overlayWindow.focus();
+
+    // The selection promise alone can hang forever (overlay loses key focus so
+    // Esc never arrives, or it is closed), leaving MaliPDF hidden. Cancel on
+    // close, on focus loss after it was focused, and after a generous timeout.
+    const overlay = overlayWindow;
+    const selection: any = await new Promise((resolve) => {
+      let settled = false;
+      let wasFocused = overlay.isFocused();
+      const finish = (value: unknown) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(value);
+      };
+      const timer = setTimeout(() => finish({ canceled: true }), REGION_SELECTION_TIMEOUT_MS);
+      overlay.once('closed', () => finish({ canceled: true }));
+      overlay.on('focus', () => { wasFocused = true; });
+      overlay.on('blur', () => { if (wasFocused) finish({ canceled: true }); });
+      overlay.webContents.executeJavaScript('window.waitForSelection()')
+        .then(finish, () => finish({ canceled: true }));
+    });
+
+    if (!selection || selection.canceled) {
+      return { success: false, canceled: true };
+    }
+
+    const scaleX = bitmapSize.width / targetDisplay.bounds.width;
+    const scaleY = bitmapSize.height / targetDisplay.bounds.height;
+
+    let cropX = Math.round(selection.x * scaleX);
+    let cropY = Math.round(selection.y * scaleY);
+    let cropW = Math.round(selection.width * scaleX);
+    let cropH = Math.round(selection.height * scaleY);
+
+    cropX = Math.max(0, Math.min(cropX, bitmapSize.width - 1));
+    cropY = Math.max(0, Math.min(cropY, bitmapSize.height - 1));
+    cropW = Math.max(1, Math.min(cropW, bitmapSize.width - cropX));
+    cropH = Math.max(1, Math.min(cropH, bitmapSize.height - cropY));
+
+    const cropped = thumbnail.crop({ x: cropX, y: cropY, width: cropW, height: cropH });
+    const pngBuffer = cropped.toPNG();
+
+    return {
+      success: true,
+      data: pngBuffer.buffer.slice(
+        pngBuffer.byteOffset,
+        pngBuffer.byteOffset + pngBuffer.byteLength,
+      ) as ArrayBuffer,
+      mimeType: 'image/png',
+      width: cropW,
+      height: cropH,
+    };
+  } catch (error: any) {
+    return { success: false, error: error?.message || 'Region capture failed' };
+  } finally {
+    if (overlayWindow && !overlayWindow.isDestroyed()) {
+      overlayWindow.destroy();
+      overlayWindow = null;
+    }
+    if (mainWindow && !mainWindow.isDestroyed() && wasVisible) {
+      mainWindow.show();
+      mainWindow.focus();
+    }
+    isCapturingSession = false;
+  }
+});
+
+// ─── App lifecycle ────────────────────────────────────────────────────────────
 
 app.whenReady().then(() => {
   createWindow();
@@ -283,52 +726,43 @@ app.whenReady().then(() => {
 });
 
 app.on('before-quit', (event) => {
-  // If there is an active request that was authorized, let it quit
-  if (activeCloseRequest?.type === 'quit' && activeCloseRequest.status !== 'pending') {
+  if (allowQuit) return;
+  // No window (e.g. macOS after closing it) or no live renderer: nothing
+  // unsaved can be protected, so quit normally.
+  if (!rendererCanAnswer()) {
+    allowQuit = true;
     return;
   }
-  
   event.preventDefault();
-  
-  if (!activeCloseRequest) {
-    const requestId = crypto.randomUUID();
-    activeCloseRequest = { id: requestId, type: 'quit', status: 'pending' };
-    activeCloseRequest.timeoutId = setTimeout(() => {
-      // Timeout -> CANCEL CLOSE -> KEEP APP OPEN
-      if (activeCloseRequest?.id === requestId) {
-        activeCloseRequest = null;
-      }
-    }, 5000);
-    sendCommand('app.requestQuit', requestId);
-  }
+  startLifecycleRequest('quit');
 });
+
+// Terminal signals (Ctrl+C, `concurrently -k`, kill). In development exit
+// immediately so no Electron process is ever left behind. In production ask
+// the renderer like a normal quit.
+for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+  process.on(signal, () => {
+    if (isDev) {
+      app.exit(0);
+    } else {
+      app.quit();
+    }
+  });
+}
 
 app.on('window-all-closed', () => {
   // Only for normal platform behavior, no persistence handshake here.
   if (process.platform !== 'darwin') app.quit();
 });
 
-ipcMain.on('app:confirmLifecycle', (_event, requestId: string, allow: boolean) => {
-  if (activeCloseRequest?.id !== requestId || activeCloseRequest.status !== 'pending') {
-    // Stale or duplicate ALLOW message, ignore.
-    return;
-  }
-  
-  const type = activeCloseRequest.type;
-  clearTimeout(activeCloseRequest.timeoutId);
-  
-  if (!allow) {
-    // Renderer cancelled the close sequence.
-    activeCloseRequest = null;
-    return;
-  }
-  
-  // ALLOW: open guard and re-trigger
-  activeCloseRequest.status = 'authorized' as any;
-  
-  if (type === 'quit') {
-    app.quit();
-  } else {
-    mainWindow?.close();
-  }
+ipcMain.on('app:confirmLifecycle', (_event, requestId: unknown, allow: unknown) => {
+  // No timeout: the renderer may be showing Save / Don't Save dialogs for as
+  // long as the user needs. Stale or duplicate answers are ignored.
+  if (!pendingLifecycleRequest || pendingLifecycleRequest.id !== requestId) return;
+
+  const { type } = pendingLifecycleRequest;
+  pendingLifecycleRequest = null;
+  if (allow !== true) return; // user cancelled
+
+  forceLifecycle(type);
 });

@@ -19,8 +19,10 @@ import {
   useDocumentSessionStore,
 } from '../../store/documentSessionStore';
 import {
+  getLoadedRevision,
   getPage,
   reconcilePageCache,
+  reloadDocument,
   requestPageEviction,
 } from '../../pdf/documentManager';
 import { calcFitPageScale, calcFitWidthScale } from '../../pdf/renderer';
@@ -103,12 +105,31 @@ export function DocumentArea() {
   );
 
   const openFileDialog = useCallback(async () => {
-    if (!window.electronAPI) return;
-    const files = await window.electronAPI.openFile();
-    if (!files) return;
-    for (const file of files) {
-      await loadFile(file.name, file.filePath, file.data);
+    if (window.electronAPI?.openFile) {
+      const files = await window.electronAPI.openFile();
+      if (!files) return;
+      for (const file of files) {
+        await loadFile(file.name, file.filePath, file.data);
+      }
+      return;
     }
+
+    // Web fallback for browser environment
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'application/pdf,.pdf';
+    input.multiple = true;
+    input.style.display = 'none';
+    input.onchange = async () => {
+      if (!input.files || input.files.length === 0) return;
+      for (const file of Array.from(input.files)) {
+        const buffer = await file.arrayBuffer();
+        await loadFile(file.name, null, buffer);
+      }
+      input.remove();
+    };
+    document.body.appendChild(input);
+    input.click();
   }, [loadFile]);
 
   function onDragOver(event: React.DragEvent) {
@@ -132,7 +153,12 @@ export function DocumentArea() {
       (file) => file.type === 'application/pdf' || file.name.endsWith('.pdf'),
     );
     for (const file of files) {
-      await loadFile(file.name, null, await file.arrayBuffer());
+      if (activeDoc) {
+        const { insertPdfPrintout } = await import('../../commands/printoutCommands');
+        await insertPdfPrintout(activeDoc.id, new Uint8Array(await file.arrayBuffer()));
+      } else {
+        await loadFile(file.name, null, await file.arrayBuffer());
+      }
     }
   }
 
@@ -141,6 +167,25 @@ export function DocumentArea() {
     document.addEventListener('app:openFile', handleOpenRequest);
     return () => document.removeEventListener('app:openFile', handleOpenRequest);
   }, [openFileDialog]);
+
+  // ── Reload source when changed ────────────────────────────────────────────
+  // The pdf.js proxy is tracked per document (DocumentManager.loadedRevision),
+  // so a page mutation committed while the document was in the background is
+  // picked up as soon as it becomes active again.
+
+  useEffect(() => {
+    if (!activeIdentity || !activeDoc) return;
+    const identity = activeIdentity;
+    const revision = activeDoc.sourceRevision;
+    if (getLoadedRevision(identity) >= revision) return;
+
+    reloadDocument(identity, activeDoc.sourceData, revision).then((newPageCount) => {
+      if (newPageCount === null) return; // superseded by a newer reload
+      documentSessionStore.getState().reloadSession(identity, newPageCount);
+    }).catch(err => {
+      console.error('Failed to reload document bytes:', err);
+    });
+  }, [activeIdentityKey, activeDoc?.sourceRevision, activeDoc?.sourceData]);
 
   // ── Active session and per-document scroll lifecycle ──────────────────────
 
@@ -532,7 +577,7 @@ export function DocumentArea() {
     >
       {isDragOver && (
         <div className="drop-overlay">
-          <div className="drop-overlay__text">Drop PDF to open</div>
+          <div className="drop-overlay__text">Drop PDF to insert as printout pages</div>
         </div>
       )}
 

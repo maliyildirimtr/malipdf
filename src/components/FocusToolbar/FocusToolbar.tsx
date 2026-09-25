@@ -29,7 +29,9 @@ import {
 } from '../../store/uiStore';
 import type { ToolType } from '../../types/annotations';
 import { ColorWell } from '../MainRibbon/ColorWell';
-import { OpacityControl, StrokeWidthControl } from '../MainRibbon/PropertyControls';
+import { OpacityControl } from '../MainRibbon/PropertyControls';
+import { TOOL_WIDTH_CONSTRAINTS } from '../../constants/toolConstraints';
+import { WidthControl } from '../Properties/WidthControl';
 import styles from './FocusToolbar.module.css';
 
 const TOOL_COMMANDS = {
@@ -52,9 +54,7 @@ const SHAPES: ReadonlyArray<{ tool: FocusShapeTool; label: string; icon: LucideI
   { tool: 'ellipse', label: 'Ellipse', icon: Circle },
 ];
 
-const PEN_WIDTHS = [1, 2, 3, 5, 8] as const;
-const HIGHLIGHTER_WIDTHS = [10, 16, 22, 30] as const;
-const SHAPE_WIDTHS = [1, 2, 3, 4, 6] as const;
+
 
 export interface FocusToolbarProps {
   onCommand: (commandId: AppCommandId) => void;
@@ -71,12 +71,10 @@ export function FocusToolbar({ onCommand, canExecute }: FocusToolbarProps) {
     workspaceMode,
     lastShapeTool,
     toolOptions,
-    recentColorsByFamily,
     updatePenOptions,
     updateHighlighterOptions,
     updateTextOptions,
     updateShapeOptions,
-    rememberColor,
   } = useUIStore();
   const rootRef = useRef<HTMLElement>(null);
   const [openPanel, setOpenPanel] = useState<'shape' | 'properties' | null>(null);
@@ -239,12 +237,10 @@ export function FocusToolbar({ onCommand, canExecute }: FocusToolbarProps) {
           <FocusProperties
             activeTool={activeTool}
             toolOptions={toolOptions}
-            recentColorsByFamily={recentColorsByFamily}
             updatePenOptions={updatePenOptions}
             updateHighlighterOptions={updateHighlighterOptions}
             updateTextOptions={updateTextOptions}
             updateShapeOptions={updateShapeOptions}
-            rememberColor={rememberColor}
           />
         </div>
       )}
@@ -300,26 +296,24 @@ function FocusCommandButton({ commandId, label, icon: Icon, run, enabled }: {
   );
 }
 
-function FocusProperties({ activeTool, toolOptions, recentColorsByFamily, updatePenOptions, updateHighlighterOptions, updateTextOptions, updateShapeOptions, rememberColor }: {
+function FocusProperties({ activeTool, toolOptions, updatePenOptions, updateHighlighterOptions, updateTextOptions, updateShapeOptions }: {
   activeTool: ToolType;
   toolOptions: ReturnType<typeof useUIStore.getState>['toolOptions'];
-  recentColorsByFamily: ReturnType<typeof useUIStore.getState>['recentColorsByFamily'];
   updatePenOptions: ReturnType<typeof useUIStore.getState>['updatePenOptions'];
   updateHighlighterOptions: ReturnType<typeof useUIStore.getState>['updateHighlighterOptions'];
   updateTextOptions: ReturnType<typeof useUIStore.getState>['updateTextOptions'];
   updateShapeOptions: ReturnType<typeof useUIStore.getState>['updateShapeOptions'];
-  rememberColor: ReturnType<typeof useUIStore.getState>['rememberColor'];
 }) {
   if (activeTool === 'pen') {
-    return <PropertyStack colorFamily="pen" color={toolOptions.pen.color} colors={recentColorsByFamily.pen} width={toolOptions.pen.width} widths={PEN_WIDTHS} opacity={toolOptions.pen.opacity} onColor={(color) => updatePenOptions({ color })} onWidth={(width) => updatePenOptions({ width })} onOpacity={(opacity) => updatePenOptions({ opacity })} />;
+    return <PropertyStack colorFamily="pen" color={toolOptions.pen.color} width={toolOptions.pen.width} constraint={TOOL_WIDTH_CONSTRAINTS.pen} opacity={toolOptions.pen.opacity} onColor={(color) => updatePenOptions({ color })} onWidth={(width) => updatePenOptions({ width })} onOpacity={(opacity) => updatePenOptions({ opacity })} />;
   }
   if (activeTool === 'highlighter') {
-    return <PropertyStack colorFamily="highlighter" color={toolOptions.highlighter.color} colors={recentColorsByFamily.highlighter} width={toolOptions.highlighter.width} widths={HIGHLIGHTER_WIDTHS} opacity={toolOptions.highlighter.opacity} onColor={(color) => updateHighlighterOptions({ color })} onWidth={(width) => updateHighlighterOptions({ width })} onOpacity={(opacity) => updateHighlighterOptions({ opacity })} />;
+    return <PropertyStack colorFamily="highlighter" color={toolOptions.highlighter.color} width={toolOptions.highlighter.width} constraint={TOOL_WIDTH_CONSTRAINTS.highlighter} opacity={toolOptions.highlighter.opacity} onColor={(color) => updateHighlighterOptions({ color })} onWidth={(width) => updateHighlighterOptions({ width })} onOpacity={(opacity) => updateHighlighterOptions({ opacity })} />;
   }
   if (activeTool === 'text') {
     return (
       <div className={styles.propertyStack}>
-        <ColorWell label="Text" value={toolOptions.text.color} colors={recentColorsByFamily.text} onChange={(color) => updateTextOptions({ color })} />
+        <ColorWell label="Text" value={toolOptions.text.color} onChange={(color) => updateTextOptions({ color })} />
         <label className={styles.focusField}>
           <span>Size</span>
           <input type="number" min="6" max="144" step="1" value={toolOptions.text.fontSize} onChange={(event) => updateTextOptions({ fontSize: Number(event.target.value) })} aria-label="Text size in PDF points" />
@@ -330,20 +324,16 @@ function FocusProperties({ activeTool, toolOptions, recentColorsByFamily, update
   if (isShapeLike(activeTool)) {
     return (
       <div className={styles.propertyStack}>
-        <ColorWell label="Stroke" value={toolOptions.shape.color} colors={recentColorsByFamily.shape} onChange={(color) => updateShapeOptions({ color })} />
+        <ColorWell label="Stroke" value={toolOptions.shape.color} onChange={(color) => updateShapeOptions({ color })} />
         {(activeTool === 'rectangle' || activeTool === 'roundedRect' || activeTool === 'ellipse') && (
           <ColorWell
             label="Fill"
             value={toolOptions.shape.fillColor}
-            colors={recentColorsByFamily.shape}
             allowTransparent
-            onChange={(fillColor) => {
-              updateShapeOptions({ fillColor });
-              if (fillColor !== 'transparent') rememberColor('shape', fillColor);
-            }}
+            onChange={(fillColor) => updateShapeOptions({ fillColor })}
           />
         )}
-        <StrokeWidthControl value={toolOptions.shape.strokeWidth} options={SHAPE_WIDTHS} onChange={(strokeWidth) => updateShapeOptions({ strokeWidth })} />
+        <WidthControl value={toolOptions.shape.strokeWidth} constraint={TOOL_WIDTH_CONSTRAINTS.shape} onChange={(strokeWidth) => updateShapeOptions({ strokeWidth })} onCommit={(strokeWidth) => updateShapeOptions({ strokeWidth })} />
         <OpacityControl value={toolOptions.shape.opacity} onChange={(opacity) => updateShapeOptions({ opacity })} />
       </div>
     );
@@ -353,12 +343,11 @@ function FocusProperties({ activeTool, toolOptions, recentColorsByFamily, update
   return <p className={styles.propertyHint}>Select a drawing tool to edit its properties.</p>;
 }
 
-function PropertyStack({ colorFamily, color, colors, width, widths, opacity, onColor, onWidth, onOpacity }: {
+function PropertyStack({ colorFamily, color, width, constraint, opacity, onColor, onWidth, onOpacity }: {
   colorFamily: ToolColorFamily;
   color: string;
-  colors: readonly string[];
   width: number;
-  widths: readonly number[];
+  constraint: any;
   opacity: number;
   onColor: (color: string) => void;
   onWidth: (width: number) => void;
@@ -366,8 +355,8 @@ function PropertyStack({ colorFamily, color, colors, width, widths, opacity, onC
 }) {
   return (
     <div className={styles.propertyStack} data-color-family={colorFamily}>
-      <ColorWell label="Color" value={color} colors={colors} onChange={onColor} />
-      <StrokeWidthControl value={width} options={widths} onChange={onWidth} />
+      <ColorWell label="Color" value={color} onChange={onColor} />
+      <WidthControl value={width} constraint={constraint} onChange={onWidth} onCommit={onWidth} />
       <OpacityControl value={opacity} onChange={onOpacity} />
     </div>
   );
