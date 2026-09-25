@@ -1,0 +1,324 @@
+/* ============================================================
+   PRINTOUT SECTION
+   ============================================================ */
+
+.printout {
+  background-color: var(--bg-page);
+  border-top: 1px solid var(--border);
+}
+
+.printout__header {
+  text-align: center;
+  max-width: 600px;
+  margin-inline: auto;
+  margin-bottom: var(--space-16);
+}
+
+.printout__title {
+  margin-bottom: var(--space-4);
+}
+
+.printout__subtitle {
+  font-size: 1rem;
+  color: var(--text-secondary);
+  line-height: 1.7;
+}
+
+/* --- Workflow diagram --- */
+.printout__workflow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  margin-bottom: var(--space-16);
+  overflow-x: auto;
+  padding: var(--space-8);
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+}
+
+.printout__step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-5);
+  flex: 1;
+  min-width: 140px;
+}
+
+/* Step visual containers */
+.printout__step-visual {
+  width: 100px;
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.printout__step-visual--source .printout__pdf-icon {
+  position: relative;
+  z-index: 2;
+}
+
+.printout__step-pages {
+  position: absolute;
+  inset: 0;
+}
+
+.printout__page-thumb {
+  position: absolute;
+  width: 36px;
+  height: 46px;
+  background-color: var(--bg-muted);
+  border: 1px solid var(--border-strong);
+  border-radius: 2px;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+/* MaliPDF center */
+.printout__step-visual--malipdf {
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.printout__malipdf-badge {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background-color: var(--accent);
+  color: #fff;
+  padding: 6px 12px;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+}
+
+.printout__m-mark {
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.printout__m-text {
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.printout__conversion-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 60px;
+}
+
+.printout__conv-line {
+  height: 4px;
+  background-color: var(--accent-light);
+  border-radius: 2px;
+  animation: pulse 1.8s ease-in-out infinite;
+}
+
+.printout__conv-line:nth-child(2) { animation-delay: 0.2s; opacity: 0.8; }
+.printout__conv-line:nth-child(3) { animation-delay: 0.4s; opacity: 0.6; }
+.printout__conv-line:nth-child(4) { animation-delay: 0.6s; opacity: 0.4; }
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.9; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .printout__conv-line {
+    animation: none;
+    opacity: 0.5;
+  }
+}
+
+/* Annotated page */
+.printout__step-visual--annotated {
+  justify-content: center;
+}
+
+.printout__annotated-page {
+  width: 72px;
+  height: 90px;
+  background-color: #fff;
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+}
+
+.printout__page-content {
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  position: relative;
+  height: 100%;
+}
+
+.pa-line {
+  height: 5px;
+  background-color: rgba(15,28,46,0.1);
+  border-radius: 1px;
+}
+
+.pa-highlight {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  width: 55%;
+  height: 6px;
+  background-color: rgba(255,213,79,0.45);
+  border-radius: 1px;
+}
+
+.pa-pen-stroke {
+  height: 2px;
+  width: 70%;
+  background-color: rgba(45,95,168,0.6);
+  border-radius: 1px;
+  margin-top: 2px;
+  transform: rotate(-1deg);
+}
+
+.pa-text-note {
+  font-size: 0.42rem;
+  color: var(--accent);
+  font-weight: 700;
+  position: absolute;
+  bottom: 8px;
+  right: 4px;
+}
+
+/* Step label */
+.printout__step-label {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  text-align: left;
+  width: 100%;
+}
+
+.printout__step-num {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background-color: var(--accent);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.printout__step-label h4 {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
+.printout__step-label p {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+/* Arrow */
+.printout__arrow {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.printout__arrow-label {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* --- Callouts --- */
+.printout__callouts {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-5);
+}
+
+.printout__callout {
+  padding: var(--space-6);
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  transition:
+    box-shadow var(--transition-fast),
+    border-color var(--transition-fast),
+    transform var(--transition-fast);
+}
+
+.printout__callout:hover {
+  box-shadow: var(--shadow-sm);
+  border-color: var(--border-strong);
+  transform: translateY(-2px);
+}
+
+.printout__callout-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: var(--space-3);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.printout__badge {
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  padding: 2px 7px;
+  border-radius: 20px;
+  background-color: rgba(255,180,50,0.12);
+  color: #b87e00;
+  border: 1px solid rgba(255,180,50,0.3);
+}
+
+.printout__callout-body {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+/* --- Responsive --- */
+@media (max-width: 1024px) {
+  .printout__workflow {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .printout__arrow {
+    flex-direction: row;
+    justify-content: center;
+  }
+
+  .printout__arrow svg {
+    transform: rotate(90deg);
+  }
+}
+
+@media (max-width: 768px) {
+  .printout__callouts {
+    grid-template-columns: 1fr;
+  }
+}

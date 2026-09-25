@@ -1,0 +1,108 @@
+/* ============================================================
+   FEATURE OVERVIEW
+   ============================================================ */
+
+.features {
+  background-color: var(--bg-page);
+  border-top: 1px solid var(--border);
+}
+
+.features__header {
+  text-align: center;
+  margin-bottom: var(--space-16);
+}
+
+.features__subtitle {
+  font-size: 1rem;
+  color: var(--text-secondary);
+  margin-top: var(--space-4);
+}
+
+/* --- Feature Grid --- */
+.features__grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-5);
+}
+
+/* --- Group --- */
+.features__group {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  transition:
+    box-shadow var(--transition-fast),
+    border-color var(--transition-fast);
+}
+
+.features__group:hover {
+  box-shadow: var(--shadow-sm);
+  border-color: var(--border-strong);
+}
+
+.features__group-header {
+  padding: var(--space-5) var(--space-6);
+  border-bottom: 1px solid var(--border);
+  background-color: var(--bg-surface-alt);
+}
+
+.features__group-category {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+  margin-bottom: 3px;
+}
+
+.features__group-desc {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+/* --- List --- */
+.features__list {
+  padding: var(--space-5) var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.features__item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.features__check {
+  color: var(--accent);
+  font-size: 0.75rem;
+  font-weight: 700;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.features__item--upcoming {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.features__item--upcoming .features__check {
+  color: #b87e00;
+}
+
+/* --- Responsive --- */
+@media (max-width: 1024px) {
+  .features__grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .features__grid {
+    grid-template-columns: 1fr;
+  }
+}

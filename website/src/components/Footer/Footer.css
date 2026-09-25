@@ -1,0 +1,129 @@
+/* ============================================================
+   FOOTER
+   ============================================================ */
+
+.footer {
+  background-color: var(--bg-navy);
+  border-top: 1px solid var(--border-navy);
+  padding-block: var(--space-16) var(--space-10);
+}
+
+/* --- Grid --- */
+.footer__grid {
+  display: grid;
+  grid-template-columns: 1.8fr 1fr 1fr;
+  gap: var(--space-12);
+  padding-bottom: var(--space-12);
+  border-bottom: 1px solid var(--border-navy);
+}
+
+/* --- Brand --- */
+.footer__logo {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  text-decoration: none;
+  margin-bottom: var(--space-4);
+}
+
+.footer__logo-img {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.footer__logo-text {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--text-on-navy);
+  letter-spacing: -0.03em;
+}
+
+.footer__tagline {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-on-navy);
+  margin-bottom: var(--space-3);
+  line-height: 1.4;
+}
+
+.footer__desc {
+  font-size: 0.8rem;
+  color: var(--text-on-navy-muted);
+  line-height: 1.6;
+  max-width: 300px;
+}
+
+/* --- Columns --- */
+.footer__col-heading {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-on-navy-dim);
+  margin-bottom: var(--space-5);
+}
+
+.footer__col-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.footer__link {
+  font-size: 0.875rem;
+  color: var(--text-on-navy-muted);
+  text-decoration: none;
+  transition: color var(--transition-fast);
+}
+
+.footer__link:hover {
+  color: var(--text-on-navy);
+}
+
+/* --- Bottom --- */
+.footer__bottom {
+  padding-top: var(--space-8);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-6);
+  flex-wrap: wrap;
+}
+
+.footer__copy {
+  font-size: 0.8rem;
+  color: var(--text-on-navy-dim);
+}
+
+.footer__sub {
+  font-size: 0.75rem;
+  color: var(--text-on-navy-dim);
+  opacity: 0.6;
+}
+
+/* --- Responsive --- */
+@media (max-width: 768px) {
+  .footer__grid {
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-8);
+  }
+
+  .footer__brand {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 480px) {
+  .footer__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .footer__bottom {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+  }
+}

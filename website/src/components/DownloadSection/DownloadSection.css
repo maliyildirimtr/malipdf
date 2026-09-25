@@ -1,0 +1,134 @@
+/* ============================================================
+   DOWNLOAD SECTION
+   ============================================================ */
+
+.download {
+  background-color: var(--bg-surface-alt);
+  border-top: 1px solid var(--border);
+}
+
+.download__panel {
+  background-color: var(--bg-navy);
+  border-radius: var(--radius-xl);
+  padding: var(--space-20);
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--border-navy);
+}
+
+/* Decorative background */
+.download__bg-deco {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 60% 50% at 50% 0%, rgba(45,95,168,0.15) 0%, transparent 70%),
+    linear-gradient(180deg, transparent 40%, rgba(45,95,168,0.04) 100%);
+}
+
+.download__content {
+  position: relative;
+  z-index: 1;
+  max-width: 560px;
+  margin-inline: auto;
+}
+
+.download__eyebrow {
+  display: inline-block;
+  margin-bottom: var(--space-5);
+}
+
+.download__title {
+  color: var(--text-on-navy);
+  font-size: clamp(2rem, 4vw, 3rem);
+  letter-spacing: -0.04em;
+  margin-bottom: var(--space-5);
+}
+
+.download__body {
+  color: var(--text-on-navy-muted);
+  font-size: 1rem;
+  line-height: 1.75;
+  margin-bottom: var(--space-10);
+  max-width: 440px;
+  margin-inline: auto;
+}
+
+/* --- Buttons --- */
+.download__buttons {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+  margin-bottom: var(--space-10);
+}
+
+.download__platform {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  max-width: 340px;
+}
+
+.download__btn {
+  width: 100%;
+  justify-content: center;
+}
+
+.download__meta {
+  font-size: 0.72rem;
+  color: var(--text-on-navy-dim);
+  letter-spacing: 0.02em;
+}
+
+/* --- Trust indicators --- */
+.download__trust {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-5);
+  margin-bottom: var(--space-6);
+}
+
+.download__trust-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.8rem;
+  color: var(--text-on-navy-muted);
+}
+
+.download__trust-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background-color: #4caf7a;
+  flex-shrink: 0;
+}
+
+/* --- Release notes --- */
+.download__release-link {
+  font-size: 0.8rem;
+  color: var(--accent-on-navy);
+  text-decoration: none;
+  opacity: 0.8;
+  transition: opacity var(--transition-fast);
+}
+
+.download__release-link:hover {
+  opacity: 1;
+}
+
+/* --- Responsive --- */
+@media (max-width: 640px) {
+  .download__panel {
+    padding: var(--space-12) var(--space-6);
+  }
+
+  .download__trust {
+    gap: var(--space-3);
+  }
+}

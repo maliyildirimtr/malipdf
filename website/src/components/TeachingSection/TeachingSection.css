@@ -1,0 +1,170 @@
+/* ============================================================
+   TEACHING SECTION
+   ============================================================ */
+
+.teaching {
+  background-color: var(--bg-surface-alt);
+  border-top: 1px solid var(--border);
+}
+
+.teaching__panel {
+  background-color: var(--bg-navy);
+  border-radius: var(--radius-xl);
+  padding: var(--space-16);
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: var(--space-16);
+  align-items: start;
+  border: 1px solid var(--border-navy);
+}
+
+/* --- Text side --- */
+.teaching__title {
+  color: var(--text-on-navy);
+  font-size: clamp(1.8rem, 3.5vw, 2.6rem);
+  margin-bottom: var(--space-5);
+}
+
+.teaching__body {
+  color: var(--text-on-navy-muted);
+  font-size: 1rem;
+  line-height: 1.75;
+  margin-bottom: var(--space-8);
+  max-width: 480px;
+}
+
+/* Tool list */
+.teaching__tools {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border-top: 1px solid var(--border-navy);
+}
+
+.teaching__tool-item {
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  gap: var(--space-4);
+  align-items: baseline;
+  padding-block: var(--space-4);
+  border-bottom: 1px solid var(--border-navy);
+}
+
+.teaching__tool-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--accent-on-navy);
+}
+
+.teaching__tool-desc {
+  font-size: 0.85rem;
+  color: var(--text-on-navy-muted);
+  line-height: 1.55;
+}
+
+/* --- Audience side --- */
+.teaching__audiences-label,
+.teaching__examples-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-on-navy-dim);
+  margin-bottom: var(--space-4);
+}
+
+.teaching__audience-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+  margin-bottom: var(--space-8);
+}
+
+.teaching__audience-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-5) var(--space-4);
+  background-color: rgba(255,255,255,0.05);
+  border: 1px solid var(--border-navy);
+  border-radius: var(--radius-md);
+  text-align: center;
+  transition:
+    background-color var(--transition-fast),
+    border-color var(--transition-fast);
+}
+
+.teaching__audience-card:hover {
+  background-color: rgba(255,255,255,0.08);
+  border-color: rgba(255,255,255,0.14);
+}
+
+.teaching__audience-icon {
+  font-size: 1.5rem;
+  display: block;
+}
+
+.teaching__audience-role {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-on-navy);
+}
+
+/* Examples */
+.teaching__examples {
+  background-color: rgba(0,0,0,0.2);
+  border-radius: var(--radius-md);
+  padding: var(--space-5);
+  border: 1px solid rgba(255,255,255,0.05);
+}
+
+.teaching__examples-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.teaching__example-item {
+  font-size: 0.8rem;
+  color: var(--text-on-navy-muted);
+  line-height: 1.5;
+  padding-left: var(--space-4);
+  position: relative;
+}
+
+.teaching__example-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 7px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--accent-on-navy);
+  opacity: 0.6;
+}
+
+/* --- Responsive --- */
+@media (max-width: 1024px) {
+  .teaching__panel {
+    grid-template-columns: 1fr;
+    padding: var(--space-10);
+    gap: var(--space-10);
+  }
+
+  .teaching__body {
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .teaching__panel {
+    padding: var(--space-6);
+  }
+
+  .teaching__tool-item {
+    grid-template-columns: 1fr;
+    gap: var(--space-1);
+  }
+}

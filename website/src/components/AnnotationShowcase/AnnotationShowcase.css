@@ -1,0 +1,194 @@
+/* ============================================================
+   ANNOTATION SHOWCASE
+   ============================================================ */
+
+.annotation {
+  background-color: var(--bg-surface-alt);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.annotation__header {
+  text-align: center;
+  margin-bottom: var(--space-16);
+  max-width: 600px;
+  margin-inline: auto;
+}
+
+.annotation__title {
+  margin-bottom: var(--space-4);
+}
+
+.annotation__subtitle {
+  font-size: 1rem;
+  color: var(--text-secondary);
+  line-height: 1.7;
+}
+
+/* --- 3-column editorial layout --- */
+.annotation__layout {
+  display: grid;
+  grid-template-columns: 1fr 1.6fr 1fr;
+  gap: var(--space-8);
+  align-items: start;
+}
+
+/* --- Tool cards --- */
+.annotation__tools-left,
+.annotation__tools-right {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding-top: var(--space-4);
+}
+
+.annotation__tool-card {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast),
+    transform var(--transition-fast);
+}
+
+.annotation__tool-card:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-sm);
+  transform: translateY(-1px);
+}
+
+.annotation__tool-card--right {
+  justify-content: flex-end;
+  text-align: right;
+}
+
+.annotation__tool-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  background-color: var(--accent-light);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.875rem;
+  font-weight: 700;
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+}
+
+.annotation__tool-name {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
+.annotation__tool-desc {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+/* --- Central workspace mockup --- */
+.annotation__center {
+  position: sticky;
+  top: calc(var(--header-h) + var(--space-6));
+}
+
+.annotation__workspace {
+  background-color: var(--bg-navy);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-xl);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+
+.annotation__ws-toolbar {
+  background-color: #0a1622;
+  padding: 8px 12px;
+  display: flex;
+  gap: var(--space-1);
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  flex-wrap: wrap;
+}
+
+.annotation__ws-tool {
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  background-color: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.06);
+  color: var(--text-on-navy-muted);
+  font-size: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: default;
+  transition: background-color var(--transition-fast);
+}
+
+.annotation__ws-tool--active {
+  background-color: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.annotation__ws-canvas {
+  padding: var(--space-4);
+  background: linear-gradient(135deg, #0f1c2e, #16273d);
+}
+
+.annotation__svg {
+  width: 100%;
+  height: auto;
+  border-radius: var(--radius-sm);
+}
+
+.annotation__ws-label {
+  font-size: 0.65rem;
+  color: var(--text-on-navy-dim);
+  text-align: center;
+  padding: 6px;
+  background-color: rgba(0,0,0,0.2);
+  border-top: 1px solid rgba(255,255,255,0.04);
+}
+
+/* --- Responsive --- */
+@media (max-width: 1024px) {
+  .annotation__layout {
+    grid-template-columns: 1fr;
+  }
+
+  .annotation__center {
+    position: static;
+    order: -1;
+  }
+
+  .annotation__tools-left,
+  .annotation__tools-right {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .annotation__tool-card--right {
+    text-align: left;
+    flex-direction: row;
+  }
+
+  .annotation__tool-card--right .annotation__tool-icon {
+    order: -1;
+  }
+}
+
+@media (max-width: 640px) {
+  .annotation__tools-left,
+  .annotation__tools-right {
+    grid-template-columns: 1fr;
+  }
+}

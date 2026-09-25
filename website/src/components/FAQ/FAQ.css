@@ -1,0 +1,110 @@
+/* ============================================================
+   FAQ
+   ============================================================ */
+
+.faq {
+  background-color: var(--bg-page);
+  background-image:
+    linear-gradient(
+      90deg,
+      rgba(248, 246, 242, 0.48) 0%,
+      rgba(248, 246, 242, 0.72) 48%,
+      rgba(248, 246, 242, 0.18) 100%
+    ),
+    url('/assets/faq-background.png');
+  background-position: center center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  border-top: 1px solid var(--border);
+}
+
+.faq__header {
+  text-align: center;
+  margin-bottom: var(--space-12);
+}
+
+.faq__list {
+  display: flex;
+  flex-direction: column;
+}
+
+/* --- Item --- */
+.faq__item {
+  border-bottom: 1px solid var(--border);
+}
+
+.faq__item:first-child {
+  border-top: 1px solid var(--border);
+}
+
+.faq__question {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-5) 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  transition: color var(--transition-fast);
+  letter-spacing: -0.01em;
+}
+
+.faq__question:hover {
+  color: var(--accent);
+}
+
+.faq__icon {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: transform var(--transition-base);
+  display: flex;
+  align-items: center;
+}
+
+.faq__item--open .faq__icon {
+  transform: rotate(180deg);
+  color: var(--accent);
+}
+
+/* --- Answer --- */
+.faq__answer {
+  overflow: hidden;
+}
+
+.faq__answer[hidden] {
+  display: none;
+}
+
+.faq__answer p {
+  padding-bottom: var(--space-6);
+  color: var(--text-secondary);
+  font-size: 0.9375rem;
+  line-height: 1.75;
+  max-width: 620px;
+}
+
+/* --- Responsive --- */
+@media (max-width: 640px) {
+  .faq {
+    background-image:
+      linear-gradient(
+        90deg,
+        rgba(248, 246, 242, 0.76) 0%,
+        rgba(248, 246, 242, 0.7) 58%,
+        rgba(248, 246, 242, 0.48) 100%
+      ),
+      url('/assets/faq-background.png');
+    background-position: 64% center;
+  }
+
+  .faq__question {
+    font-size: 0.9375rem;
+  }
+}

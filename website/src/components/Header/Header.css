@@ -1,0 +1,211 @@
+/* ============================================================
+   HEADER
+   ============================================================ */
+
+.header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  height: var(--header-h);
+  background-color: var(--bg-navy);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  transition:
+    box-shadow var(--transition-base);
+}
+
+.header--scrolled {
+  box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+  border-bottom-color: rgba(255,255,255,0.10);
+}
+
+.header__inner {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  gap: var(--space-8);
+}
+
+/* --- Logo --- */
+.header__logo {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  text-decoration: none;
+  flex-shrink: 0;
+}
+
+.header__logo-img {
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  object-fit: cover;
+  flex-shrink: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.header__logo:hover .header__logo-img {
+  opacity: 0.88;
+}
+
+.header__logo-text {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-on-navy);
+  letter-spacing: -0.03em;
+  transition: color var(--transition-fast);
+}
+
+/* --- Desktop Nav --- */
+.header__nav {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+}
+
+.header__nav-list {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.header__nav-link {
+  display: block;
+  padding: var(--space-2) var(--space-3);
+  color: var(--text-on-navy-muted);
+  font-size: 0.9rem;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  transition:
+    color var(--transition-fast),
+    background-color var(--transition-fast);
+  text-decoration: none;
+}
+
+.header__nav-link:hover {
+  color: var(--text-on-navy);
+  background-color: rgba(255,255,255,0.07);
+}
+
+/* --- CTA --- */
+.header__cta {
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+/* --- Hamburger --- */
+.header__hamburger {
+  display: none;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  width: 36px;
+  height: 36px;
+  padding: 6px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: none;
+  cursor: pointer;
+  transition: background-color var(--transition-fast);
+  margin-left: auto;
+}
+
+.header__hamburger:hover {
+  background-color: rgba(255,255,255,0.08);
+}
+
+.header__hamburger span {
+  display: block;
+  height: 1.5px;
+  background-color: var(--text-on-navy);
+  border-radius: 2px;
+  transform-origin: center;
+  transition:
+    transform var(--transition-base),
+    opacity var(--transition-base);
+}
+
+.header__hamburger--open span:nth-child(1) {
+  transform: translateY(6.5px) rotate(45deg);
+}
+
+.header__hamburger--open span:nth-child(2) {
+  opacity: 0;
+  transform: scaleX(0);
+}
+
+.header__hamburger--open span:nth-child(3) {
+  transform: translateY(-6.5px) rotate(-45deg);
+}
+
+/* --- Mobile Menu --- */
+.header__mobile-menu {
+  position: fixed;
+  top: var(--header-h);
+  left: 0;
+  right: 0;
+  background-color: var(--bg-navy-light);
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  padding: var(--space-6);
+  transform: translateY(-8px);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform var(--transition-base),
+    opacity var(--transition-base);
+  z-index: 999;
+}
+
+.header__mobile-menu--open {
+  transform: translateY(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.header__mobile-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.header__mobile-link {
+  display: block;
+  padding: var(--space-3) var(--space-4);
+  color: var(--text-on-navy);
+  font-size: 1rem;
+  font-weight: 500;
+  border-radius: var(--radius-md);
+  text-decoration: none;
+  transition: background-color var(--transition-fast);
+}
+
+.header__mobile-link:hover {
+  background-color: rgba(255,255,255,0.07);
+}
+
+.header__mobile-cta {
+  margin-top: var(--space-4);
+  width: 100%;
+  justify-content: center;
+}
+
+/* --- Overlay --- */
+.header__overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(15,28,46,0.3);
+  z-index: 998;
+}
+
+/* --- Responsive --- */
+@media (max-width: 768px) {
+  .header__nav,
+  .header__cta {
+    display: none;
+  }
+
+  .header__hamburger {
+    display: flex;
+  }
+}
