@@ -23,8 +23,10 @@ import type {
   InputPoint,
   PdfPoint,
   PdfRect,
+  ImageAnnotation,
 } from '../types/annotations';
 import { pointsBoundingBox, type PageTransform } from './coordinateTransform';
+import { getAnnotationBounds } from './annotationGeometry';
 
 // ─── Hit tolerance ─────────────────────────────────────────────────────────────
 
@@ -52,6 +54,7 @@ export function hitTestAnnotations(
   pdfPoint: PdfPoint,
   annotations: Annotation[],
   transform: PageTransform,
+  selectedIds: string[] = [],
 ): Annotation | null {
   const tolerance = getHitTolerance(transform);
 
@@ -59,11 +62,51 @@ export function hitTestAnnotations(
   for (let i = annotations.length - 1; i >= 0; i--) {
     const ann = annotations[i];
     if (ann.locked) continue;
+    
+    // If the annotation is currently selected, clicking anywhere inside its bounding box 
+    // should count as a hit, allowing the user to easily grab and move it.
+    if (selectedIds.includes(ann.id)) {
+      const bounds = getAnnotationBounds(ann);
+      if (
+        bounds &&
+        pdfPoint.x >= bounds.x - tolerance &&
+        pdfPoint.x <= bounds.x + bounds.width + tolerance &&
+        pdfPoint.y >= bounds.y - tolerance &&
+        pdfPoint.y <= bounds.y + bounds.height + tolerance
+      ) {
+        return ann;
+      }
+    }
 
     if (hitTestAnnotation(pdfPoint, ann, tolerance)) {
       return ann;
     }
   }
+  return null;
+}
+
+/**
+ * Hit-test the complete selection bounds of annotations that are already selected.
+ * This lets users drag hollow shapes and sparse strokes from empty space inside
+ * the visible selection box without changing normal first-click hit testing.
+ */
+export function hitTestSelectedBounds(
+  pdfPoint: PdfPoint,
+  annotations: Annotation[],
+  selectedIds: readonly string[],
+): Annotation | null {
+  if (selectedIds.length === 0) return null;
+  const selected = new Set(selectedIds);
+
+  for (let i = annotations.length - 1; i >= 0; i--) {
+    const annotation = annotations[i];
+    if (annotation.locked || !selected.has(annotation.id)) continue;
+    // We use a small tolerance (e.g. 5) to make it easy to grab selected strokes
+    if (hitTestAnnotation(pdfPoint, annotation, 5)) {
+      return annotation;
+    }
+  }
+
   return null;
 }
 
@@ -84,9 +127,26 @@ export function hitTestAnnotation(
       return hitTestText(pdfPoint, annotation);
     case 'shape':
       return hitTestShape(pdfPoint, annotation, tolerance);
+    case 'freeform':
+      return hitTestFreeform(pdfPoint, annotation, tolerance);
+    case 'image':
+      return hitTestImage(pdfPoint, annotation, tolerance);
     default:
       return false;
   }
+}
+
+function hitTestImage(
+  pt: PdfPoint,
+  annotation: ImageAnnotation,
+  tolerance: number = 0,
+): boolean {
+  return (
+    pt.x >= annotation.x - tolerance &&
+    pt.x <= annotation.x + annotation.width + tolerance &&
+    pt.y >= annotation.y - tolerance &&
+    pt.y <= annotation.y + annotation.height + tolerance
+  );
 }
 
 // ─── Stroke hit test ──────────────────────────────────────────────────────────
@@ -156,30 +216,73 @@ function hitTestShape(
 
     case 'rectangle':
     case 'roundedRect': {
-      const hasFill = annotation.fillColor !== 'transparent';
-      if (hasFill) {
-        return pt.x >= x1 - tolerance && pt.x <= x2 + tolerance &&
-               pt.y >= y1 - tolerance && pt.y <= y2 + tolerance;
-      }
-      // No fill: only hit on border
-      return hitTestRectBorder(pt, x1, y1, x2, y2, halfStroke);
+      const insideBox = pt.x >= x1 - tolerance && pt.x <= x2 + tolerance &&
+                        pt.y >= y1 - tolerance && pt.y <= y2 + tolerance;
+      
+      if (!insideBox) return false;
+      if (annotation.fillColor !== 'transparent') return true;
+
+      // For hollow rectangles, check if the point is near the border
+      const nearLeft = Math.abs(pt.x - x1) <= halfStroke;
+      const nearRight = Math.abs(pt.x - x2) <= halfStroke;
+      const nearTop = Math.abs(pt.y - y1) <= halfStroke;
+      const nearBottom = Math.abs(pt.y - y2) <= halfStroke;
+
+      return nearLeft || nearRight || nearTop || nearBottom;
     }
 
     case 'ellipse': {
       const cx = (x1 + x2) / 2;
       const cy = (y1 + y2) / 2;
-      const rx = (x2 - x1) / 2;
-      const ry = (y2 - y1) / 2;
-      const hasFill = annotation.fillColor !== 'transparent';
-      if (hasFill) {
-        return pointInEllipse(pt, cx, cy, rx + tolerance, ry + tolerance);
+      const rx = Math.max(0.1, (x2 - x1) / 2);
+      const ry = Math.max(0.1, (y2 - y1) / 2);
+
+      const dx = pt.x - cx;
+      const dy = pt.y - cy;
+      const value = (dx * dx) / (rx * rx) + (dy * dy) / (ry * ry);
+
+      if (annotation.fillColor !== 'transparent') {
+        // Expanded ellipse for filled check
+        const rxe = rx + tolerance;
+        const rye = ry + tolerance;
+        return (dx * dx) / (rxe * rxe) + (dy * dy) / (rye * rye) <= 1;
+      } else {
+        // Check if it's near the perimeter (value close to 1)
+        // A simple approximation: calculate distance to center normalized, and check if it's near 1
+        const normalizedDist = Math.sqrt(value);
+        const radiusTolerance = halfStroke / Math.min(rx, ry);
+        return Math.abs(normalizedDist - 1) <= radiusTolerance;
       }
-      // Border only
-      const inner = pointInEllipse(pt, cx, cy, rx - halfStroke, ry - halfStroke);
-      const outer = pointInEllipse(pt, cx, cy, rx + halfStroke, ry + halfStroke);
-      return outer && !inner;
     }
   }
+}
+
+// ─── Freeform hit test ────────────────────────────────────────────────────────
+
+function hitTestFreeform(
+  pt: PdfPoint,
+  annotation: { type: 'freeform'; points: PdfPoint[]; strokeWidth: number; fillColor?: string },
+  tolerance: number,
+): boolean {
+  const { points, strokeWidth, fillColor } = annotation;
+  if (points.length < 2) return false;
+  const halfStroke = strokeWidth / 2 + tolerance;
+
+  // Check border
+  for (let i = 0; i < points.length; i++) {
+    const p1 = points[i];
+    const p2 = points[(i + 1) % points.length];
+    if (distanceToSegment(pt, p1, p2) <= halfStroke) {
+      return true;
+    }
+  }
+
+  // Check fill
+  if (fillColor && fillColor !== 'transparent') {
+    return pointInPolygon(pt, points);
+  }
+
+  return false;
 }
 
 // ─── Eraser hit test ──────────────────────────────────────────────────────────
@@ -213,46 +316,129 @@ export function eraserHitTest(
 // ─── Bounding box helper for selection box ─────────────────────────────────────
 
 /**
- * Get the axis-aligned bounding rect of an annotation in PDF User Space.
- * Used for selection box intersection and selection handles.
- */
-export function getAnnotationBounds(annotation: Annotation): PdfRect {
-  switch (annotation.type) {
-    case 'stroke':
-    case 'highlight': {
-      const { minX, minY, maxX, maxY } = pointsBoundingBox(annotation.points);
-      const pad = annotation.width / 2;
-      return { x: minX - pad, y: minY - pad, width: (maxX - minX) + pad * 2, height: (maxY - minY) + pad * 2 };
-    }
-    case 'text':
-      return annotation.bounds;
-    case 'shape': {
-      const { startPoint, endPoint, strokeWidth, shapeKind } = annotation;
-      let x = Math.min(startPoint.x, endPoint.x);
-      let y = Math.min(startPoint.y, endPoint.y);
-      let w = Math.abs(endPoint.x - startPoint.x);
-      let h = Math.abs(endPoint.y - startPoint.y);
-      
-      let pad = strokeWidth / 2;
-      if (shapeKind === 'arrow') {
-        // Arrow heads extend beyond the endpoints
-        pad = strokeWidth * 4 + 12; 
-      }
-      return { x: x - pad, y: y - pad, width: w + pad * 2, height: h + pad * 2 };
-    }
-  }
-}
-
-/**
  * Test if two PdfRects intersect (for rubber-band selection).
  */
 export function rectsIntersect(a: PdfRect, b: PdfRect): boolean {
-  return !(
-    a.x + a.width < b.x ||
-    b.x + b.width < a.x ||
-    a.y + a.height < b.y ||
-    b.y + b.height < a.y
+  return (
+    a.x < b.x + b.width &&
+    a.x + a.width > b.x &&
+    a.y < b.y + b.height &&
+    a.y + a.height > b.y
   );
+}
+
+/**
+ * Advanced precise marquee hit testing.
+ * Uses bounding box for fast rejection, then performs precise geometry intersection.
+ */
+export function hitTestMarquee(marquee: PdfRect, annotation: Annotation): boolean {
+  const bounds = getAnnotationBounds(annotation);
+  if (!rectsIntersect(marquee, bounds)) {
+    return false;
+  }
+
+  // Bounding box overlaps. Now test precise intersection.
+  switch (annotation.type) {
+    case 'text':
+      // Text just uses bounds.
+      return true;
+
+    case 'stroke':
+    case 'highlight':
+    case 'freeform': {
+      const points = annotation.points;
+      if (points.length === 0) return false;
+      
+      // If the marquee contains ANY point of the annotation, it intersects.
+      for (const p of points) {
+        if (p.x >= marquee.x && p.x <= marquee.x + marquee.width &&
+            p.y >= marquee.y && p.y <= marquee.y + marquee.height) {
+          return true;
+        }
+      }
+      
+      // What if the annotation completely encloses the marquee? (e.g. huge freeform)
+      if (annotation.type === 'freeform' && 'fillColor' in annotation && annotation.fillColor !== 'transparent') {
+        if (pointInPolygon({ x: marquee.x, y: marquee.y }, points)) {
+          return true;
+        }
+      }
+      
+      // What if a segment crosses the marquee but no vertices are inside?
+      // Check segment intersection with marquee rect edges.
+      for (let i = 0; i < points.length - (annotation.type === 'freeform' ? 0 : 1); i++) {
+        const p1 = points[i];
+        const p2 = points[(i + 1) % points.length];
+        if (lineIntersectsRect(p1, p2, marquee)) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    case 'shape': {
+      const { startPoint, endPoint, shapeKind } = annotation;
+      
+      // If either endpoint is inside the marquee, it intersects.
+      if (pointInRect(startPoint, marquee) || pointInRect(endPoint, marquee)) {
+        return true;
+      }
+      
+      if (shapeKind === 'line' || shapeKind === 'arrow') {
+        return lineIntersectsRect(startPoint, endPoint, marquee);
+      }
+      
+      if (shapeKind === 'rectangle' || shapeKind === 'roundedRect') {
+        // It intersects the marquee if its edges cross the marquee edges, or if one is inside the other.
+        return true; 
+      }
+      
+      if (shapeKind === 'ellipse') {
+        // Precise ellipse vs rect is complex. We'll use bounds for now, which is close enough.
+        return true;
+      }
+      
+      return true;
+    }
+    
+    default:
+      return true;
+  }
+}
+
+/** Check if a line segment intersects an axis-aligned rectangle */
+function lineIntersectsRect(p1: PdfPoint, p2: PdfPoint, r: PdfRect): boolean {
+  // If either point is inside, it intersects
+  if (pointInRect(p1, r) || pointInRect(p2, r)) return true;
+  
+  // Check intersection with all 4 edges of the rect
+  const rLeft = { x: r.x, y: r.y };
+  const rRight = { x: r.x + r.width, y: r.y };
+  const rBottomRight = { x: r.x + r.width, y: r.y + r.height };
+  const rBottomLeft = { x: r.x, y: r.y + r.height };
+  
+  return (
+    lineIntersectsLine(p1, p2, rLeft, rRight) ||
+    lineIntersectsLine(p1, p2, rRight, rBottomRight) ||
+    lineIntersectsLine(p1, p2, rBottomRight, rBottomLeft) ||
+    lineIntersectsLine(p1, p2, rBottomLeft, rLeft)
+  );
+}
+
+/** Check if two line segments intersect */
+function lineIntersectsLine(p1: PdfPoint, p2: PdfPoint, p3: PdfPoint, p4: PdfPoint): boolean {
+  const denominator = ((p2.x - p1.x) * (p4.y - p3.y)) - ((p2.y - p1.y) * (p4.x - p3.x));
+  if (denominator === 0) return false;
+  
+  const a = p1.y - p3.y;
+  const b = p1.x - p3.x;
+  const numerator1 = ((p4.x - p3.x) * a) - ((p4.y - p3.y) * b);
+  const numerator2 = ((p2.x - p1.x) * a) - ((p2.y - p1.y) * b);
+  
+  const a_frac = numerator1 / denominator;
+  const b_frac = numerator2 / denominator;
+  
+  return (a_frac > 0 && a_frac < 1 && b_frac > 0 && b_frac < 1);
 }
 
 // ─── Geometry primitives ──────────────────────────────────────────────────────
@@ -295,6 +481,19 @@ function pointInEllipse(
   const dx = (pt.x - cx) / rx;
   const dy = (pt.y - cy) / ry;
   return dx * dx + dy * dy <= 1;
+}
+
+/** Point in polygon (ray-casting algorithm). */
+function pointInPolygon(pt: PdfPoint, polygon: PdfPoint[]): boolean {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i].x, yi = polygon[i].y;
+    const xj = polygon[j].x, yj = polygon[j].y;
+    const intersect = ((yi > pt.y) !== (yj > pt.y)) &&
+        (pt.x < (xj - xi) * (pt.y - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
 }
 
 /** Hit test rectangle border only (unfilled shapes). */

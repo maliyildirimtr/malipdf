@@ -21,13 +21,19 @@ import type {
   HighlightAnnotation,
   TextAnnotation,
   ShapeAnnotation,
+  FreeformAnnotation,
+  ImageAnnotation,
   InputPoint,
 } from '../types/annotations';
 import {
   pdfPointsToScreen,
   pdfToScreen,
+  pdfRectToScreenBounds,
   type PageTransform,
 } from './coordinateTransform';
+import type { DocumentIdentity } from '../types/documentSession';
+import { getCachedDecodedImage, requestImageDecode } from './imageRenderCache';
+import { useAssetStore } from '../store/assetStore';
 
 
 // ─── Smoothing helper ─────────────────────────────────────────────────────────
@@ -88,6 +94,8 @@ export function renderAnnotations(
   annotations: Annotation[],
   transform: PageTransform,
   dpr: number = 1,
+  identity?: DocumentIdentity,
+  onImageDecoded?: () => void,
 ): void {
   ctx.save();
   ctx.scale(dpr, dpr);
@@ -106,11 +114,73 @@ export function renderAnnotations(
       case 'shape':
         renderShape(ctx, ann, transform);
         break;
+      case 'freeform':
+        renderFreeform(ctx, ann, transform);
+        break;
+      case 'image':
+        renderImage(ctx, ann, transform, identity, onImageDecoded);
+        break;
       default:
         console.warn(`Unsupported annotation type: ${(ann as any).type}`);
     }
   }
 
+  ctx.restore();
+}
+
+// ─── Image ────────────────────────────────────────────────────────────────────
+
+export function renderImage(
+  ctx: CanvasRenderingContext2D,
+  annotation: ImageAnnotation,
+  transform: PageTransform,
+  identity?: DocumentIdentity,
+  onImageDecoded?: () => void,
+): void {
+  const screenRect = pdfRectToScreenBounds(
+    { x: annotation.x, y: annotation.y, width: annotation.width, height: annotation.height },
+    transform,
+  );
+
+  if (!identity) {
+    ctx.save();
+    ctx.strokeStyle = '#888888';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(screenRect.x, screenRect.y, screenRect.width, screenRect.height);
+    ctx.restore();
+    return;
+  }
+
+  const cachedImage = getCachedDecodedImage(identity, annotation.assetId);
+
+  if (cachedImage) {
+    ctx.save();
+    if (typeof annotation.opacity === 'number' && annotation.opacity < 1) {
+      ctx.globalAlpha = Math.max(0, Math.min(1, annotation.opacity));
+    }
+    ctx.drawImage(
+      cachedImage,
+      screenRect.x,
+      screenRect.y,
+      screenRect.width,
+      screenRect.height,
+    );
+    ctx.restore();
+    return;
+  }
+
+  // Not yet decoded: request decode
+  const asset = useAssetStore.getState().getAsset(identity, annotation.assetId);
+  if (asset) {
+    requestImageDecode(identity, asset, onImageDecoded);
+  }
+
+  // Draw subtle placeholder rect while decoding
+  ctx.save();
+  ctx.strokeStyle = '#cccccc';
+  ctx.setLineDash([4, 4]);
+  ctx.lineWidth = 1;
+  ctx.strokeRect(screenRect.x, screenRect.y, screenRect.width, screenRect.height);
   ctx.restore();
 }
 
@@ -297,14 +367,23 @@ export function renderShape(
   const start = pdfToScreen(annotation.startPoint.x, annotation.startPoint.y, transform);
   const end = pdfToScreen(annotation.endPoint.x, annotation.endPoint.y, transform);
 
-  ctx.globalAlpha = annotation.opacity;
-  ctx.strokeStyle = annotation.color;
   ctx.lineWidth = annotation.strokeWidth * transform.scale;
-  ctx.lineCap = 'round';
+  ctx.strokeStyle = annotation.color;
+  ctx.fillStyle = annotation.fillColor;
+  ctx.globalAlpha = annotation.opacity;
+  ctx.lineCap = annotation.shapeKind === 'arrow' || annotation.shapeKind === 'line' ? 'round' : 'square';
   ctx.lineJoin = 'round';
 
-  if (annotation.fillColor !== 'transparent') {
-    ctx.fillStyle = annotation.fillColor;
+  if (annotation.borderStyle && annotation.borderStyle !== 'solid') {
+    const sw = annotation.strokeWidth * transform.scale;
+    switch (annotation.borderStyle) {
+      case 'dashed': ctx.setLineDash([sw * 4, sw * 3]); break;
+      case 'dotted': ctx.setLineDash([sw, sw * 2]); break;
+      case 'dash-dot': ctx.setLineDash([sw * 4, sw * 3, sw, sw * 3]); break;
+      case 'dash-dot-dot': ctx.setLineDash([sw * 4, sw * 3, sw, sw * 3, sw, sw * 3]); break;
+    }
+  } else {
+    ctx.setLineDash([]);
   }
 
   const x = Math.min(start.x, end.x);
@@ -350,6 +429,41 @@ export function renderShape(
   }
 }
 
+// ─── Freeform ─────────────────────────────────────────────────────────────────
+
+export function renderFreeform(
+  ctx: CanvasRenderingContext2D,
+  annotation: FreeformAnnotation,
+  transform: PageTransform,
+): void {
+  if (annotation.points.length < 2) return;
+  const screenPoints = annotation.points.map(p => {
+    const { x, y } = pdfToScreen(p.x, p.y, transform);
+    return { ...p, x, y };
+  });
+  ctx.lineWidth = annotation.strokeWidth * transform.scale;
+  ctx.strokeStyle = annotation.color;
+  ctx.fillStyle = annotation.fillColor;
+  ctx.globalAlpha = annotation.opacity;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  ctx.beginPath();
+  ctx.moveTo(screenPoints[0].x, screenPoints[0].y);
+  for (let i = 1; i < screenPoints.length; i++) {
+    ctx.lineTo(screenPoints[i].x, screenPoints[i].y);
+  }
+  
+  if (annotation.id !== 'temp' || annotation.fillColor !== 'transparent') {
+    ctx.closePath();
+  }
+  
+  if (annotation.fillColor !== 'transparent') {
+    ctx.fill();
+  }
+  ctx.stroke();
+}
+
 function drawArrow(
   ctx: CanvasRenderingContext2D,
   fromX: number,
@@ -366,7 +480,8 @@ function drawArrow(
   ctx.lineTo(toX, toY);
   ctx.stroke();
 
-  // Arrowhead
+  // Arrowhead should always be solid
+  ctx.setLineDash([]);
   ctx.beginPath();
   ctx.moveTo(toX, toY);
   ctx.lineTo(
@@ -464,14 +579,29 @@ export function renderShapePreview(
   fillColor: string,
   opacity: number,
   dpr: number,
+  borderStyle?: 'solid' | 'dashed' | 'dotted' | 'dash-dot' | 'dash-dot-dot',
 ): void {
   ctx.save();
   ctx.scale(dpr, dpr);
-  ctx.globalAlpha = opacity;
   ctx.strokeStyle = color;
+  ctx.fillStyle = fillColor;
   ctx.lineWidth = strokeWidth;
-  ctx.lineCap = 'round';
+  ctx.lineCap = shapeKind === 'arrow' || shapeKind === 'line' ? 'round' : 'square';
   ctx.lineJoin = 'round';
+  ctx.globalAlpha = opacity;
+
+  if (borderStyle && borderStyle !== 'solid') {
+    switch (borderStyle) {
+      case 'dashed': ctx.setLineDash([strokeWidth * 4, strokeWidth * 3]); break;
+      case 'dotted': ctx.setLineDash([strokeWidth, strokeWidth * 2]); break;
+      case 'dash-dot': ctx.setLineDash([strokeWidth * 4, strokeWidth * 3, strokeWidth, strokeWidth * 3]); break;
+      case 'dash-dot-dot': ctx.setLineDash([strokeWidth * 4, strokeWidth * 3, strokeWidth, strokeWidth * 3, strokeWidth, strokeWidth * 3]); break;
+    }
+  } else {
+    ctx.setLineDash([]);
+  }
+
+  ctx.beginPath();
 
   const x = Math.min(startX, endX);
   const y = Math.min(startY, endY);
@@ -493,7 +623,8 @@ export function renderShapePreview(
       ctx.moveTo(startX, startY);
       ctx.lineTo(endX, endY);
       ctx.stroke();
-      // Arrowhead
+      // Arrowhead should be solid
+      ctx.setLineDash([]);
       const angle = Math.atan2(endY - startY, endX - startX);
       const headLen = Math.max(12, strokeWidth * 4);
       ctx.beginPath();

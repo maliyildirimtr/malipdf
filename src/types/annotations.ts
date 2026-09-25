@@ -48,6 +48,7 @@ export type AnnotationType =
   | 'highlight'
   | 'text'
   | 'shape'
+  | 'freeform'
   | 'image'   // future
   | 'stamp';  // future
 
@@ -57,6 +58,8 @@ export type ShapeKind =
   | 'rectangle'
   | 'roundedRect'
   | 'ellipse';
+
+export type ShapeBorderStyle = 'solid' | 'dashed' | 'dotted' | 'dash-dot' | 'dash-dot-dot';
 
 export type TextAlign = 'left' | 'center' | 'right';
 
@@ -114,8 +117,30 @@ export interface ShapeAnnotation extends BaseAnnotation {
   startPoint: PdfPoint;           // In PDF user space
   endPoint: PdfPoint;             // In PDF user space
   strokeWidth: number;            // In PDF points
+  borderStyle?: ShapeBorderStyle; // Line style pattern
   fillColor: string;              // CSS color or 'transparent'
   cornerRadius?: number;          // For roundedRect
+}
+
+// ─── Freeform annotation ──────────────────────────────────────────────────────
+
+export interface FreeformAnnotation extends BaseAnnotation {
+  type: 'freeform';
+  points: PdfPoint[];             // Vertices in PDF user space
+  strokeWidth: number;            // In PDF points
+  fillColor: string;              // CSS color or 'transparent'
+}
+
+// ─── Image annotation ─────────────────────────────────────────────────────────
+
+export interface ImageAnnotation extends BaseAnnotation {
+  type: 'image';
+  x: number;                       // In PDF user space points
+  y: number;                       // In PDF user space points
+  width: number;                   // In PDF user space points
+  height: number;                  // In PDF user space points
+  assetId: string;                 // Reference to ImageAsset in AssetStore
+  opacity: number;                 // 0–1
 }
 
 // ─── Union type ───────────────────────────────────────────────────────────────
@@ -124,7 +149,9 @@ export type Annotation =
   | StrokeAnnotation
   | HighlightAnnotation
   | TextAnnotation
-  | ShapeAnnotation;
+  | ShapeAnnotation
+  | FreeformAnnotation
+  | ImageAnnotation;
 
 // ─── Tool types ───────────────────────────────────────────────────────────────
 
@@ -139,7 +166,8 @@ export type ToolType =
   | 'arrow'
   | 'rectangle'
   | 'roundedRect'
-  | 'ellipse';
+  | 'ellipse'
+  | 'freeform';
 
 // ─── Tool options (shared across all instances, not per-annotation) ───────────
 
@@ -158,7 +186,7 @@ export interface HighlighterOptions {
 }
 
 export interface EraserOptions {
-  mode: 'stroke' | 'partial';
+  mode: 'stroke' | 'object';
   size: number;
 }
 
@@ -176,6 +204,14 @@ export interface TextOptions {
 export interface ShapeOptions {
   color: string;
   strokeWidth: number;    // PDF points
+  borderStyle: ShapeBorderStyle;
+  fillColor: string;
+  opacity: number;
+}
+
+export interface FreeformOptions {
+  color: string;
+  strokeWidth: number;    // PDF points
   fillColor: string;
   opacity: number;
 }
@@ -186,6 +222,7 @@ export interface ToolOptions {
   eraser: EraserOptions;
   text: TextOptions;
   shape: ShapeOptions;
+  freeform: FreeformOptions;
 }
 
 // ─── Document state ───────────────────────────────────────────────────────────
@@ -214,6 +251,8 @@ export interface DocumentState {
 
   // Raw PDF data — never mutated
   sourceData: Uint8Array;
+  // Increments when sourceData changes (page insertion) to trigger reload without changing identity
+  sourceRevision: number;
 
   // Current page navigation
   activePageIndex: number;
@@ -237,15 +276,29 @@ export type HistoryActionType =
   | 'REMOVE_ANNOTATION'
   | 'UPDATE_ANNOTATION'
   | 'MOVE_ANNOTATION'
-  | 'RESIZE_ANNOTATION';
+  | 'RESIZE_ANNOTATION'
+  | 'BATCH_ACTION'
+  | 'MUTATE_DOCUMENT_BYTES';
 
 export interface HistoryAction {
   type: HistoryActionType;
   docId: string;
-  pageIndex: number;
-  annotationId: string;
-  before: Annotation | null;   // State before action
-  after: Annotation | null;    // State after action
+  pageIndex?: number;
+  annotationId?: string;
+  before?: Annotation | null;   // State before action
+  after?: Annotation | null;    // State after action
+  actions?: Omit<HistoryAction, 'beforeStateId' | 'afterStateId'>[]; // For batch actions
+  
+  // For MUTATE_DOCUMENT_BYTES
+  beforeSourceData?: Uint8Array;
+  afterSourceData?: Uint8Array;
+  beforeAnnotations?: Annotation[];
+  afterAnnotations?: Annotation[];
+  beforePageRotations?: Record<number, number>;
+  afterPageRotations?: Record<number, number>;
+  beforePageCount?: number;
+  afterPageCount?: number;
+
   beforeStateId: string;
   afterStateId: string;
 }
@@ -303,6 +356,13 @@ declare global {
       askCloseConfirm: (fileName: string) => Promise<'save' | 'discard' | 'cancel'>;
       askCloseAllConfirm: (fileNames: string[]) => Promise<'save' | 'discard' | 'cancel'>;
       confirmLifecycle: (requestId: string, allow: boolean) => void;
+      openImage: () => Promise<{ name: string; mimeType: string; data: ArrayBuffer } | null>;
+      captureScreen: () => Promise<{ success: boolean; data?: ArrayBuffer; mimeType?: string; width?: number; height?: number; error?: string }>;
+      captureRegion: () => Promise<{ success: boolean; canceled?: boolean; data?: ArrayBuffer; mimeType?: string; width?: number; height?: number; error?: string }>;
+      readClipboardImage: () => Promise<{ data: ArrayBuffer; mimeType: string } | null>;
+      pptxIsAvailable: () => Promise<boolean>;
+      pptxStartConversion: (jobId: string) => Promise<{ buffer: ArrayBuffer; name: string } | null>;
+      pptxCancelConversion: (jobId: string) => Promise<void>;
     };
   }
 }

@@ -2,6 +2,8 @@ import { useDocumentStore } from '../store/documentStore';
 import { useAnnotationStore } from '../store/annotationStore';
 import { buildAnnotationsMap, exportAnnotatedPdf } from '../pdf/annotationExporter';
 
+import { useAssetStore } from '../store/assetStore';
+
 async function performSave(docId: string, saveAs: boolean): Promise<boolean> {
   const { documents, updateDocument } = useDocumentStore.getState();
   const doc = documents.get(docId);
@@ -19,7 +21,8 @@ async function performSave(docId: string, saveAs: boolean): Promise<boolean> {
 
   try {
     const annotations = buildAnnotationsMap(docAnnotState);
-    const exportResult = await exportAnnotatedPdf(doc.sourceData, annotations);
+    const assets = useAssetStore.getState().getAssetsForDocument({ docId, instanceId: doc.instanceId });
+    const exportResult = await exportAnnotatedPdf(doc.sourceData, annotations, { assets });
 
     let filePath = doc.filePath;
     if (saveAs || !filePath) {

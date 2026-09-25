@@ -1,0 +1,222 @@
+.popupContainer {
+  background: white;
+  border: 1px solid #ccc;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  border-radius: 4px;
+  display: flex;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-size: 12px;
+  user-select: none;
+  overflow: hidden;
+}
+
+.leftPanel {
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-right: 1px solid #eee;
+}
+
+.rightPanel {
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 250px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(8, 20px);
+  gap: 2px;
+}
+
+.swatch {
+  width: 20px;
+  height: 20px;
+  border: 1px solid #ccc;
+  cursor: pointer;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.swatch:hover {
+  border-color: #0078d7;
+}
+
+.swatch.selected {
+  outline: 2px solid #0078d7;
+  outline-offset: -1px;
+}
+
+.swatchEmpty {
+  width: 20px;
+  height: 20px;
+  border: 1px solid #eee;
+  background: #f9f9f9;
+}
+
+.myColorsHeader {
+  margin-top: 4px;
+  color: #333;
+}
+
+.actionsBar {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.iconButton {
+  width: 24px;
+  height: 24px;
+  border: 1px solid #ccc;
+  background: #f0f0f0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 2px;
+}
+
+.iconButton:hover {
+  background: #e0e0e0;
+}
+
+.iconButton.selected {
+  background: #d0d0d0;
+  border-color: #999;
+}
+
+.expandBar {
+  margin-top: 4px;
+  border-top: 1px solid #eee;
+  padding-top: 4px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.expandButton {
+  width: 32px;
+  height: 24px;
+  border: 1px solid #ccc;
+  background: #f0f0f0;
+  cursor: pointer;
+  border-radius: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.expandButton:hover {
+  background: #e0e0e0;
+}
+
+.spectrumArea {
+  display: flex;
+  gap: 8px;
+  height: 150px;
+}
+
+.svSquare {
+  width: 150px;
+  height: 150px;
+  position: relative;
+  border: 1px solid #ccc;
+  cursor: crosshair;
+}
+
+.svWhite {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: linear-gradient(to right, white, rgba(255,255,255,0));
+  pointer-events: none;
+}
+
+.svBlack {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: linear-gradient(to top, black, rgba(0,0,0,0));
+  pointer-events: none;
+}
+
+.svCursor {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border: 1px solid white;
+  border-radius: 50%;
+  transform: translate(-5px, -5px);
+  pointer-events: none;
+  box-shadow: 0 0 0 1px black;
+}
+
+.hueBar {
+  width: 20px;
+  height: 150px;
+  position: relative;
+  border: 1px solid #ccc;
+  cursor: ns-resize;
+  background: linear-gradient(to bottom, #f00 0%, #f0f 17%, #00f 33%, #0ff 50%, #0f0 67%, #ff0 83%, #f00 100%);
+}
+
+.hueCursor {
+  position: absolute;
+  left: -2px;
+  right: -2px;
+  height: 4px;
+  background: white;
+  border: 1px solid black;
+  transform: translateY(-2px);
+  pointer-events: none;
+}
+
+.inputsColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.previewBox {
+  height: 40px;
+  border: 1px solid #ccc;
+  margin-bottom: 8px;
+}
+
+.inputRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  justify-content: space-between;
+}
+
+.inputRow input {
+  width: 40px;
+  height: 20px;
+  border: 1px solid #ccc;
+  padding: 0 4px;
+  font-family: inherit;
+  font-size: 11px;
+}
+
+.bottomBar {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid #eee;
+}
+
+.okButton {
+  padding: 4px 16px;
+  background: #f0f0f0;
+  border: 1px solid #ccc;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.okButton:hover {
+  background: #e0e0e0;
+}

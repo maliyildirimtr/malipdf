@@ -138,9 +138,16 @@ describe('command registry', () => {
     expect(isCommandAvailable('file.export', { hasDocument: false })).toBe(false);
     expect(isCommandAvailable('file.export', { hasDocument: true })).toBe(true);
     expect(isCommandAvailable('edit.selectAll', { hasDocument: true })).toBe(false);
-    expect(isCommandAvailable('edit.deleteSelected', { hasDocument: true, hasSelection: true })).toBe(false);
+    expect(isCommandAvailable('edit.deleteSelected', { hasDocument: true, hasSelection: false })).toBe(false);
+    expect(isCommandAvailable('edit.deleteSelected', { hasDocument: true, hasSelection: true })).toBe(true);
     expect(isCommandAvailable('history.undo', { hasDocument: true, canUndo: false })).toBe(false);
     expect(isCommandAvailable('history.undo', { hasDocument: true, canUndo: true })).toBe(true);
+  });
+
+  it('keeps tools disabled without a document so users do not get confused in empty state', () => {
+    for (const { tool } of TOOL_SHORTCUTS) {
+      expect(isCommandAvailable(`tool.${tool}`, { hasDocument: false })).toBe(false);
+    }
   });
 
   it('accepts only registered command IDs from external bridges', () => {

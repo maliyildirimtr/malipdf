@@ -26,6 +26,8 @@ import { FocusToolbar } from './components/FocusToolbar/FocusToolbar';
 import { useUIStore } from './store/uiStore';
 import { useDocumentStore } from './store/documentStore';
 import { useAnnotationStore } from './store/annotationStore';
+import { useAssetStore } from './store/assetStore';
+import { useImportJobStore } from './store/importJobStore';
 import { exportAndSave } from './pdf/annotationExporter';
 import { useAppCommands } from './commands';
 import { NewDocumentDialog } from './components/NewDocumentDialog/NewDocumentDialog';
@@ -41,6 +43,49 @@ interface Toast {
 }
 
 let toastCounter = 0;
+
+// ─── Import Job Overlay ───────────────────────────────────────────────────────
+
+function ImportJobOverlay() {
+  const { job, cancelJob } = useImportJobStore();
+
+  if (!job) return null;
+
+  return (
+    <div style={styles.importOverlay}>
+      <div style={styles.importBox}>
+        <div style={styles.importHeader}>
+          <strong>Importing Printout…</strong>
+          {job.status === 'failed' ? (
+            <span style={{ color: '#fca5a5' }}>Failed</span>
+          ) : job.status === 'cancelled' ? (
+            <span style={{ color: '#fca5a5' }}>Cancelled</span>
+          ) : job.status === 'converting' ? (
+            <span>Converting...</span>
+          ) : job.status === 'committing' ? (
+            <span style={{ color: '#6ee7b7' }}>Committing...</span>
+          ) : job.status === 'completed' ? (
+            <span style={{ color: '#6ee7b7' }}>Completed</span>
+          ) : (
+            <span>
+              {job.completedPages} / {job.totalPages || '?'}
+            </span>
+          )}
+        </div>
+        {job.errorMessage && (
+          <div style={{ color: '#fca5a5', marginTop: 4, fontSize: 12 }}>
+            {job.errorMessage}
+          </div>
+        )}
+        {(job.status === 'loading' || job.status === 'converting' || job.status === 'preparing' || job.status === 'rendering') && (
+          <button style={styles.cancelButton} onClick={cancelJob}>
+            Cancel
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
 
 // ─── App component ────────────────────────────────────────────────────────────
 
@@ -111,7 +156,8 @@ export default function App() {
 
     try {
       const baseName = activeDoc.title.replace(/\.pdf$/i, '') + '_annotated.pdf';
-      const saved = await exportAndSave(activeDoc.sourceData, docAnnotState, baseName);
+      const assets = useAssetStore.getState().getAssetsForDocument({ docId: activeDoc.id, instanceId: activeDoc.instanceId });
+      const saved = await exportAndSave(activeDoc.sourceData, docAnnotState, baseName, { assets });
       if (saved) {
         showToast('success', 'PDF exported successfully.');
       }
@@ -165,6 +211,7 @@ export default function App() {
           </div>
         ))}
       </div>
+      <ImportJobOverlay />
     </div>
   );
 }
@@ -221,4 +268,42 @@ const styles = {
     animation: 'spin 0.7s linear infinite',
     flexShrink: 0,
   },
+  importOverlay: {
+    position: 'fixed' as const,
+    top: 60,
+    right: 24,
+    zIndex: 9999,
+  },
+  importBox: {
+    background: 'rgba(30,30,40,0.95)',
+    color: '#e0e0f0',
+    border: '1px solid rgba(100,100,140,0.3)',
+    padding: '12px 16px',
+    borderRadius: 8,
+    fontSize: 13,
+    fontWeight: 500,
+    fontFamily: 'var(--font-sans, system-ui)',
+    boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: 8,
+    minWidth: 200,
+  },
+  importHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 16,
+  },
+  cancelButton: {
+    background: 'transparent',
+    border: '1px solid rgba(252,165,165,0.5)',
+    color: '#fca5a5',
+    padding: '4px 8px',
+    borderRadius: 4,
+    cursor: 'pointer',
+    fontSize: 12,
+    alignSelf: 'flex-end',
+  }
 } as const;
+

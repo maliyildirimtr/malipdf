@@ -1,10 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import {
   hitTestAnnotations,
-  getAnnotationBounds,
+  hitTestSelectedBounds,
   rectsIntersect,
   eraserHitTest,
 } from '../annotationHitTest';
+import { getAnnotationBounds } from '../annotationGeometry';
 import type { Annotation } from '../../types/annotations';
 import { createPageTransform } from '../coordinateTransform';
 
@@ -142,6 +143,17 @@ describe('annotationHitTest', () => {
       const topRect: Annotation = { ...rectAnn, id: 'topRect', color: '#f00' };
       const hit = hitTestAnnotations({ x: 100, y: 100 }, [rectAnn, topRect], transform);
       expect(hit?.id).toBe('topRect');
+    });
+  });
+
+  describe('hitTestSelectedBounds (Selection Drag)', () => {
+    it('does NOT hit empty space inside a selected hollow rectangle', () => {
+      expect(hitTestAnnotations({ x: 150, y: 150 }, [rectAnn], transform)).toBeNull();
+      expect(hitTestSelectedBounds({ x: 150, y: 150 }, [rectAnn], ['rect1'])?.id).toBeUndefined();
+    });
+
+    it('does not expand hit areas for unselected annotations', () => {
+      expect(hitTestSelectedBounds({ x: 150, y: 150 }, [rectAnn], [])).toBeNull();
     });
   });
 

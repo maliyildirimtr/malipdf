@@ -4,6 +4,7 @@ import { documentSessionStore } from '../store/documentSessionStore';
 import { useDocumentStore } from '../store/documentStore';
 import { useHistoryStore } from '../store/historyStore';
 import { useSelectionStore } from '../store/selectionStore';
+import { useAssetStore } from '../store/assetStore';
 
 /**
  * Phase 0 centralizes the existing close behavior without adding dirty-state
@@ -40,6 +41,7 @@ export async function closeDocumentById(docId: string): Promise<boolean> {
   useAnnotationStore.getState().removeDocument(docId);
   useHistoryStore.getState().removeDocument(docId);
   useSelectionStore.getState().removeDocument(identity);
+  useAssetStore.getState().removeDocument(identity);
   return true;
 }
 
@@ -54,6 +56,7 @@ function forceCloseDocumentById(docId: string) {
   useAnnotationStore.getState().removeDocument(docId);
   useHistoryStore.getState().removeDocument(docId);
   useSelectionStore.getState().removeDocument(identity);
+  useAssetStore.getState().removeDocument(identity);
 }
 
 export async function closeAllDocuments(): Promise<number> {

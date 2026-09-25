@@ -56,7 +56,7 @@ export function createNativeMenuSchema(isMac: boolean, isDev: boolean): readonly
     {
       label: 'File',
       items: [
-        command('file.new', 'New Document…', { accelerator: 'CmdOrCtrl+N', enabled: false }),
+        command('file.new', 'New Document…', { accelerator: 'CmdOrCtrl+N', enabled: true }),
         command('file.combine', 'Combine Files…', { enabled: false }),
         command('file.open', 'Open…', { accelerator: 'CmdOrCtrl+O' }),
         separator(),
@@ -83,6 +83,13 @@ export function createNativeMenuSchema(isMac: boolean, isDev: boolean): readonly
         separator(), role('cut'), role('copy'), role('paste'), role('selectAll'), separator(),
         command('edit.selectAll', 'Select All Annotations', { enabled: false }),
         command('edit.deleteSelected', 'Delete Selected', { accelerator: 'Delete', enabled: false }),
+        separator(),
+        command('insert.image', 'Insert Image…', { accelerator: 'CmdOrCtrl+I', enabled: false }),
+        command('insert.screenshot', 'Capture Screen', { enabled: false }),
+        command('insert.regionScreenshot', 'Capture Region', { enabled: false }),
+        separator(),
+        command('insert.printoutPdf', 'Insert PDF Printout…', { enabled: false }),
+        command('insert.printoutPptx', 'Insert PowerPoint Printout…', { enabled: false }),
       ],
     },
     {

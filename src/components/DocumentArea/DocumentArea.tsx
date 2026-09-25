@@ -103,12 +103,31 @@ export function DocumentArea() {
   );
 
   const openFileDialog = useCallback(async () => {
-    if (!window.electronAPI) return;
-    const files = await window.electronAPI.openFile();
-    if (!files) return;
-    for (const file of files) {
-      await loadFile(file.name, file.filePath, file.data);
+    if (window.electronAPI?.openFile) {
+      const files = await window.electronAPI.openFile();
+      if (!files) return;
+      for (const file of files) {
+        await loadFile(file.name, file.filePath, file.data);
+      }
+      return;
     }
+
+    // Web fallback for browser environment
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'application/pdf,.pdf';
+    input.multiple = true;
+    input.style.display = 'none';
+    input.onchange = async () => {
+      if (!input.files || input.files.length === 0) return;
+      for (const file of Array.from(input.files)) {
+        const buffer = await file.arrayBuffer();
+        await loadFile(file.name, null, buffer);
+      }
+      input.remove();
+    };
+    document.body.appendChild(input);
+    input.click();
   }, [loadFile]);
 
   function onDragOver(event: React.DragEvent) {
@@ -132,7 +151,12 @@ export function DocumentArea() {
       (file) => file.type === 'application/pdf' || file.name.endsWith('.pdf'),
     );
     for (const file of files) {
-      await loadFile(file.name, null, await file.arrayBuffer());
+      if (activeDoc) {
+        const { insertPdfPrintout } = await import('../../commands/printoutCommands');
+        await insertPdfPrintout(activeDoc.id, new Uint8Array(await file.arrayBuffer()));
+      } else {
+        await loadFile(file.name, null, await file.arrayBuffer());
+      }
     }
   }
 
@@ -141,6 +165,32 @@ export function DocumentArea() {
     document.addEventListener('app:openFile', handleOpenRequest);
     return () => document.removeEventListener('app:openFile', handleOpenRequest);
   }, [openFileDialog]);
+
+  // ── Reload source when changed ────────────────────────────────────────────
+  const lastReloadRef = useRef<number>(1);
+  
+  useEffect(() => {
+    if (activeDoc) {
+      lastReloadRef.current = activeDoc.sourceRevision;
+    }
+  }, [activeIdentityKey]);
+
+  useEffect(() => {
+    if (!activeIdentity || !activeDoc) return;
+    if (activeDoc.sourceRevision <= lastReloadRef.current) return;
+    
+    lastReloadRef.current = activeDoc.sourceRevision;
+    const identity = activeIdentity;
+    const data = activeDoc.sourceData;
+    
+    import('../../pdf/documentManager').then(({ reloadDocument }) => {
+      reloadDocument(identity, data).then((newPageCount) => {
+        documentSessionStore.getState().reloadSession(identity, newPageCount);
+      }).catch(err => {
+        console.error('Failed to reload document bytes:', err);
+      });
+    });
+  }, [activeIdentityKey, activeDoc?.sourceRevision, activeDoc?.sourceData]);
 
   // ── Active session and per-document scroll lifecycle ──────────────────────
 

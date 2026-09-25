@@ -9,13 +9,8 @@ describe('uiStore workspace chrome', () => {
       focusToolbarSide: 'left',
       focusToolbarCollapsed: false,
       temporaryTool: null,
-      lastShapeTool: 'rectangle',
-      recentColorsByFamily: {
-        pen: [],
-        highlighter: [],
-        text: [],
-        shape: [],
-      },
+    lastShapeTool: 'rectangle',
+      favoriteColors: [],
     });
   });
 
@@ -37,28 +32,24 @@ describe('uiStore workspace chrome', () => {
     expect(useUIStore.getState().lastShapeTool).toBe('arrow');
   });
 
-  it('applies temporary Hand without replacing the selected tool or selection', () => {
+  it('applies temporary Hand without replacing the selected tool', () => {
     useUIStore.getState().setActiveTool('pen');
-    useUIStore.getState().setSelection(['annotation-1']);
 
     useUIStore.getState().setTemporaryTool('hand');
-    expect(useUIStore.getState().activeTool).toBe('pen');
     expect(useUIStore.getState().temporaryTool).toBe('hand');
-    expect([...useUIStore.getState().selection.selectedIds]).toEqual(['annotation-1']);
+    expect(useUIStore.getState().activeTool).toBe('pen');
 
     useUIStore.getState().setTemporaryTool(null);
+    expect(useUIStore.getState().temporaryTool).toBe(null);
     expect(useUIStore.getState().activeTool).toBe('pen');
-    expect([...useUIStore.getState().selection.selectedIds]).toEqual(['annotation-1']);
   });
 
-  it('keeps recent colors isolated by family, unique and bounded to six', () => {
-    const colors = ['#111111', '#222222', '#333333', '#444444', '#555555', '#666666', '#777777'];
-    for (const color of colors) useUIStore.getState().rememberColor('pen', color);
-    useUIStore.getState().rememberColor('pen', '#555555');
+  it('keeps favorite colors unique and normalized', () => {
+    useUIStore.getState().addFavoriteColor('#111111');
+    useUIStore.getState().addFavoriteColor('#111111'); // duplicate
+    useUIStore.getState().addFavoriteColor('#ffffff');
+    useUIStore.getState().addFavoriteColor('white'); // duplicate normalized
 
-    expect(useUIStore.getState().recentColorsByFamily.pen).toEqual([
-      '#555555', '#777777', '#666666', '#444444', '#333333', '#222222',
-    ]);
-    expect(useUIStore.getState().recentColorsByFamily.shape).toEqual([]);
+    expect(useUIStore.getState().favoriteColors).toEqual(['#111111', '#ffffff']);
   });
 });

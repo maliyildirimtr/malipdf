@@ -27,6 +27,7 @@ export async function openDocumentBytes(
     saveStatus: 'idle',
     lastSaveError: null,
     sourceData: bytes,
+    sourceRevision: 1,
     activePageIndex: 0,
     pageCount,
     zoom: 1,

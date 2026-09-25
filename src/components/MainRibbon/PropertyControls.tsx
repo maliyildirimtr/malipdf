@@ -33,9 +33,11 @@ export function StrokeWidthControl({
 export interface OpacityControlProps {
   value: number;
   onChange: (value: number) => void;
+  onCommit?: (value: number) => void;
+  onCancel?: () => void;
 }
 
-export function OpacityControl({ value, onChange }: OpacityControlProps) {
+export function OpacityControl({ value, onChange, onCommit, onCancel }: OpacityControlProps) {
   const percentage = Math.round(value * 100);
 
   return (
@@ -51,6 +53,9 @@ export function OpacityControl({ value, onChange }: OpacityControlProps) {
         aria-label="Opacity"
         aria-valuetext={`${percentage} percent`}
         onChange={(event) => onChange(Number(event.target.value))}
+        onPointerUp={(event) => onCommit?.(Number((event.target as HTMLInputElement).value))}
+        onPointerCancel={() => onCancel?.()}
+        onBlur={(event) => onCommit?.(Number(event.target.value))}
       />
       <span className={styles.opacityValue} aria-hidden="true">{percentage}%</span>
     </label>

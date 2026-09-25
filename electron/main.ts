@@ -5,6 +5,10 @@ import {
   dialog,
   Menu,
   MenuItemConstructorOptions,
+  screen,
+  desktopCapturer,
+  clipboard,
+  systemPreferences,
 } from 'electron';
 import path from 'path';
 import fs from 'fs';
@@ -20,9 +24,12 @@ import {
   createNativeMenuSchema,
   type NativeMenuNode,
 } from './nativeMenuSchema';
+import { setupPptxIpc } from './services/pptx/pptxIpc';
 
 const isDev = process.env.NODE_ENV === 'development';
 const APP_NAME = 'MaliPDF';
+
+setupPptxIpc();
 
 app.setName(APP_NAME);
 process.title = APP_NAME;
@@ -267,6 +274,386 @@ ipcMain.handle('app:getTempDir', () => {
 // Get app version
 ipcMain.handle('app:getVersion', () => {
   return app.getVersion();
+});
+
+// ─── Image & Screenshot Handlers ─────────────────────────────────────────────
+
+const CAPTURE_SETTLE_DELAY_MS = 250;
+
+function compositorDelay(ms = CAPTURE_SETTLE_DELAY_MS): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+let isCapturingSession = false;
+
+function getTargetDisplay(): Electron.Display {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    return screen.getDisplayMatching(mainWindow.getBounds());
+  }
+  return screen.getPrimaryDisplay();
+}
+
+// Open Image File Dialog
+ipcMain.handle('dialog:openImage', async () => {
+  if (!mainWindow) return null;
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Insert Image',
+    filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
+    properties: ['openFile'],
+  });
+
+  if (result.canceled || result.filePaths.length === 0) {
+    return null;
+  }
+
+  const filePath = result.filePaths[0];
+  const buffer = await fs.promises.readFile(filePath);
+  const ext = path.extname(filePath).toLowerCase();
+  let mimeType = 'image/png';
+  if (ext === '.jpg' || ext === '.jpeg') mimeType = 'image/jpeg';
+  else if (ext === '.webp') mimeType = 'image/webp';
+
+  return {
+    name: path.basename(filePath),
+    mimeType,
+    data: buffer.buffer.slice(
+      buffer.byteOffset,
+      buffer.byteOffset + buffer.byteLength,
+    ) as ArrayBuffer,
+  };
+});
+
+// Read Clipboard Image
+ipcMain.handle('clipboard:readImage', async () => {
+  const image = clipboard.readImage();
+  if (image.isEmpty()) return null;
+  const pngBuffer = image.toPNG();
+  return {
+    mimeType: 'image/png',
+    data: pngBuffer.buffer.slice(
+      pngBuffer.byteOffset,
+      pngBuffer.byteOffset + pngBuffer.byteLength,
+    ) as ArrayBuffer,
+  };
+});
+
+// Capture Display Screenshot
+ipcMain.handle('screenshot:captureDisplay', async () => {
+  if (isCapturingSession) {
+    return { success: false, error: 'Capture already in progress' };
+  }
+  isCapturingSession = true;
+
+  if (process.platform === 'darwin') {
+    const status = systemPreferences.getMediaAccessStatus('screen');
+    if (status === 'denied') {
+      isCapturingSession = false;
+      return { success: false, error: 'Screen recording permission denied in macOS System Settings.' };
+    }
+  }
+
+  const targetDisplay = getTargetDisplay();
+  const physicalWidth = Math.round(targetDisplay.bounds.width * targetDisplay.scaleFactor);
+  const physicalHeight = Math.round(targetDisplay.bounds.height * targetDisplay.scaleFactor);
+  const wasVisible = mainWindow?.isVisible() ?? false;
+
+  try {
+    if (mainWindow && wasVisible) {
+      mainWindow.hide();
+      await compositorDelay(CAPTURE_SETTLE_DELAY_MS);
+    }
+
+    const sources = await desktopCapturer.getSources({
+      types: ['screen'],
+      thumbnailSize: { width: physicalWidth, height: physicalHeight },
+      fetchWindowIcons: false,
+    });
+
+    let matchedSource = sources.find((s) => s.display_id === String(targetDisplay.id));
+    if (!matchedSource && sources.length > 0) {
+      matchedSource = sources[0];
+    }
+
+    if (!matchedSource || matchedSource.thumbnail.isEmpty()) {
+      return { success: false, error: 'Failed to capture display image.' };
+    }
+
+    const thumbnail = matchedSource.thumbnail;
+    const pngBuffer = thumbnail.toPNG();
+    const size = thumbnail.getSize();
+
+    return {
+      success: true,
+      data: pngBuffer.buffer.slice(
+        pngBuffer.byteOffset,
+        pngBuffer.byteOffset + pngBuffer.byteLength,
+      ) as ArrayBuffer,
+      mimeType: 'image/png',
+      width: size.width,
+      height: size.height,
+    };
+  } catch (error: any) {
+    return { success: false, error: error?.message || 'Screenshot failed' };
+  } finally {
+    if (mainWindow && !mainWindow.isDestroyed() && wasVisible) {
+      mainWindow.show();
+      mainWindow.focus();
+    }
+    isCapturingSession = false;
+  }
+});
+
+// Capture Region Screenshot via Temporary Full-Display Overlay Window
+ipcMain.handle('screenshot:captureRegion', async () => {
+  if (isCapturingSession) {
+    return { success: false, error: 'Capture already in progress' };
+  }
+  isCapturingSession = true;
+
+  if (process.platform === 'darwin') {
+    const status = systemPreferences.getMediaAccessStatus('screen');
+    if (status === 'denied') {
+      isCapturingSession = false;
+      return { success: false, error: 'Screen recording permission denied in macOS System Settings.' };
+    }
+  }
+
+  const targetDisplay = getTargetDisplay();
+  const physicalWidth = Math.round(targetDisplay.bounds.width * targetDisplay.scaleFactor);
+  const physicalHeight = Math.round(targetDisplay.bounds.height * targetDisplay.scaleFactor);
+  const wasVisible = mainWindow?.isVisible() ?? false;
+
+  let thumbnail: Electron.NativeImage | null = null;
+  let overlayWindow: BrowserWindow | null = null;
+
+  try {
+    if (mainWindow && wasVisible) {
+      mainWindow.hide();
+      await compositorDelay(CAPTURE_SETTLE_DELAY_MS);
+    }
+
+    const sources = await desktopCapturer.getSources({
+      types: ['screen'],
+      thumbnailSize: { width: physicalWidth, height: physicalHeight },
+      fetchWindowIcons: false,
+    });
+
+    let matchedSource = sources.find((s) => s.display_id === String(targetDisplay.id));
+    if (!matchedSource && sources.length > 0) {
+      matchedSource = sources[0];
+    }
+
+    if (!matchedSource || matchedSource.thumbnail.isEmpty()) {
+      return { success: false, error: 'Failed to capture display image.' };
+    }
+
+    thumbnail = matchedSource.thumbnail;
+    const bitmapSize = thumbnail.getSize();
+    const dataUrl = thumbnail.toDataURL();
+
+    overlayWindow = new BrowserWindow({
+      x: targetDisplay.bounds.x,
+      y: targetDisplay.bounds.y,
+      width: targetDisplay.bounds.width,
+      height: targetDisplay.bounds.height,
+      frame: false,
+      transparent: false,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      resizable: false,
+      movable: false,
+      hasShadow: false,
+      enableLargerThanScreen: true,
+      backgroundColor: '#000000',
+      show: false,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: false,
+      },
+    });
+
+    overlayWindow.setAlwaysOnTop(true, 'screen-saver');
+
+    const overlayHtml = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #000; cursor: crosshair; }
+  #snapshot { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: fill; pointer-events: none; }
+  #tint { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.35); pointer-events: none; }
+  #selection {
+    position: absolute;
+    display: none;
+    border: 2px solid #3b82f6;
+    background: transparent;
+    box-shadow: 0 0 0 99999px rgba(0,0,0,0.4);
+    pointer-events: none;
+  }
+  #hud {
+    position: absolute;
+    bottom: -28px;
+    left: 0;
+    padding: 3px 7px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 11px;
+    font-weight: 500;
+    color: #fff;
+    background: rgba(15, 23, 42, 0.9);
+    border-radius: 4px;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+  #guide {
+    position: fixed;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 6px 14px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 12px;
+    font-weight: 500;
+    color: #f1f5f9;
+    background: rgba(15, 23, 42, 0.85);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 20px;
+    pointer-events: none;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  }
+</style>
+</head>
+<body>
+  <img id="snapshot" src="${dataUrl}">
+  <div id="tint"></div>
+  <div id="selection"><span id="hud">0 × 0</span></div>
+  <div id="guide">Drag to select region • Press Esc to cancel</div>
+  <script>
+    let resolveSelection = null;
+    window.waitForSelection = function() {
+      return new Promise(function(resolve) {
+        resolveSelection = resolve;
+      });
+    };
+
+    let isDragging = false;
+    let startX = 0, startY = 0;
+    const selEl = document.getElementById('selection');
+    const hudEl = document.getElementById('hud');
+    const tintEl = document.getElementById('tint');
+
+    window.addEventListener('mousedown', function(e) {
+      if (e.button !== 0) return;
+      isDragging = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      tintEl.style.display = 'none';
+      selEl.style.display = 'block';
+      selEl.style.left = startX + 'px';
+      selEl.style.top = startY + 'px';
+      selEl.style.width = '0px';
+      selEl.style.height = '0px';
+      hudEl.textContent = '0 × 0';
+    });
+
+    window.addEventListener('mousemove', function(e) {
+      if (!isDragging) return;
+      const curX = e.clientX;
+      const curY = e.clientY;
+      const x = Math.min(startX, curX);
+      const y = Math.min(startY, curY);
+      const w = Math.abs(curX - startX);
+      const h = Math.abs(curY - startY);
+
+      selEl.style.left = x + 'px';
+      selEl.style.top = y + 'px';
+      selEl.style.width = w + 'px';
+      selEl.style.height = h + 'px';
+      hudEl.textContent = Math.round(w) + ' × ' + Math.round(h);
+    });
+
+    window.addEventListener('mouseup', function(e) {
+      if (!isDragging) return;
+      isDragging = false;
+      const curX = e.clientX;
+      const curY = e.clientY;
+      const x = Math.min(startX, curX);
+      const y = Math.min(startY, curY);
+      const w = Math.abs(curX - startX);
+      const h = Math.abs(curY - startY);
+
+      if (w < 4 || h < 4) {
+        selEl.style.display = 'none';
+        tintEl.style.display = 'block';
+        return;
+      }
+
+      if (resolveSelection) {
+        resolveSelection({ canceled: false, x: x, y: y, width: w, height: h });
+      }
+    });
+
+    window.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        if (resolveSelection) {
+          resolveSelection({ canceled: true });
+        }
+      }
+    });
+  </script>
+</body>
+</html>`;
+
+    await overlayWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(overlayHtml));
+    overlayWindow.show();
+    overlayWindow.focus();
+
+    const selection: any = await overlayWindow.webContents.executeJavaScript('window.waitForSelection()');
+
+    if (!selection || selection.canceled) {
+      return { success: false, canceled: true };
+    }
+
+    const scaleX = bitmapSize.width / targetDisplay.bounds.width;
+    const scaleY = bitmapSize.height / targetDisplay.bounds.height;
+
+    let cropX = Math.round(selection.x * scaleX);
+    let cropY = Math.round(selection.y * scaleY);
+    let cropW = Math.round(selection.width * scaleX);
+    let cropH = Math.round(selection.height * scaleY);
+
+    cropX = Math.max(0, Math.min(cropX, bitmapSize.width - 1));
+    cropY = Math.max(0, Math.min(cropY, bitmapSize.height - 1));
+    cropW = Math.max(1, Math.min(cropW, bitmapSize.width - cropX));
+    cropH = Math.max(1, Math.min(cropH, bitmapSize.height - cropY));
+
+    const cropped = thumbnail.crop({ x: cropX, y: cropY, width: cropW, height: cropH });
+    const pngBuffer = cropped.toPNG();
+
+    return {
+      success: true,
+      data: pngBuffer.buffer.slice(
+        pngBuffer.byteOffset,
+        pngBuffer.byteOffset + pngBuffer.byteLength,
+      ) as ArrayBuffer,
+      mimeType: 'image/png',
+      width: cropW,
+      height: cropH,
+    };
+  } catch (error: any) {
+    return { success: false, error: error?.message || 'Region capture failed' };
+  } finally {
+    if (overlayWindow && !overlayWindow.isDestroyed()) {
+      overlayWindow.destroy();
+      overlayWindow = null;
+    }
+    if (mainWindow && !mainWindow.isDestroyed() && wasVisible) {
+      mainWindow.show();
+      mainWindow.focus();
+    }
+    isCapturingSession = false;
+  }
 });
 
 // ─── App lifecycle ────────────────────────────────────────────────────────────

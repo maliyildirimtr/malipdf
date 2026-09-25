@@ -31,6 +31,12 @@ export interface ElectronAPI {
   askCloseConfirm: (fileName: string) => Promise<'save' | 'discard' | 'cancel'>;
   askCloseAllConfirm: (fileNames: string[]) => Promise<'save' | 'discard' | 'cancel'>;
   confirmLifecycle: (requestId: string, allow: boolean) => void;
+
+  // Image & Screenshot operations
+  openImage: () => Promise<{ name: string; mimeType: string; data: ArrayBuffer } | null>;
+  captureScreen: () => Promise<{ success: boolean; data?: ArrayBuffer; mimeType?: string; width?: number; height?: number; error?: string }>;
+  captureRegion: () => Promise<{ success: boolean; canceled?: boolean; data?: ArrayBuffer; mimeType?: string; width?: number; height?: number; error?: string }>;
+  readClipboardImage: () => Promise<{ data: ArrayBuffer; mimeType: string } | null>;
 }
 
 const electronAPI: ElectronAPI = {
@@ -51,6 +57,17 @@ const electronAPI: ElectronAPI = {
   askCloseConfirm: (fileName) => ipcRenderer.invoke('dialog:askCloseConfirm', fileName),
   askCloseAllConfirm: (fileNames) => ipcRenderer.invoke('dialog:askCloseAllConfirm', fileNames),
   confirmLifecycle: (requestId, allow) => ipcRenderer.send('app:confirmLifecycle', requestId, allow),
+
+  openImage: () => ipcRenderer.invoke('dialog:openImage'),
+  captureScreen: () => ipcRenderer.invoke('screenshot:captureDisplay'),
+  captureRegion: () => ipcRenderer.invoke('screenshot:captureRegion'),
+  readClipboardImage: () => ipcRenderer.invoke('clipboard:readImage'),
+
+  // PPTX Printout
+  pptxIsAvailable: () => ipcRenderer.invoke('pptx:isAvailable'),
+  pptxStartConversion: (jobId: string) => ipcRenderer.invoke('pptx:startConversion', jobId),
+  pptxCancelConversion: (jobId: string) => ipcRenderer.invoke('pptx:cancelConversion', jobId),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);
+

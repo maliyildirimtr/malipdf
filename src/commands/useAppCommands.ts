@@ -1,6 +1,6 @@
 import { useCallback, useEffect } from 'react';
 import { useDocumentStore } from '../store/documentStore';
-import { useHistoryStore, makeRemoveAction } from '../store/historyStore';
+import { useHistoryStore, makeRemoveAction, makeBatchAction } from '../store/historyStore';
 import { useUIStore } from '../store/uiStore';
 import { useSelectionStore } from '../store/selectionStore';
 import { useDocumentSessionStore, documentSessionStore } from '../store/documentSessionStore';
@@ -23,6 +23,12 @@ import {
   isTemporaryHandShortcut,
 } from './keyboardShortcuts';
 import { requestActiveInteractionCancellation } from './interactionCancellation';
+import {
+  insertImageFromFile,
+  captureScreenToImage,
+  captureRegionToImage,
+  insertImageFromBytes,
+} from './imageCommands';
 
 export const DOCUMENT_VIEW_COMMAND_EVENT = 'malipdf:document-view-command';
 
@@ -95,6 +101,10 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
     }
 
     if (definition.tool) {
+      if (definition.tool !== ui.activeTool) {
+        const activeIdentity = documentSessionStore.getState().activeIdentity;
+        if (activeIdentity) useSelectionStore.getState().clearSelection(activeIdentity);
+      }
       ui.setActiveTool(definition.tool);
       return;
     }
@@ -150,6 +160,7 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
       case 'file.documentProperties':
       case 'file.print':
       case 'edit.selectAll':
+        return;
       case 'edit.deleteSelected': {
         const session = documentSessionStore.getState();
         const selectionStore = useSelectionStore.getState();
@@ -157,26 +168,40 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
         if (!activeIdentity || !docId) return;
         
         const sel = selectionStore.getSelection(activeIdentity);
-        if (!sel || sel.selectedIds.length === 0) return;
+        if (!sel || sel.selectedIds.length === 0 || sel.pageIndex === null) return;
         
         const annotationsStore = useAnnotationStore.getState();
         const historyStore = useHistoryStore.getState();
-        const annotations = annotationsStore.getPageAnnotations(docId, sel.pageIndex!);
+        const annotations = annotationsStore.getPageAnnotations(docId, sel.pageIndex);
         
+        const actions: import('../store/historyStore').HistoryActionDraft[] = [];
         for (const id of sel.selectedIds) {
           const ann = annotations.find(a => a.id === id);
           if (ann) {
-            annotationsStore.removeAnnotation(docId, sel.pageIndex!, id);
-            historyStore.push(makeRemoveAction(docId, ann));
+            annotationsStore.removeAnnotation(docId, sel.pageIndex, id);
+            actions.push({
+              type: 'REMOVE_ANNOTATION',
+              docId,
+              pageIndex: sel.pageIndex,
+              annotationId: id,
+              before: ann,
+              after: null,
+            });
           }
         }
+        
+        if (actions.length === 1) {
+          historyStore.push(makeRemoveAction(docId, actions[0].before!));
+        } else if (actions.length > 1) {
+          historyStore.push(makeBatchAction(docId, actions));
+        }
+        
         selectionStore.clearSelection(activeIdentity);
         return;
       }
       case 'tool.extractText':
       case 'tool.zoom':
       case 'tool.stamp':
-      case 'tool.polygon':
       case 'tool.dimension':
       case 'tool.lasso':
       case 'tool.snapshot':
@@ -185,6 +210,22 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
       case 'tool.formula':
       case 'tool.laserPointer':
       case 'tool.pointer':
+        return;
+      case 'insert.image':
+        void insertImageFromFile();
+        return;
+      case 'insert.printoutPdf':
+        import('./printoutCommands').then(m => m.insertPrintoutFromFile());
+        return;
+      case 'insert.printoutPptx':
+        import('./printoutCommands').then(m => m.insertPptxPrintoutFromFile());
+        return;
+      case 'insert.screenshot':
+        void captureScreenToImage();
+        return;
+      case 'insert.regionScreenshot':
+        void captureRegionToImage();
+        return;
       case 'view.sidebarBookmarks':
       case 'view.sidebarOutline':
       case 'view.sidebarAnnotations':
@@ -356,6 +397,18 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
         }
       }
 
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'v') {
+        if (!isEditableTarget(event.target)) {
+          if (window.electronAPI?.readClipboardImage) {
+            void window.electronAPI.readClipboardImage().then((clip) => {
+              if (clip && clip.data && clip.data.byteLength > 0) {
+                void insertImageFromBytes(clip.data, clip.mimeType || 'image/png');
+              }
+            });
+          }
+        }
+      }
+
       if (event.key === 'Escape'
         && !isEditableTarget(event.target)
         && useUIStore.getState().workspaceMode === 'focus') {
@@ -380,16 +433,49 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
       useUIStore.getState().setTemporaryTool(null);
     }
 
+    async function onPaste(event: ClipboardEvent) {
+      if (isEditableTarget(event.target)) {
+        return;
+      }
+
+      if (event.clipboardData && event.clipboardData.items) {
+        for (let i = 0; i < event.clipboardData.items.length; i++) {
+          const item = event.clipboardData.items[i];
+          if (item.type.startsWith('image/')) {
+            const file = item.getAsFile();
+            if (file) {
+              event.preventDefault();
+              const buffer = await file.arrayBuffer();
+              void insertImageFromBytes(buffer, file.type || item.type);
+              return;
+            }
+          }
+        }
+      }
+
+      if (window.electronAPI?.readClipboardImage) {
+        const clip = await window.electronAPI.readClipboardImage();
+        if (clip && clip.data && clip.data.byteLength > 0) {
+          event.preventDefault();
+          void insertImageFromBytes(clip.data, clip.mimeType || 'image/png');
+          return;
+        }
+      }
+    }
+
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
     window.addEventListener('blur', onWindowBlur);
+    window.addEventListener('paste', onPaste);
     return () => {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
       window.removeEventListener('blur', onWindowBlur);
+      window.removeEventListener('paste', onPaste);
       useUIStore.getState().setTemporaryTool(null);
     };
   }, [executeCommand]);
 
   return { executeCommand, canExecute };
 }
+

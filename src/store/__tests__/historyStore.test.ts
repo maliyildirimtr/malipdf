@@ -35,6 +35,7 @@ describe('HistoryStore & Dirty State semantics', () => {
       scrollTop: 0,
       scrollLeft: 0,
       pageRotations: {},
+      sourceRevision: 1,
     };
     
     useDocumentStore.getState().openDocument(doc);

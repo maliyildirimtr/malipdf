@@ -45,7 +45,12 @@ function evictThumbnailOnlyPage(identity: DocumentIdentity, pageIndex: number): 
 }
 
 export function PageSidebar() {
-  const { sidebarOpen, activeSidebarPanel, setActiveSidebarPanel } = useUIStore();
+  const {
+    sidebarOpen,
+    activeSidebarPanel,
+    setActiveSidebarPanel,
+    setSidebarOpen,
+  } = useUIStore();
   const { documents, activeDocId, setActivePage } = useDocumentStore();
   const activeDoc = activeDocId ? documents.get(activeDocId) : null;
   const retainedThumbnails = useRef<CanvasBufferLru | null>(null);
@@ -69,30 +74,35 @@ export function PageSidebar() {
     };
   }, [activeDoc?.id, activeDoc?.instanceId]);
 
-  if (!sidebarOpen) return null;
-
   const identity: DocumentIdentity | null = activeDoc
     ? { docId: activeDoc.id, instanceId: activeDoc.instanceId }
     : null;
 
   return (
-    <div className={styles.sidebar}>
+    <div className={`${styles.sidebar} ${sidebarOpen ? styles.sidebarExpanded : ''}`}>
       <div className={styles.panelTabs}>
         {PANELS.map((panel) => (
           <button
             key={panel.id}
-            className={`${styles.panelTab} ${activeSidebarPanel === panel.id ? styles.panelTabActive : ''}`}
-            onClick={() => setActiveSidebarPanel(panel.id)}
+            className={`${styles.panelTab} ${sidebarOpen && activeSidebarPanel === panel.id ? styles.panelTabActive : ''}`}
+            onClick={() => {
+              if (sidebarOpen && activeSidebarPanel === panel.id) {
+                setSidebarOpen(false);
+              } else {
+                setActiveSidebarPanel(panel.id);
+                setSidebarOpen(true);
+              }
+            }}
             title={panel.label}
             aria-label={panel.label}
-            aria-pressed={activeSidebarPanel === panel.id}
+            aria-pressed={sidebarOpen && activeSidebarPanel === panel.id}
           >
             {panel.icon}
           </button>
         ))}
       </div>
 
-      <div className={styles.panelContent}>
+      {sidebarOpen && <div className={styles.panelContent}>
         {activeSidebarPanel === 'pages' && activeDoc && identity && (
           <PagesPanel
             key={documentIdentityKey(identity)}
@@ -120,7 +130,7 @@ export function PageSidebar() {
             <span style={{ fontSize: 11, opacity: 0.5 }}>Coming soon</span>
           </div>
         )}
-      </div>
+      </div>}
     </div>
   );
 }

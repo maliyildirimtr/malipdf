@@ -242,3 +242,39 @@ export function makeResizeAction(
   };
 }
 
+export function makeBatchAction(
+  docId: string,
+  actions: HistoryActionDraft[],
+): HistoryActionDraft {
+  return {
+    type: 'BATCH_ACTION',
+    docId,
+    actions,
+  };
+}
+
+export function makeMutateDocumentBytesAction(
+  docId: string,
+  beforeSourceData: Uint8Array,
+  afterSourceData: Uint8Array,
+  beforeAnnotations: Annotation[],
+  afterAnnotations: Annotation[],
+  beforePageRotations: Record<number, number>,
+  afterPageRotations: Record<number, number>,
+  beforePageCount: number,
+  afterPageCount: number,
+): HistoryActionDraft {
+  return {
+    type: 'MUTATE_DOCUMENT_BYTES',
+    docId,
+    beforeSourceData,
+    afterSourceData,
+    beforeAnnotations,
+    afterAnnotations,
+    beforePageRotations,
+    afterPageRotations,
+    beforePageCount,
+    afterPageCount,
+  };
+}
+

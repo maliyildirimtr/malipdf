@@ -35,16 +35,26 @@ import {
   PDFName,
   PDFNumber,
 } from 'pdf-lib';
-import type { PDFPage } from 'pdf-lib';
+import type { PDFPage, PDFImage } from 'pdf-lib';
 import type {
   Annotation,
   StrokeAnnotation,
   HighlightAnnotation,
   TextAnnotation,
   ShapeAnnotation,
+  ImageAnnotation,
   InputPoint,
   DocumentAnnotationState,
 } from '../types/annotations';
+import type { ImageAsset } from '../store/assetStore';
+
+export type ImageAssetResolver =
+  | Map<string, ImageAsset>
+  | ((assetId: string) => ImageAsset | undefined);
+
+export interface ExportAnnotatedPdfOptions {
+  assets?: ImageAssetResolver;
+}
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -442,6 +452,16 @@ function exportShape(
   const hasFill = fillColor !== 'transparent';
   const fillColorParsed = hasFill ? parseCssColor(fillColor) : undefined;
 
+  let dashArray: number[] | undefined;
+  if (annotation.borderStyle && annotation.borderStyle !== 'solid') {
+    switch (annotation.borderStyle) {
+      case 'dashed': dashArray = [strokeWidth * 4, strokeWidth * 3]; break;
+      case 'dotted': dashArray = [strokeWidth, strokeWidth * 2]; break;
+      case 'dash-dot': dashArray = [strokeWidth * 4, strokeWidth * 3, strokeWidth, strokeWidth * 3]; break;
+      case 'dash-dot-dot': dashArray = [strokeWidth * 4, strokeWidth * 3, strokeWidth, strokeWidth * 3, strokeWidth, strokeWidth * 3]; break;
+    }
+  }
+
   const start = toLib(startPoint.x, startPoint.y, info);
   const end   = toLib(endPoint.x, endPoint.y, info);
 
@@ -460,6 +480,7 @@ function exportShape(
         color: strokeColor,
         opacity,
         lineCap: LineCapStyle.Round,
+        dashArray,
       });
       break;
 
@@ -479,6 +500,7 @@ function exportShape(
         color: fillColorParsed,
         opacity,
         borderOpacity: opacity,
+        borderDashArray: dashArray,
       });
       break;
 
@@ -510,6 +532,7 @@ function exportShape(
         color: fillColorParsed,
         opacity,
         borderOpacity: opacity,
+        borderDashArray: dashArray,
       });
       break;
     }
@@ -526,6 +549,7 @@ function exportShape(
           color: fillColorParsed,
           opacity,
           borderOpacity: opacity,
+          borderDashArray: dashArray,
         });
       }
       break;
@@ -569,6 +593,23 @@ function exportArrow(
 
   page.drawLine({ start: end, end: wing1, thickness: lineWidth, color, opacity, lineCap: LineCapStyle.Round });
   page.drawLine({ start: end, end: wing2, thickness: lineWidth, color, opacity, lineCap: LineCapStyle.Round });
+}
+
+// ─── Image annotation export ──────────────────────────────────────────────────
+
+function exportImage(
+  page: PDFPage,
+  img: PDFImage,
+  annotation: ImageAnnotation,
+  _info: PdfPageExportContext,
+): void {
+  page.drawImage(img, {
+    x: annotation.x,
+    y: annotation.y,
+    width: annotation.width,
+    height: annotation.height,
+    opacity: annotation.opacity ?? 1,
+  });
 }
 
 // ─── Main export function ──────────────────────────────────────────────────────
@@ -631,6 +672,15 @@ function validateAnnotation(annotation: Annotation, pageIndex: number): void {
       }
       if (annotation.fillColor !== 'transparent') parseCssColor(annotation.fillColor);
       return;
+    case 'image':
+      assertPositive(annotation.width, 'image width');
+      assertPositive(annotation.height, 'image height');
+      assertFinite(annotation.x, 'image x');
+      assertFinite(annotation.y, 'image y');
+      if (!annotation.assetId || typeof annotation.assetId !== 'string') {
+        throw new Error('Image annotation requires a valid assetId string.');
+      }
+      return;
     default:
       throw new Error(`Unsupported annotation type: ${String((annotation as Annotation).type)}.`);
   }
@@ -652,6 +702,8 @@ function cloneAnnotation(annotation: Annotation): Annotation {
         startPoint: Object.freeze({ ...annotation.startPoint }),
         endPoint: Object.freeze({ ...annotation.endPoint }),
       }) as Annotation;
+    case 'image':
+      return Object.freeze({ ...annotation }) as Annotation;
     default:
       // Preserve unknown runtime data so validation can produce a typed error
       // containing the original annotation identity instead of throwing here.
@@ -700,6 +752,7 @@ function markFlattenedExport(pdfDoc: PDFDocument, count: number): void {
 export async function exportAnnotatedPdf(
   sourceData: Uint8Array,
   annotations: DocumentAnnotations,
+  options?: ExportAnnotatedPdfOptions,
 ): Promise<ExportResult> {
   // Capture annotation state synchronously, before the first async boundary.
   const snapshot = createAnnotationSnapshot(annotations);
@@ -738,6 +791,8 @@ export async function exportAnnotatedPdf(
   }
 
   let totalAnnotationCount = 0;
+  // Deduplicate embedded images across all annotations
+  const embeddedImages = new Map<string, PDFImage>();
 
   for (let pageIndex = 0; pageIndex < pages.length; pageIndex++) {
     const page = pages[pageIndex];
@@ -761,6 +816,28 @@ export async function exportAnnotatedPdf(
           case 'shape':
             exportShape(page, annotation, info);
             break;
+          case 'image': {
+            let pdfImg = embeddedImages.get(annotation.assetId);
+            if (!pdfImg) {
+              let asset: ImageAsset | undefined;
+              if (options?.assets instanceof Map) {
+                asset = options.assets.get(annotation.assetId);
+              } else if (typeof options?.assets === 'function') {
+                asset = options.assets(annotation.assetId);
+              }
+              if (!asset) {
+                throw new Error(`Image asset ${annotation.assetId} not found for export.`);
+              }
+              if (asset.mimeType === 'image/jpeg') {
+                pdfImg = await pdfDoc.embedJpg(asset.data);
+              } else {
+                pdfImg = await pdfDoc.embedPng(asset.data);
+              }
+              embeddedImages.set(annotation.assetId, pdfImg);
+            }
+            exportImage(page, pdfImg, annotation, info);
+            break;
+          }
         }
         totalAnnotationCount++;
       } catch (err) {
@@ -820,11 +897,12 @@ export async function exportAndSave(
   sourceData: Uint8Array,
   docAnnotState: DocumentAnnotationState,
   defaultName: string,
+  options?: ExportAnnotatedPdfOptions,
 ): Promise<boolean> {
   const annotations = buildAnnotationsMap(docAnnotState);
 
   // Build the annotated PDF
-  const result = await exportAnnotatedPdf(sourceData, annotations);
+  const result = await exportAnnotatedPdf(sourceData, annotations, options);
 
   // Ask the user where to save
   const savePath = await window.electronAPI.saveFile(defaultName);

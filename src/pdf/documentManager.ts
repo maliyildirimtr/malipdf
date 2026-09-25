@@ -83,6 +83,39 @@ export class DocumentManager {
     return { identity, pageCount: proxy.numPages };
   }
 
+  async reloadDocument(
+    identity: DocumentIdentity,
+    data: Uint8Array,
+  ): Promise<number> {
+    const cached = this.getRecord(identity);
+    if (!cached) throw new Error('Cannot reload document that is not open');
+
+    const proxy = await this.documentLoader(data);
+    if (!this.isCurrent(cached)) {
+      await proxy.destroy();
+      throw new Error('Document changed during reload');
+    }
+
+    // Destroy old proxy and clear cache
+    const oldProxy = cached.proxy;
+    cached.pageCache.clear();
+    for (const queued of cached.loadQueue.splice(0)) {
+      cached.pendingLoads.delete(queued.pageIndex);
+      queued.resolve(null);
+    }
+    try {
+      await oldProxy.destroy();
+    } catch (e) {
+      console.warn('Failed to destroy old PDF document during reload:', e);
+    }
+
+    // Assign new proxy
+    cached.proxy = proxy;
+    cached.pageCount = proxy.numPages;
+
+    return proxy.numPages;
+  }
+
   async closeDocument(identity: DocumentIdentity): Promise<void> {
     if (this.openingInstances.get(identity.docId) === identity.instanceId) {
       this.openingInstances.delete(identity.docId);
@@ -285,6 +318,7 @@ export class DocumentManager {
 const documentManager = new DocumentManager();
 
 export const openDocument = documentManager.openDocument.bind(documentManager);
+export const reloadDocument = documentManager.reloadDocument.bind(documentManager);
 export const closeDocument = documentManager.closeDocument.bind(documentManager);
 export const getDocumentProxy = documentManager.getDocumentProxy.bind(documentManager);
 export const getPageCount = documentManager.getPageCount.bind(documentManager);

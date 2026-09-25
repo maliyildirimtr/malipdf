@@ -59,4 +59,13 @@ describe('selectionStore', () => {
 
     expect(useSelectionStore.getState().docSelections.has('docA:1')).toBe(false);
   });
+
+  it('does not publish a store update when an empty transient style is cleared', () => {
+    useSelectionStore.getState().selectAnnotation(identity1, 0, 'ann1');
+    const before = useSelectionStore.getState();
+
+    useSelectionStore.getState().setTransientStyle(identity1, 0, 'ann1', undefined);
+
+    expect(useSelectionStore.getState()).toBe(before);
+  });
 });
