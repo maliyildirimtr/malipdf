@@ -1,4 +1,5 @@
-import { downloads } from '../../config/downloads';
+import { downloads, windowsInstaller } from '../../config/downloads';
+import { DownloadMenu } from '../DownloadMenu/DownloadMenu';
 import './Hero.css';
 
 const lineWidths = ['82%', '66%', '91%', '74%', '86%', '58%', '78%', '92%', '69%'];
@@ -14,10 +15,6 @@ function DocumentLines({ compact = false }: { compact?: boolean }) {
 }
 
 export function Hero() {
-  const handleDownload = (e: React.MouseEvent, asset: typeof downloads.macos) => {
-    if (!asset.available) e.preventDefault();
-  };
-
   return (
     <section className="hero" aria-labelledby="hero-title">
       <div className="hero__bg-grid" aria-hidden="true" />
@@ -38,31 +35,32 @@ export function Hero() {
           </p>
 
           <div className="hero__actions">
-            <a
-              href={downloads.macos.url ?? '#download'}
-              className={`btn btn--primary btn--lg hero__btn-primary${!downloads.macos.available ? ' btn--disabled' : ''}`}
-              onClick={(e) => handleDownload(e, downloads.macos)}
-              aria-label={downloads.macos.available ? 'Download MaliPDF for macOS' : 'MaliPDF for macOS — coming soon'}
+            <DownloadMenu
+              platform={downloads.macos}
+              buttonClassName="btn btn--primary btn--lg hero__btn-primary"
+              ariaLabel={`${downloads.macos.label} — choose Apple Silicon or Intel`}
             >
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" />
                 <path d="M14.5 8.5c0-1.38-1.12-2.5-2.5-2.5S9.5 7.12 9.5 8.5c0 .74.32 1.4.83 1.87L7 14h10l-3.33-3.63c.51-.47.83-1.13.83-1.87z" />
               </svg>
-              {downloads.macos.available ? 'Download for macOS' : 'macOS — Coming Soon'}
-            </a>
+              {downloads.macos.label}
+            </DownloadMenu>
             <a
-              href={downloads.windows.url ?? '#download'}
-              className={`btn btn--outline btn--lg hero__btn-secondary${!downloads.windows.available ? ' btn--disabled' : ''}`}
-              onClick={(e) => handleDownload(e, downloads.windows)}
-              aria-label={downloads.windows.available ? 'Download MaliPDF for Windows' : 'MaliPDF for Windows — coming soon'}
+              href={windowsInstaller.url}
+              download={windowsInstaller.fileName}
+              className="btn btn--outline btn--lg hero__btn-secondary"
+              aria-label={`${downloads.windows.label} (${windowsInstaller.label}, ${windowsInstaller.sizeLabel})`}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                 <path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801" />
               </svg>
-              {downloads.windows.available ? 'Windows' : 'Windows — Coming Soon'}
+              {downloads.windows.label}
             </a>
           </div>
-          <p className="hero__notice">Free during early access. No account required.</p>
+          <p className="hero__notice">
+            Version {downloads.version} · Free during early access. No account required.
+          </p>
         </div>
 
         <div className="hero__art" aria-hidden="true">

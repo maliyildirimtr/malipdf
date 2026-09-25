@@ -78,9 +78,21 @@
   justify-content: center;
 }
 
+.download__menu {
+  width: 100%;
+}
+
 .download__meta {
   font-size: 0.72rem;
   color: var(--text-on-navy-dim);
+  letter-spacing: 0.02em;
+}
+
+.download__version {
+  margin-top: calc(-1 * var(--space-6));
+  margin-bottom: var(--space-8);
+  font-size: 0.78rem;
+  color: var(--text-on-navy-muted);
   letter-spacing: 0.02em;
 }
 
