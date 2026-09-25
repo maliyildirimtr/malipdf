@@ -354,8 +354,6 @@ declare global {
       openFile: () => Promise<Array<{ filePath: string; name: string; data: ArrayBuffer }> | null>;
       saveFile: (defaultName: string) => Promise<string | null>;
       writeFile: (filePath: string, data: ArrayBuffer) => Promise<boolean>;
-      readFile: (filePath: string) => Promise<{ name: string; data: ArrayBuffer }>;
-      getTempDir: () => Promise<string>;
       getVersion: () => Promise<string>;
       onCommand: (callback: (commandId: unknown, payload?: unknown) => void) => () => void;
       updateCommandStates: (states: any[]) => void;

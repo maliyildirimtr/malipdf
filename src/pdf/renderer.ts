@@ -21,6 +21,7 @@ import type { PageTransform } from './coordinateTransform';
 import { computeSafeCanvasOutputScale } from './canvasMemory';
 
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import { BundledCMapReaderFactory, BundledStandardFontDataFactory } from './pdfjsAssets';
 
 // Use local worker bundled via Vite to avoid CORS and offline issues in Electron
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
@@ -64,9 +65,14 @@ export interface ThumbnailRender {
 export async function loadPdfDocument(data: Uint8Array): Promise<PDFDocumentProxy> {
   const loadingTask = pdfjs.getDocument({
     data: data.slice(0), // Copy to avoid detached buffer issues
-    cMapUrl: `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/cmaps/`,
+    // CMaps and standard fonts ship with the app (offline, CSP-compatible).
+    CMapReaderFactory: BundledCMapReaderFactory as never,
+    StandardFontDataFactory: BundledStandardFontDataFactory as never,
+    useWorkerFetch: false,
     cMapPacked: true,
-    standardFontDataUrl: `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/standard_fonts/`,
+    // Never compile PDF-supplied data into JavaScript (defence in depth; the
+    // CSP also disallows eval).
+    isEvalSupported: false,
   });
 
   return loadingTask.promise;

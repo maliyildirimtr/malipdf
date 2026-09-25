@@ -31,6 +31,7 @@ import { useImportJobStore } from './store/importJobStore';
 import { exportAndSave, loadDefaultExportFonts } from './pdf/annotationExporter';
 import { useAppCommands } from './commands';
 import { NewDocumentDialog } from './components/NewDocumentDialog/NewDocumentDialog';
+import { NOTIFY_EVENT, type NotifyDetail } from './utils/notify';
 
 // ─── Export toast ─────────────────────────────────────────────────────────────
 
@@ -133,6 +134,17 @@ export default function App() {
     mediaQuery.addEventListener('change', applyTheme);
     return () => mediaQuery.removeEventListener('change', applyTheme);
   }, [theme, setResolvedTheme]);
+
+  // ── App-wide notifications (image insert, screenshots, …) ─────────────
+
+  useEffect(() => {
+    const onNotify = (event: Event) => {
+      const { kind, message } = (event as CustomEvent<NotifyDetail>).detail;
+      showToast(kind, message);
+    };
+    window.addEventListener(NOTIFY_EVENT, onNotify);
+    return () => window.removeEventListener(NOTIFY_EVENT, onNotify);
+  }, [showToast]);
 
   // ── Save error surfacing ───────────────────────────────────────────────
   // saveCommands records failures on the document; show each new one once.

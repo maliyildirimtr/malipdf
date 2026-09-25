@@ -92,6 +92,7 @@ import {
   releaseCanvas,
 } from '../../pdf/canvasMemory';
 import { CANCEL_ACTIVE_INTERACTION_EVENT } from '../../commands';
+import { errorMessage, notifyUser } from '../../utils/notify';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1485,6 +1486,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
         });
       } catch (err) {
         console.warn(`[Drop] Failed to insert file ${file.name}:`, err);
+        notifyUser('error', `${file.name} could not be inserted: ${errorMessage(err)}`);
       }
     }
 

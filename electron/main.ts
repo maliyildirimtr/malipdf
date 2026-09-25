@@ -25,11 +25,27 @@ import {
   type NativeMenuNode,
 } from './nativeMenuSchema';
 import { setupPptxIpc } from './services/pptx/pptxIpc';
+import {
+  FileAccessGrants,
+  handleTrusted,
+  installWebContentsPolicy,
+  onTrusted,
+  requireBinary,
+  requireString,
+  requireStringArray,
+} from './security';
 
 const isDev = process.env.NODE_ENV === 'development';
 const APP_NAME = 'MaliPDF';
 
-setupPptxIpc();
+/** Largest PDF the renderer may ask us to write (sanity limit). */
+const MAX_WRITE_BYTES = 2 * 1024 * 1024 * 1024 - 1;
+/** Matches the renderer's MAX_IMAGE_FILE_SIZE_BYTES. */
+const MAX_IMAGE_FILE_BYTES = 50 * 1024 * 1024;
+const fileGrants = new FileAccessGrants();
+
+installWebContentsPolicy(isDev);
+setupPptxIpc(isDev);
 
 app.setName(APP_NAME);
 process.title = APP_NAME;
@@ -100,8 +116,10 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
       webSecurity: true,
+      webviewTag: false,
+      spellcheck: false,
     },
   });
 
@@ -134,14 +152,8 @@ function createWindow() {
     if (pendingLifecycleRequest) forceLifecycle(pendingLifecycleRequest.type);
   });
 
-  // Never let the app window navigate away from the app (e.g. a file dropped
-  // outside a drop zone) or open new windows.
-  const appUrl = isDev ? 'http://localhost:5173' : null;
-  mainWindow.webContents.on('will-navigate', (event, url) => {
-    const allowed = appUrl ? url.startsWith(appUrl) : false;
-    if (!allowed) event.preventDefault();
-  });
-  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  // Navigation, new windows, webviews and permissions are locked down for
+  // every web contents in installWebContentsPolicy (electron/security.ts).
 
   buildMenu();
 }
@@ -183,7 +195,7 @@ function buildNativeMenuItem(node: NativeMenuNode): MenuItemConstructorOptions {
 
 // ─── IPC Handlers ────────────────────────────────────────────────────────────
 
-ipcMain.on(COMMAND_STATE_CHANNEL, (_event, states: NativeCommandState[]) => {
+onTrusted(COMMAND_STATE_CHANNEL, isDev, (_event, states: NativeCommandState[]) => {
   const menu = Menu.getApplicationMenu();
   if (!menu || !Array.isArray(states)) return;
   for (const state of states) {
@@ -195,15 +207,16 @@ ipcMain.on(COMMAND_STATE_CHANNEL, (_event, states: NativeCommandState[]) => {
   }
 });
 
-ipcMain.handle(FULLSCREEN_TOGGLE_CHANNEL, () => {
+handleTrusted(FULLSCREEN_TOGGLE_CHANNEL, isDev, () => {
   if (!mainWindow) return false;
   mainWindow.setFullScreen(!mainWindow.isFullScreen());
   return mainWindow.isFullScreen();
 });
 
 // Open PDF dialog
-ipcMain.handle('dialog:openFile', async () => {
-  const result = await dialog.showOpenDialog(mainWindow!, {
+handleTrusted('dialog:openFile', isDev, async () => {
+  if (!mainWindow) return null;
+  const result = await dialog.showOpenDialog(mainWindow, {
     title: 'Open PDF',
     filters: [{ name: 'PDF Documents', extensions: ['pdf'] }],
     properties: ['openFile', 'multiSelections'],
@@ -217,6 +230,8 @@ ipcMain.handle('dialog:openFile', async () => {
   const files = await Promise.all(
     result.filePaths.map(async (filePath) => {
       const buffer = await fs.promises.readFile(filePath);
+      // The user chose this file: Save may write back to it.
+      fileGrants.grantWrite(filePath);
       return {
         filePath,
         name: path.basename(filePath),
@@ -232,19 +247,25 @@ ipcMain.handle('dialog:openFile', async () => {
 });
 
 // Save dialog (for export)
-ipcMain.handle('dialog:saveFile', async (_event, defaultName: string) => {
-  const result = await dialog.showSaveDialog(mainWindow!, {
+handleTrusted('dialog:saveFile', isDev, async (_event, defaultName: unknown) => {
+  if (!mainWindow) return null;
+  const suggested = typeof defaultName === 'string' ? defaultName.slice(0, 1024) : 'Untitled.pdf';
+  const result = await dialog.showSaveDialog(mainWindow, {
     title: 'Export Annotated PDF',
-    defaultPath: defaultName,
+    defaultPath: suggested,
     filters: [{ name: 'PDF Documents', extensions: ['pdf'] }],
   });
 
-  return result.canceled ? null : result.filePath;
+  if (result.canceled || !result.filePath) return null;
+  fileGrants.grantWrite(result.filePath);
+  return result.filePath;
 });
 
 // Close confirm dialog
-ipcMain.handle('dialog:askCloseConfirm', async (_event, fileName: string) => {
-  const result = await dialog.showMessageBox(mainWindow!, {
+handleTrusted('dialog:askCloseConfirm', isDev, async (_event, rawFileName: unknown) => {
+  if (!mainWindow) return 'cancel';
+  const fileName = requireString(rawFileName, 'fileName', 1024);
+  const result = await dialog.showMessageBox(mainWindow, {
     type: 'question',
     buttons: ['Save', "Don't Save", 'Cancel'],
     defaultId: 0,
@@ -260,8 +281,10 @@ ipcMain.handle('dialog:askCloseConfirm', async (_event, fileName: string) => {
 });
 
 // Close ALL confirm dialog
-ipcMain.handle('dialog:askCloseAllConfirm', async (_event, fileNames: string[]) => {
-  const result = await dialog.showMessageBox(mainWindow!, {
+handleTrusted('dialog:askCloseAllConfirm', isDev, async (_event, rawFileNames: unknown) => {
+  if (!mainWindow) return 'cancel';
+  const fileNames = requireStringArray(rawFileNames, 'fileNames');
+  const result = await dialog.showMessageBox(mainWindow, {
     type: 'question',
     buttons: ['Save All', 'Discard All', 'Cancel'],
     defaultId: 0,
@@ -275,42 +298,26 @@ ipcMain.handle('dialog:askCloseAllConfirm', async (_event, fileNames: string[]) 
   return 'cancel';
 });
 
-// Write file
-ipcMain.handle(
-  'fs:writeFile',
-  async (_event, filePath: string, data: ArrayBuffer) => {
-    const dir = path.dirname(filePath);
-    const tempPath = path.join(dir, `.${path.basename(filePath)}.tmp-${crypto.randomUUID()}`);
-    try {
-      await fs.promises.writeFile(tempPath, Buffer.from(data));
-      await fs.promises.rename(tempPath, filePath);
-      return true;
-    } catch (error) {
-      await fs.promises.unlink(tempPath).catch(() => {});
-      throw error;
-    }
-  },
-);
-
-// Read file (for drag-dropped files by path)
-ipcMain.handle('fs:readFile', async (_event, filePath: string) => {
-  const buffer = await fs.promises.readFile(filePath);
-  return {
-    name: path.basename(filePath),
-    data: buffer.buffer.slice(
-      buffer.byteOffset,
-      buffer.byteOffset + buffer.byteLength,
-    ) as ArrayBuffer,
-  };
-});
-
-// Get temp directory
-ipcMain.handle('app:getTempDir', () => {
-  return os.tmpdir();
+// Write file — only to paths the user picked in an Open/Save dialog.
+handleTrusted('fs:writeFile', isDev, async (_event, filePath: unknown, data: unknown) => {
+  if (!fileGrants.canWrite(filePath)) {
+    throw new Error('Refusing to write a file the user did not choose in a dialog.');
+  }
+  const bytes = requireBinary(data, 'data', MAX_WRITE_BYTES);
+  const dir = path.dirname(filePath);
+  const tempPath = path.join(dir, `.${path.basename(filePath)}.tmp-${crypto.randomUUID()}`);
+  try {
+    await fs.promises.writeFile(tempPath, bytes);
+    await fs.promises.rename(tempPath, filePath);
+    return true;
+  } catch (error) {
+    await fs.promises.unlink(tempPath).catch(() => {});
+    throw error;
+  }
 });
 
 // Get app version
-ipcMain.handle('app:getVersion', () => {
+handleTrusted('app:getVersion', isDev, () => {
   return app.getVersion();
 });
 
@@ -333,7 +340,7 @@ function getTargetDisplay(): Electron.Display {
 }
 
 // Open Image File Dialog
-ipcMain.handle('dialog:openImage', async () => {
+handleTrusted('dialog:openImage', isDev, async () => {
   if (!mainWindow) return null;
   const result = await dialog.showOpenDialog(mainWindow, {
     title: 'Insert Image',
@@ -346,6 +353,10 @@ ipcMain.handle('dialog:openImage', async () => {
   }
 
   const filePath = result.filePaths[0];
+  const { size } = await fs.promises.stat(filePath);
+  if (size > MAX_IMAGE_FILE_BYTES) {
+    throw new Error(`Image file is larger than ${MAX_IMAGE_FILE_BYTES / 1024 / 1024} MB.`);
+  }
   const buffer = await fs.promises.readFile(filePath);
   const ext = path.extname(filePath).toLowerCase();
   let mimeType = 'image/png';
@@ -363,7 +374,7 @@ ipcMain.handle('dialog:openImage', async () => {
 });
 
 // Read Clipboard Image
-ipcMain.handle('clipboard:readImage', async () => {
+handleTrusted('clipboard:readImage', isDev, async () => {
   const image = clipboard.readImage();
   if (image.isEmpty()) return null;
   const pngBuffer = image.toPNG();
@@ -377,7 +388,7 @@ ipcMain.handle('clipboard:readImage', async () => {
 });
 
 // Capture Display Screenshot
-ipcMain.handle('screenshot:captureDisplay', async () => {
+handleTrusted('screenshot:captureDisplay', isDev, async () => {
   if (isCapturingSession) {
     return { success: false, error: 'Capture already in progress' };
   }
@@ -385,7 +396,7 @@ ipcMain.handle('screenshot:captureDisplay', async () => {
 
   if (process.platform === 'darwin') {
     const status = systemPreferences.getMediaAccessStatus('screen');
-    if (status === 'denied') {
+    if (status === 'denied' || status === 'restricted') {
       isCapturingSession = false;
       return { success: false, error: 'Screen recording permission denied in macOS System Settings.' };
     }
@@ -443,7 +454,7 @@ ipcMain.handle('screenshot:captureDisplay', async () => {
 });
 
 // Capture Region Screenshot via Temporary Full-Display Overlay Window
-ipcMain.handle('screenshot:captureRegion', async () => {
+handleTrusted('screenshot:captureRegion', isDev, async () => {
   if (isCapturingSession) {
     return { success: false, error: 'Capture already in progress' };
   }
@@ -451,7 +462,7 @@ ipcMain.handle('screenshot:captureRegion', async () => {
 
   if (process.platform === 'darwin') {
     const status = systemPreferences.getMediaAccessStatus('screen');
-    if (status === 'denied') {
+    if (status === 'denied' || status === 'restricted') {
       isCapturingSession = false;
       return { success: false, error: 'Screen recording permission denied in macOS System Settings.' };
     }
@@ -508,7 +519,8 @@ ipcMain.handle('screenshot:captureRegion', async () => {
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
-        sandbox: false,
+        sandbox: true,
+        webviewTag: false,
       },
     });
 
@@ -755,7 +767,7 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
-ipcMain.on('app:confirmLifecycle', (_event, requestId: unknown, allow: unknown) => {
+onTrusted('app:confirmLifecycle', isDev, (_event, requestId: unknown, allow: unknown) => {
   // No timeout: the renderer may be showing Save / Don't Save dialogs for as
   // long as the user needs. Stale or duplicate answers are ignored.
   if (!pendingLifecycleRequest || pendingLifecycleRequest.id !== requestId) return;

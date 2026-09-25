@@ -15,6 +15,9 @@
  * Liberation Sans 2.1.5 — SIL Open Font License 1.1, see assets/fonts/OFL.txt.
  */
 import type { Fontkit } from 'pdf-lib/cjs/types/fontkit';
+import { readAssetBytes, dataUrlToBytes } from '../utils/assetBytes';
+
+export { readAssetBytes, dataUrlToBytes };
 import regularUrl from '../assets/fonts/LiberationSans-Regular.ttf?url';
 import boldUrl from '../assets/fonts/LiberationSans-Bold.ttf?url';
 import italicUrl from '../assets/fonts/LiberationSans-Italic.ttf?url';
@@ -55,34 +58,4 @@ export function loadExportFonts(readAsset: AssetReader = readAssetBytes): Promis
     pending.catch(() => { pending = null; });
   }
   return pending;
-}
-
-/** data: URL → decode; otherwise fetch (dev server), falling back to XHR. */
-export async function readAssetBytes(url: string): Promise<Uint8Array> {
-  if (url.startsWith('data:')) return dataUrlToBytes(url);
-  try {
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(`HTTP ${response.status} for ${url}`);
-    return new Uint8Array(await response.arrayBuffer());
-  } catch (fetchError) {
-    return new Promise<Uint8Array>((resolve, reject) => {
-      const request = new XMLHttpRequest();
-      request.open('GET', url);
-      request.responseType = 'arraybuffer';
-      request.onload = () => (request.response
-        ? resolve(new Uint8Array(request.response as ArrayBuffer))
-        : reject(fetchError));
-      request.onerror = () => reject(fetchError);
-      request.send();
-    });
-  }
-}
-
-export function dataUrlToBytes(dataUrl: string): Uint8Array {
-  const comma = dataUrl.indexOf(',');
-  const base64 = comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl;
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes;
 }

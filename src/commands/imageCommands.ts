@@ -16,6 +16,7 @@ import { useSelectionStore } from '../store/selectionStore';
 import { documentSessionStore } from '../store/documentSessionStore';
 import { documentIdentityKey } from '../types/documentSession';
 import type { ImageAnnotation } from '../types/annotations';
+import { errorMessage, notifyUser } from '../utils/notify';
 import {
   createInsertTargetSnapshot,
   isInsertTargetValid,
@@ -74,6 +75,7 @@ export async function insertImageFromBytes(
     return true;
   } catch (err) {
     console.warn('[ImageInsert] Failed to insert image:', err);
+    notifyUser('error', `Image could not be inserted: ${errorMessage(err)}`);
     return false;
   }
 }
@@ -139,6 +141,7 @@ export async function captureScreenToImage(): Promise<boolean> {
     if (!result.success || !result.data) {
       if (result.error) {
         console.warn('[ScreenCapture] Capture error:', result.error);
+        notifyUser('error', `Screenshot failed: ${result.error}`);
       }
       return false;
     }
@@ -189,6 +192,7 @@ export async function captureRegionToImage(): Promise<boolean> {
     if (result.canceled || !result.success || !result.data) {
       if (result.error) {
         console.warn('[RegionCapture] Region capture error:', result.error);
+        notifyUser('error', `Screenshot failed: ${result.error}`);
       }
       return false;
     }

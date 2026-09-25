@@ -1,10 +1,13 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import {
-  COMMAND_EXECUTE_CHANNEL,
-  COMMAND_STATE_CHANNEL,
-  FULLSCREEN_TOGGLE_CHANNEL,
-  type NativeCommandState,
-} from './commandBridge';
+import type { NativeCommandState } from './commandBridge';
+
+// The preload runs in a sandboxed renderer, where require() only resolves
+// 'electron' (and a few builtins) — local modules cannot be imported at
+// runtime. These must stay equal to electron/commandBridge.ts (a unit test
+// checks this).
+const COMMAND_EXECUTE_CHANNEL = 'command:execute';
+const COMMAND_STATE_CHANNEL = 'command:updateState';
+const FULLSCREEN_TOGGLE_CHANNEL = 'window:toggleFullScreen';
 
 // ─── Type definitions for the exposed API ─────────────────────────────────────
 
@@ -18,11 +21,10 @@ export interface ElectronAPI {
   // File operations
   openFile: () => Promise<OpenedFile[] | null>;
   saveFile: (defaultName: string) => Promise<string | null>;
+  /** Only paths chosen in an Open/Save dialog this session are writable. */
   writeFile: (filePath: string, data: ArrayBuffer) => Promise<boolean>;
-  readFile: (filePath: string) => Promise<{ name: string; data: ArrayBuffer }>;
 
   // App info
-  getTempDir: () => Promise<string>;
   getVersion: () => Promise<string>;
 
   onCommand: (callback: (commandId: unknown, payload?: unknown) => void) => () => void;
@@ -48,8 +50,6 @@ const electronAPI: ElectronAPI = {
   openFile: () => ipcRenderer.invoke('dialog:openFile'),
   saveFile: (defaultName) => ipcRenderer.invoke('dialog:saveFile', defaultName),
   writeFile: (filePath, data) => ipcRenderer.invoke('fs:writeFile', filePath, data),
-  readFile: (filePath) => ipcRenderer.invoke('fs:readFile', filePath),
-  getTempDir: () => ipcRenderer.invoke('app:getTempDir'),
   getVersion: () => ipcRenderer.invoke('app:getVersion'),
 
   onCommand: (callback) => {

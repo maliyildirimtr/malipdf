@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
+import { resolve } from 'path';
+import { pathToFileURL } from 'url';
 
 const mocks = vi.hoisted(() => {
   const EventEmitter = require('events');
@@ -8,6 +10,14 @@ const mocks = vi.hoisted(() => {
   mApp.getVersion = vi.fn().mockReturnValue('1.0.0');
   mApp.quit = vi.fn();
   mApp.whenReady = vi.fn().mockResolvedValue(undefined);
+  mApp.getPath = vi.fn().mockReturnValue('/tmp');
+
+  const mSession = {
+    defaultSession: {
+      setPermissionRequestHandler: vi.fn(),
+      setPermissionCheckHandler: vi.fn(),
+    },
+  };
 
   const mIpcMain = {
     on: vi.fn(),
@@ -67,6 +77,7 @@ const mocks = vi.hoisted(() => {
     mockMenu: mMenu,
     MockBrowserWindow: mBrowserWindow,
     mockFs: mFs,
+    mockSession: mSession,
   };
 });
 
@@ -76,6 +87,7 @@ vi.mock('electron', () => ({
   dialog: mocks.mockDialog,
   Menu: mocks.mockMenu,
   BrowserWindow: mocks.MockBrowserWindow,
+  session: mocks.mockSession,
 }));
 
 const { mockApp, mockIpcMain, MockBrowserWindow, mockFs } = mocks;
@@ -88,11 +100,18 @@ vi.mock('fs', () => ({
 import '../../../electron/main';
 
 let writeFileHandler: any;
+let saveDialogHandler: any;
 let confirmLifecycleHandler: any;
+
+// IPC is only accepted from the app page (production: dist/index.html).
+const appPageUrl = pathToFileURL(resolve(process.cwd(), 'dist/index.html')).href;
+const trustedEvent = { senderFrame: { url: appPageUrl } };
+const foreignEvent = { senderFrame: { url: 'https://evil.example/' } };
 
 describe('Electron Main Process Guard & Lifecycle', () => {
   beforeAll(async () => {
     writeFileHandler = mockIpcMain.handle.mock.calls.find((c: any) => c[0] === 'fs:writeFile')![1];
+    saveDialogHandler = mockIpcMain.handle.mock.calls.find((c: any) => c[0] === 'dialog:saveFile')![1];
     confirmLifecycleHandler = mockIpcMain.on.mock.calls.find((c: any) => c[0] === 'app:confirmLifecycle')![1];
     // Flush app.whenReady() so createWindow is called
     await Promise.resolve();
@@ -110,8 +129,9 @@ describe('Electron Main Process Guard & Lifecycle', () => {
       const unlinkSpy = mockFs.promises.unlink.mockResolvedValue(undefined);
       
       const buffer = new ArrayBuffer(10);
-      
-      await expect(writeFileHandler(null, '/foo/bar.pdf', buffer)).rejects.toThrow('Rename fail');
+      await grantViaSaveDialog('/foo/bar.pdf');
+
+      await expect(writeFileHandler(trustedEvent, '/foo/bar.pdf', buffer)).rejects.toThrow('Rename fail');
       
       expect(writeFileSpy).toHaveBeenCalledTimes(1);
       const writtenTempPath = writeFileSpy.mock.calls[0][0];
@@ -133,9 +153,28 @@ describe('Electron Main Process Guard & Lifecycle', () => {
       mockFs.promises.rename.mockResolvedValue(undefined);
       const unlinkSpy = mockFs.promises.unlink.mockResolvedValue(undefined);
       
-      const result = await writeFileHandler(null, '/foo/bar.pdf', new ArrayBuffer(10));
+      await grantViaSaveDialog('/foo/bar.pdf');
+      const result = await writeFileHandler(trustedEvent, '/foo/bar.pdf', new ArrayBuffer(10));
       expect(result).toBe(true);
       expect(unlinkSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('IPC security', () => {
+    it('rejects IPC from anything but the app page', async () => {
+      await expect(writeFileHandler(foreignEvent, '/foo/bar.pdf', new ArrayBuffer(1))).rejects.toThrow(/untrusted sender/);
+      await expect(writeFileHandler(null, '/foo/bar.pdf', new ArrayBuffer(1))).rejects.toThrow(/untrusted sender/);
+    });
+
+    it('refuses to write a path the user never chose in a dialog', async () => {
+      await expect(writeFileHandler(trustedEvent, '/Users/someone/.zshrc', new ArrayBuffer(1)))
+        .rejects.toThrow(/did not choose/);
+      expect(mockFs.promises.writeFile).not.toHaveBeenCalled();
+    });
+
+    it('rejects non-binary payloads', async () => {
+      await grantViaSaveDialog('/foo/typed.pdf');
+      await expect(writeFileHandler(trustedEvent, '/foo/typed.pdf', 'not bytes')).rejects.toThrow(/binary/);
     });
   });
 
@@ -151,7 +190,7 @@ describe('Electron Main Process Guard & Lifecycle', () => {
       win.emit('close', closeEvent);
       expect(closeEvent.preventDefault).toHaveBeenCalled();
       const closeId = closeRequests().at(-1)[2];
-      confirmLifecycleHandler(null, closeId, true);
+      confirmLifecycleHandler(trustedEvent, closeId, true);
       expect(win.close).toHaveBeenCalled();
 
       // Window actually goes away.
@@ -181,17 +220,17 @@ describe('Electron Main Process Guard & Lifecycle', () => {
       vi.advanceTimersByTime(60_000);
 
       // Stale / foreign ids are ignored.
-      confirmLifecycleHandler(null, 'not-the-request', true);
+      confirmLifecycleHandler(trustedEvent, 'not-the-request', true);
       expect(mockApp.quit).not.toHaveBeenCalled();
 
       // Cancel keeps the app running and clears the request.
-      confirmLifecycleHandler(null, requestId, false);
+      confirmLifecycleHandler(trustedEvent, requestId, false);
       expect(mockApp.quit).not.toHaveBeenCalled();
 
       // A new attempt, allowed -> app.quit(), and the follow-up before-quit passes.
       mockApp.emit('before-quit', { preventDefault: vi.fn() });
       const secondId = quitRequests()[1][2];
-      confirmLifecycleHandler(null, secondId, true);
+      confirmLifecycleHandler(trustedEvent, secondId, true);
       expect(mockApp.quit).toHaveBeenCalledTimes(1);
       const finalEvent = { preventDefault: vi.fn() };
       mockApp.emit('before-quit', finalEvent);
@@ -200,3 +239,9 @@ describe('Electron Main Process Guard & Lifecycle', () => {
 
   });
 });
+
+async function grantViaSaveDialog(filePath: string) {
+  const { mockDialog } = mocks;
+  mockDialog.showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath });
+  await expect(saveDialogHandler(trustedEvent, 'x.pdf')).resolves.toBe(filePath);
+}

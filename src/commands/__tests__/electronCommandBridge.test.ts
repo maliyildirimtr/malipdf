@@ -4,6 +4,8 @@ import { describe, expect, it } from 'vitest';
 import { APP_COMMANDS } from '..';
 import {
   COMMAND_EXECUTE_CHANNEL,
+  COMMAND_STATE_CHANNEL,
+  FULLSCREEN_TOGGLE_CHANNEL,
   LEGACY_MENU_EVENT_CHANNELS,
 } from '../../../electron/commandBridge';
 import {
@@ -25,6 +27,15 @@ describe('Electron command bridge contract', () => {
 
   it('contains no duplicate native command mappings', () => {
     expect(new Set(NATIVE_MENU_COMMAND_IDS).size).toBe(NATIVE_MENU_COMMAND_IDS.length);
+  });
+
+  it('keeps the sandboxed preload channel names in sync with commandBridge', () => {
+    const preload = readFileSync(resolve(process.cwd(), 'electron/preload.ts'), 'utf8');
+    expect(preload).toContain(`const COMMAND_EXECUTE_CHANNEL = '${COMMAND_EXECUTE_CHANNEL}';`);
+    expect(preload).toContain(`const COMMAND_STATE_CHANNEL = '${COMMAND_STATE_CHANNEL}';`);
+    expect(preload).toContain(`const FULLSCREEN_TOGGLE_CHANNEL = '${FULLSCREEN_TOGGLE_CHANNEL}';`);
+    // Only 'electron' may be required at runtime from a sandboxed preload.
+    expect(preload).not.toMatch(/^import (?!type )[^;]*from '\.\//m);
   });
 
   it('has no parallel legacy menu listeners beside the canonical command channel', () => {

@@ -9,6 +9,12 @@ import type { PdfBox } from './coordinateTransform';
 import type { PdfPoint, PdfRect } from '../types/annotations';
 import type { ImageAsset } from '../store/assetStore';
 import { useDocumentStore } from '../store/documentStore';
+import {
+  MAX_IMAGE_PIXELS,
+  planImageNormalization,
+  readImageHeaderSize,
+  readJpegOrientation,
+} from './imagePolicy';
 
 export const MAX_IMAGE_FILE_SIZE_BYTES = 50 * 1024 * 1024; // 50MB
 
@@ -68,80 +74,97 @@ export async function normalizeAndCreateImageAsset(
     };
   }
 
-  // WebP normalization pipeline (transcode to PNG once on import)
-  if (mime === 'image/webp') {
-    const blob = new Blob([bytes as BlobPart], { type: 'image/webp' });
-    let width = 0;
-    let height = 0;
-    let pngBytes: Uint8Array;
+  // Cheap header check first, so a huge image is refused before decoding it.
+  const headerSize = readImageHeaderSize(bytes, mime);
+  if (headerSize && headerSize.width * headerSize.height > MAX_IMAGE_PIXELS) {
+    planImageNormalization(headerSize, mime, 1); // throws the user-facing size error
+  }
 
-    if (typeof createImageBitmap === 'function' && typeof OffscreenCanvas !== 'undefined') {
-      const bitmap = await createImageBitmap(blob);
-      width = bitmap.width;
-      height = bitmap.height;
-      const offscreen = new OffscreenCanvas(width, height);
-      const ctx = offscreen.getContext('2d');
-      if (!ctx) throw new Error('Could not get OffscreenCanvas 2D context.');
-      ctx.drawImage(bitmap, 0, 0);
-      bitmap.close?.();
-      const pngBlob = await offscreen.convertToBlob({ type: 'image/png' });
-      pngBytes = new Uint8Array(await pngBlob.arrayBuffer());
-    } else {
-      // DOM fallback
-      const img = await loadImageElement(blob);
-      width = img.naturalWidth || img.width;
-      height = img.naturalHeight || img.height;
-      const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) throw new Error('Could not get Canvas 2D context.');
-      ctx.drawImage(img, 0, 0);
-      const pngBlob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/png'));
-      if (!pngBlob) throw new Error('Failed to transcode WebP to PNG.');
-      pngBytes = new Uint8Array(await pngBlob.arrayBuffer());
+  // Decode once. Browsers apply EXIF orientation here, so the decoded size
+  // is the upright size.
+  const blob = new Blob([bytes as BlobPart], { type: mime });
+  const decoded = await decodeImage(blob);
+  try {
+    const orientation = mime === 'image/jpeg' ? readJpegOrientation(bytes) : 1;
+    const plan = planImageNormalization({ width: decoded.width, height: decoded.height }, mime, orientation);
+
+    if (!plan.reencode) {
+      return {
+        id: crypto.randomUUID(),
+        mimeType: mime as 'image/png' | 'image/jpeg',
+        width: decoded.width,
+        height: decoded.height,
+        data: bytes,
+      };
     }
 
-    if (width <= 0 || height <= 0) {
-      throw new Error('Image has zero dimensions.');
-    }
-
+    // Re-encode: WebP → PNG, bake EXIF rotation into JPEG pixels (pdf-lib
+    // ignores EXIF), and downscale oversized images.
+    const data = await encodeImage(decoded.source, plan.width, plan.height, plan.outputMimeType);
     return {
       id: crypto.randomUUID(),
-      mimeType: 'image/png',
-      width,
-      height,
-      data: pngBytes,
+      mimeType: plan.outputMimeType,
+      width: plan.width,
+      height: plan.height,
+      data,
     };
+  } finally {
+    decoded.release();
   }
+}
 
-  // PNG or JPEG: decode to measure natural dimensions
-  let width = 0;
-  let height = 0;
-  const blob = new Blob([bytes as BlobPart], { type: mime });
+interface DecodedImage {
+  source: CanvasImageSource;
+  width: number;
+  height: number;
+  release: () => void;
+}
 
+async function decodeImage(blob: Blob): Promise<DecodedImage> {
   if (typeof createImageBitmap === 'function') {
-    const bitmap = await createImageBitmap(blob);
-    width = bitmap.width;
-    height = bitmap.height;
-    bitmap.close?.();
-  } else {
-    const img = await loadImageElement(blob);
-    width = img.naturalWidth || img.width;
-    height = img.naturalHeight || img.height;
+    const bitmap = await createImageBitmap(blob, { imageOrientation: 'from-image' });
+    return { source: bitmap, width: bitmap.width, height: bitmap.height, release: () => bitmap.close?.() };
   }
-
-  if (width <= 0 || height <= 0) {
-    throw new Error('Image has zero dimensions.');
-  }
-
+  const img = await loadImageElement(blob);
   return {
-    id: crypto.randomUUID(),
-    mimeType: mime as 'image/png' | 'image/jpeg',
-    width,
-    height,
-    data: bytes,
+    source: img,
+    width: img.naturalWidth || img.width,
+    height: img.naturalHeight || img.height,
+    release: () => {},
   };
+}
+
+async function encodeImage(
+  source: CanvasImageSource,
+  width: number,
+  height: number,
+  mimeType: 'image/png' | 'image/jpeg',
+): Promise<Uint8Array> {
+  const quality = mimeType === 'image/jpeg' ? 0.92 : undefined;
+  if (typeof OffscreenCanvas !== 'undefined') {
+    const canvas = new OffscreenCanvas(width, height);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Could not get OffscreenCanvas 2D context.');
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(source, 0, 0, width, height);
+    const blob = await canvas.convertToBlob({ type: mimeType, quality });
+    return new Uint8Array(await blob.arrayBuffer());
+  }
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  try {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Could not get Canvas 2D context.');
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(source, 0, 0, width, height);
+    const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, mimeType, quality));
+    if (!blob) throw new Error('Failed to encode image.');
+    return new Uint8Array(await blob.arrayBuffer());
+  } finally {
+    canvas.width = 0;
+    canvas.height = 0;
+  }
 }
 
 function loadImageElement(blob: Blob): Promise<HTMLImageElement> {
