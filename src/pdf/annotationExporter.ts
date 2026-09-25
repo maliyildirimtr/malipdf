@@ -51,6 +51,7 @@ import type { ImageAsset } from '../store/assetStore';
 import type { ExportFontSet } from './exportFonts';
 import { fontFamilyKey, fontStyleKey, type FontFamilyKey, type FontStyleKey } from './fontFamilies';
 import { layoutTextLines, LINE_HEIGHT, TEXT_PADDING } from './textLayout';
+import { captureEditableState, writeEditableData, type EditableAsset } from './editableData';
 
 export type ImageAssetResolver =
   | Map<string, ImageAsset>
@@ -63,6 +64,17 @@ export interface ExportAnnotatedPdfOptions {
    * exporter falls back to Standard 14 Helvetica, which only covers WinAnsi.
    */
   fonts?: ExportFontSet;
+  /**
+   * Save (not Export): also store the live annotations so MaliPDF can reopen
+   * the file with editable annotations (see editableData.ts).
+   */
+  editable?: boolean;
+}
+
+function resolveAsset(resolver: ImageAssetResolver | undefined, assetId: string): ImageAsset | undefined {
+  if (resolver instanceof Map) return resolver.get(assetId);
+  if (typeof resolver === 'function') return resolver(assetId);
+  return undefined;
 }
 
 /**
@@ -846,6 +858,7 @@ export async function exportAnnotatedPdf(
     }
   }
 
+  const editableCapture = options?.editable ? captureEditableState(pdfDoc) : null;
   let totalAnnotationCount = 0;
   // Deduplicate embedded images across all annotations
   const embeddedImages = new Map<string, PDFImage>();
@@ -879,12 +892,7 @@ export async function exportAnnotatedPdf(
           case 'image': {
             let pdfImg = embeddedImages.get(annotation.assetId);
             if (!pdfImg) {
-              let asset: ImageAsset | undefined;
-              if (options?.assets instanceof Map) {
-                asset = options.assets.get(annotation.assetId);
-              } else if (typeof options?.assets === 'function') {
-                asset = options.assets(annotation.assetId);
-              }
+              const asset = resolveAsset(options?.assets, annotation.assetId);
               if (!asset) {
                 throw new Error(`Image asset ${annotation.assetId} not found for export.`);
               }
@@ -914,7 +922,23 @@ export async function exportAnnotatedPdf(
   }
 
   markFlattenedExport(pdfDoc, totalAnnotationCount);
-  const pdfBytes = await pdfDoc.save();
+
+  let keepEditable = false;
+  if (editableCapture) {
+    const all = [...snapshot.values()].flat();
+    if (all.length > 0) {
+      const assets: EditableAsset[] = [];
+      for (const assetId of new Set(all.flatMap((annotation) => (annotation.type === 'image' ? [annotation.assetId] : [])))) {
+        const asset = resolveAsset(options?.assets, assetId);
+        if (asset) assets.push({ id: asset.id, mimeType: asset.mimeType, width: asset.width, height: asset.height, data: asset.data });
+      }
+      writeEditableData(pdfDoc, editableCapture, all, assets);
+      keepEditable = true;
+    }
+  }
+  // Editable saves keep the catalog outside object streams so reopening can
+  // detect MaliPDF data with a cheap byte search.
+  const pdfBytes = await pdfDoc.save(keepEditable ? { useObjectStreams: false } : undefined);
   return {
     data: pdfBytes,
     pageCount: pages.length,

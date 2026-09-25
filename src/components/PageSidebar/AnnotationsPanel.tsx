@@ -56,7 +56,7 @@ export function AnnotationsPanel({ docId }: { docId: string }) {
           </section>
         ))}
       </div>
-      <p className={styles.annotationHint}>Hidden annotations are not included when saving or exporting.</p>
+      <p className={styles.annotationHint}>Hidden annotations are not drawn into the PDF. Save keeps them for MaliPDF; Export PDF leaves them out.</p>
     </div>
   );
 }

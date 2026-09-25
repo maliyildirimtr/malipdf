@@ -35,7 +35,7 @@ export async function restoreRecoveredDocument(recoveryId: string): Promise<stri
     throw new Error('This recovery file was made by a different version of MaliPDF.');
   }
 
-  const docId = await openDocumentBytes(meta.title, meta.filePath, source, { markDirty: true });
+  const docId = await openDocumentBytes(meta.title, meta.filePath, source, { markDirty: true, restoreEditable: false });
   const doc = useDocumentStore.getState().documents.get(docId)!;
   const identity = { docId, instanceId: doc.instanceId };
 
