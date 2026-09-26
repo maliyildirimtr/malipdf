@@ -44,7 +44,7 @@ describe('renderPage PageTransform contract', () => {
     const returnedTask = renderPage({ canvas, page, transform, dpr });
 
     expect(returnedTask).toBe(task);
-    expect(page.render).toHaveBeenCalledWith({ canvasContext: context, viewport });
+    expect(page.render).toHaveBeenCalledWith({ canvasContext: context, viewport, annotationMode: 2 });
     expect(canvas.style.width).toBe('540px');
     expect(canvas.style.height).toBe('648px');
     expect(canvas.width).toBe(540 * dpr);
@@ -72,7 +72,7 @@ describe('renderPage PageTransform contract', () => {
 
     renderPage({ canvas, page, transform, dpr: 2 });
 
-    expect(page.render).toHaveBeenCalledWith({ canvasContext: context, viewport });
+    expect(page.render).toHaveBeenCalledWith({ canvasContext: context, viewport, annotationMode: 2 });
     expect(canvas.style.width).toBe('4896px');
     expect(canvas.style.height).toBe('6336px');
     expect(canvas.width * canvas.height).toBeLessThanOrEqual(
