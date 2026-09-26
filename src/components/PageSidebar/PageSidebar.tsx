@@ -34,6 +34,10 @@ import { useUIStore } from '../../store/uiStore';
 import { useDocumentStore } from '../../store/documentStore';
 import { getPage, requestPageEviction } from '../../pdf/documentManager';
 import { startThumbnailRender } from '../../pdf/renderer';
+import { renderAnnotations } from '../../pdf/annotationRenderer';
+import { createPageTransform, type PageTransform } from '../../pdf/coordinateTransform';
+import { useAnnotationStore } from '../../store/annotationStore';
+import type { Annotation } from '../../types/annotations';
 import {
   CANVAS_MEMORY_POLICY,
   CanvasBufferLru,
@@ -311,6 +315,7 @@ function PagesPanel({
 }
 
 const EMPTY_PAGES: number[] = [];
+const NO_ANNOTATIONS: Annotation[] = [];
 
 function PageToolButton({ label, icon, onClick, danger = false }: {
   label: string;
@@ -362,7 +367,39 @@ function PageThumbnail({
   const requestIdRef = useRef(0);
   const loadingRef = useRef(false);
   const renderedRef = useRef(false);
+  // The page without annotations, kept so annotations can be redrawn on top.
+  const baseRef = useRef<HTMLCanvasElement | null>(null);
+  const transformRef = useRef<{ transform: PageTransform; dpr: number } | null>(null);
+  const composeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const retainedKey = `${documentIdentityKey(identity)}:${pageIndex}`;
+  const annotations = useAnnotationStore(
+    (state) => state.docAnnotations.get(identity.docId)?.pages.get(pageIndex)?.annotations ?? NO_ANNOTATIONS,
+  );
+  const annotationsRef = useRef(annotations);
+  annotationsRef.current = annotations;
+
+  /** Thumbnail = PDF page + the page's visible annotations (highlights first). */
+  const compose = useCallback(() => {
+    const canvas = canvasRef.current;
+    const base = baseRef.current;
+    const info = transformRef.current;
+    if (!canvas || !base || !info || base.width === 0) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(base, 0, 0);
+    const visible = annotationsRef.current.filter((a) => !a.hidden);
+    if (visible.length === 0) return;
+    renderAnnotations(
+      ctx,
+      [...visible.filter((a) => a.type === 'highlight'), ...visible.filter((a) => a.type !== 'highlight')],
+      info.transform,
+      info.dpr,
+      identity,
+      () => compose(),
+    );
+  }, [identity.docId, identity.instanceId]);
 
   const releaseBuffer = useCallback(() => {
     requestIdRef.current += 1;
@@ -371,7 +408,23 @@ function PageThumbnail({
     renderTaskRef.current?.cancel();
     renderTaskRef.current = null;
     releaseCanvas(canvasRef.current);
+    releaseCanvas(baseRef.current);
+    baseRef.current = null;
+    transformRef.current = null;
   }, []);
+
+  // Redraw the annotations shortly after they change (not on every stroke point).
+  useEffect(() => {
+    if (!renderedRef.current) return;
+    if (composeTimer.current) clearTimeout(composeTimer.current);
+    composeTimer.current = setTimeout(() => {
+      composeTimer.current = null;
+      compose();
+    }, 120);
+    return () => {
+      if (composeTimer.current) clearTimeout(composeTimer.current);
+    };
+  }, [annotations, compose]);
 
   useEffect(() => {
     const element = containerRef.current;
@@ -414,7 +467,14 @@ function PageThumbnail({
         canvas.height = thumbnail.canvas.height;
         canvas.style.width = thumbnail.canvas.style.width;
         canvas.style.height = thumbnail.canvas.style.height;
-        canvas.getContext('2d')?.drawImage(thumbnail.canvas, 0, 0);
+        const page = result.loadedPage.page;
+        const scale = 160 / page.getViewport({ scale: 1 }).width;
+        const transform = createPageTransform(page, { scale });
+        releaseCanvas(baseRef.current);
+        baseRef.current = thumbnail.canvas;
+        temporaryCanvas = null; // kept as the base image
+        transformRef.current = { transform, dpr: thumbnail.canvas.width / transform.cssWidth };
+        compose();
         renderTaskRef.current = null;
         renderedRef.current = true;
         retainThumbnail(retainedKey, releaseBuffer);
