@@ -24,7 +24,9 @@ import type {
   FreeformAnnotation,
   ImageAnnotation,
   InputPoint,
+  TextMarkupAnnotation,
 } from '../types/annotations';
+import { markupShape } from './textSelection';
 import {
   pdfPointsToScreen,
   pdfToScreen,
@@ -74,6 +76,9 @@ export function renderAnnotations(
         break;
       case 'image':
         renderImage(ctx, ann, transform, identity, onImageDecoded);
+        break;
+      case 'markup':
+        renderMarkup(ctx, ann, transform);
         break;
       default:
         console.warn(`Unsupported annotation type: ${(ann as any).type}`);
@@ -208,6 +213,43 @@ export function renderHighlight(
   ctx.lineCap = 'butt';
   ctx.lineJoin = 'round';
   ctx.stroke(path);
+  ctx.restore();
+}
+
+/** Drawn on the multiply (highlight) layer, under the ink. */
+export function isMultiplyAnnotation(annotation: Annotation): boolean {
+  return annotation.type === 'highlight' || (annotation.type === 'markup' && annotation.markup === 'highlight');
+}
+
+// ─── Text markup ──────────────────────────────────────────────────────────────
+
+export function renderMarkup(
+  ctx: CanvasRenderingContext2D,
+  annotation: TextMarkupAnnotation,
+  transform: PageTransform,
+): void {
+  const { shape, width } = markupShape(annotation.markup, annotation.quads);
+  if (shape.commands.length === 0) return;
+  const path = new Path2D();
+  for (const c of shape.commands) {
+    if (c.op === 'Z') { path.closePath(); continue; }
+    if (c.op === 'C') continue;
+    const p = pdfToScreen(c.x, c.y, transform);
+    if (c.op === 'M') path.moveTo(p.x, p.y);
+    else path.lineTo(p.x, p.y);
+  }
+  ctx.save();
+  ctx.globalAlpha = annotation.opacity;
+  if (shape.mode === 'fill') {
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.fillStyle = annotation.color;
+    ctx.fill(path);
+  } else {
+    ctx.strokeStyle = annotation.color;
+    ctx.lineWidth = width * transform.scale;
+    ctx.lineCap = 'butt';
+    ctx.stroke(path);
+  }
   ctx.restore();
 }
 

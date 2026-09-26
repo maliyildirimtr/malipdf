@@ -37,6 +37,12 @@ export function getAnnotationBounds(annotation: Annotation): PdfRect {
     }
     case 'image':
       return { x: annotation.x, y: annotation.y, width: annotation.width, height: annotation.height };
+    case 'markup': {
+      const points = annotation.quads.flat();
+      if (points.length === 0) return { x: 0, y: 0, width: 0, height: 0 };
+      const { minX, minY, maxX, maxY } = pointsBoundingBox(points);
+      return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+    }
   }
 }
 

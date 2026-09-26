@@ -60,6 +60,7 @@ import type {
   ShapeAnnotation,
   ImageAnnotation,
   FreeformAnnotation,
+  TextMarkupAnnotation,
   InputPoint,
   DocumentAnnotationState,
   Bookmark,
@@ -71,6 +72,7 @@ import { layoutTextLines, LINE_HEIGHT, TEXT_PADDING } from './textLayout';
 import { captureEditableState, writeEditableData, type EditableAsset } from './editableData';
 import { appendBookmarksToOutline } from './outlineWriter';
 import { highlightShape, penShape, type InkShape, type PathCommand } from './inkGeometry';
+import { markupShape } from './textSelection';
 
 export type ImageAssetResolver =
   | Map<string, ImageAsset>
@@ -358,6 +360,24 @@ function exportHighlight(
     width: annotation.width,
     opacity: annotation.opacity,
     blend: 'Multiply',
+    cap: 'butt',
+  });
+}
+
+const isMultiply = (annotation: Annotation) =>
+  annotation.type === 'highlight' || (annotation.type === 'markup' && annotation.markup === 'highlight');
+
+function exportMarkup(
+  page: PDFPage,
+  annotation: TextMarkupAnnotation,
+  info: PdfPageExportContext,
+): void {
+  const { shape, width } = markupShape(annotation.markup, annotation.quads);
+  drawInkShape(page, shape, info, {
+    color: annotation.color,
+    width,
+    opacity: annotation.opacity,
+    blend: annotation.markup === 'highlight' ? 'Multiply' : undefined,
     cap: 'butt',
   });
 }
@@ -751,6 +771,17 @@ function validateAnnotation(annotation: Annotation, pageIndex: number): void {
         throw new Error('Image annotation requires a valid assetId string.');
       }
       return;
+    case 'markup':
+      if (!['highlight', 'underline', 'strikeout'].includes(annotation.markup)) {
+        throw new Error(`Unsupported text markup: ${String(annotation.markup)}.`);
+      }
+      if (!Array.isArray(annotation.quads) || annotation.quads.length < 1) throw new Error('Text markup requires at least one quad.');
+      annotation.quads.forEach((quad, index) => {
+        if (!Array.isArray(quad) || quad.length !== 4) throw new Error(`Text markup quad ${index} must have 4 points.`);
+        quad.forEach((value, corner) => validatePoint(value, `markup quad ${index} point ${corner}`));
+      });
+      if (typeof annotation.text !== 'string') throw new Error('Text markup text must be a string.');
+      return;
     default:
       throw new Error(`Unsupported annotation type: ${String((annotation as Annotation).type)}.`);
   }
@@ -779,6 +810,11 @@ function cloneAnnotation(annotation: Annotation): Annotation {
       }) as unknown as Annotation;
     case 'image':
       return Object.freeze({ ...annotation }) as Annotation;
+    case 'markup':
+      return Object.freeze({
+        ...annotation,
+        quads: Object.freeze(annotation.quads.map((quad) => Object.freeze(quad.map((value) => Object.freeze({ ...value }))))),
+      }) as unknown as Annotation;
     default:
       // Preserve unknown runtime data so validation can produce a typed error
       // containing the original annotation identity instead of throwing here.
@@ -867,8 +903,8 @@ export async function exportAnnotatedPdf(
     // they are multiplied onto the page and never cover pen, text or images.
     const visible = (snapshot.get(pageIndex) || []).filter((annotation) => !annotation.hidden);
     const pageAnnotations = [
-      ...visible.filter((annotation) => annotation.type === 'highlight'),
-      ...visible.filter((annotation) => annotation.type !== 'highlight'),
+      ...visible.filter(isMultiply),
+      ...visible.filter((annotation) => !isMultiply(annotation)),
     ];
     if (pageAnnotations.length === 0) continue;
 
@@ -889,6 +925,9 @@ export async function exportAnnotatedPdf(
             break;
           case 'freeform':
             exportFreeform(page, annotation, info);
+            break;
+          case 'markup':
+            exportMarkup(page, annotation, info);
             break;
           case 'image': {
             let pdfImg = embeddedImages.get(annotation.assetId);

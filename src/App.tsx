@@ -31,6 +31,9 @@ import { useImportJobStore } from './store/importJobStore';
 import { exportAndSave, loadDefaultExportFonts } from './pdf/annotationExporter';
 import { useAppCommands } from './commands';
 import { NewDocumentDialog } from './components/NewDocumentDialog/NewDocumentDialog';
+import { NotePageDialog } from './components/NewDocumentDialog/NotePageDialog';
+import { PresentationView } from './components/Presentation/PresentationView';
+import { LaserOverlay } from './components/Laser/LaserOverlay';
 import { RecoveryDialog } from './components/RecoveryDialog/RecoveryDialog';
 import { Ruler } from './components/Ruler/Ruler';
 import { startAutoSave } from './document/autoSave';
@@ -244,6 +247,9 @@ export default function App() {
       <FocusToolbar onCommand={executeCommand} canExecute={canExecute} />
       
       <NewDocumentDialog />
+      <NotePageDialog />
+      <LaserOverlay />
+      <PresentationView />
       <RecoveryDialog />
       <Ruler />
 

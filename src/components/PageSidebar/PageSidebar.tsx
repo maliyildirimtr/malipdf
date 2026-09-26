@@ -8,6 +8,7 @@ import {
   Download,
   FileInput,
   FilePlus,
+  NotebookPen,
   LayoutGrid,
   MessageSquare,
   RotateCcw,
@@ -34,7 +35,7 @@ import { useUIStore } from '../../store/uiStore';
 import { useDocumentStore } from '../../store/documentStore';
 import { getPage, requestPageEviction } from '../../pdf/documentManager';
 import { startThumbnailRender } from '../../pdf/renderer';
-import { renderAnnotations } from '../../pdf/annotationRenderer';
+import { renderAnnotations, isMultiplyAnnotation } from '../../pdf/annotationRenderer';
 import { createPageTransform, type PageTransform } from '../../pdf/coordinateTransform';
 import { useAnnotationStore } from '../../store/annotationStore';
 import type { Annotation } from '../../types/annotations';
@@ -278,6 +279,7 @@ function PagesPanel({
     <>
       <div className={styles.pageToolbar} role="toolbar" aria-label="Page tools">
         <PageToolButton label="Insert blank page" icon={<FilePlus size={15} />} onClick={() => void insertBlankPage()} />
+        <PageToolButton label="Insert note page (lined / grid)… ⌥⌘N" icon={<NotebookPen size={15} />} onClick={() => useUIStore.getState().setNotePageDialogOpen(true)} />
         <PageToolButton label="Insert pages from PDF…" icon={<FileInput size={15} />} onClick={() => void insertPagesFromPdf()} />
         <PageToolButton label={`Duplicate ${selectionLabel}`} icon={<Copy size={15} />} onClick={() => void duplicatePages()} />
         <PageToolButton label={`Rotate ${selectionLabel} left`} icon={<RotateCcw size={15} />} onClick={() => void rotatePages(-90)} />
@@ -393,7 +395,7 @@ function PageThumbnail({
     if (visible.length === 0) return;
     renderAnnotations(
       ctx,
-      [...visible.filter((a) => a.type === 'highlight'), ...visible.filter((a) => a.type !== 'highlight')],
+      [...visible.filter(isMultiplyAnnotation), ...visible.filter((a) => !isMultiplyAnnotation(a))],
       info.transform,
       info.dpr,
       identity,

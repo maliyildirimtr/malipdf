@@ -102,7 +102,7 @@ export function createNativeMenuSchema(isMac: boolean, isDev: boolean): readonly
       items: [
         tool('tool.select', 'Select', 'V'), tool('tool.extractText', 'Extract Text', undefined, false),
         tool('tool.hand', 'Hand / Pan', 'H'), tool('tool.zoom', 'Zoom Tool', undefined, false), separator(),
-        tool('tool.pen', 'Pen', 'P'), tool('tool.highlighter', 'Highlighter', 'M'),
+        tool('tool.pen', 'Pen', 'P'), tool('tool.highlighter', 'Highlighter', 'M'), tool('tool.textMarkup', 'Text Highlight', 'U'),
         tool('tool.text', 'Text', 'T'), tool('tool.stamp', 'Stamp', undefined, false), separator(),
         tool('tool.line', 'Line', 'L'), tool('tool.arrow', 'Arrow', 'A'),
         tool('tool.rectangle', 'Rectangle', 'R'), tool('tool.ellipse', 'Ellipse', 'C'),
@@ -110,7 +110,7 @@ export function createNativeMenuSchema(isMac: boolean, isDev: boolean): readonly
         tool('tool.eraser', 'Eraser', 'E'), tool('tool.lasso', 'Lasso Select', 'S'), separator(),
         tool('tool.snapshot', 'Snapshot', undefined, false), tool('tool.crop', 'Crop', undefined, false),
         tool('tool.measure', 'Measure', undefined, false), tool('tool.formula', 'Formula', undefined, false), separator(),
-        tool('tool.laserPointer', 'Laser Pointer', undefined, false), tool('tool.pointer', 'Pointer', undefined, false), separator(),
+        tool('tool.laserPointer', 'Laser Pointer'), tool('tool.pointer', 'Pointer', undefined, false), separator(),
         submenu('Favorites', [command('extras.favorites', 'No Favorites Yet', { enabled: false })], false),
         submenu('Tool Styles', [disabledLabel('Tool Styles Coming Later')], false),
       ],
@@ -128,6 +128,7 @@ export function createNativeMenuSchema(isMac: boolean, isDev: boolean): readonly
         command('view.annotations', 'Hide Annotations', { enabled: false }),
         command('view.ruler', 'Ruler', { accelerator: 'Alt+CmdOrCtrl+R', enabled: false }),
         command('view.replayInk', 'Replay Ink on This Page', { enabled: false }),
+        command('view.presentation', 'Present', { accelerator: 'Alt+CmdOrCtrl+P', enabled: false }),
         submenu('Sidebar', [
           command('view.sidebarPages', 'Pages', { enabled: false }),
           command('view.sidebarBookmarks', 'Bookmarks', { enabled: false }),
@@ -148,6 +149,7 @@ export function createNativeMenuSchema(isMac: boolean, isDev: boolean): readonly
       label: 'Page',
       items: [
         command('page.insertBlank', 'Insert Blank Page', { accelerator: 'CmdOrCtrl+Shift+N', enabled: false }),
+        command('page.insertNotePage', 'Insert Note Page…', { accelerator: 'Alt+CmdOrCtrl+N', enabled: false }),
         command('page.insertFromPdf', 'Insert Pages from PDF…', { enabled: false }),
         command('page.duplicate', 'Duplicate Page', { enabled: false }),
         separator(),

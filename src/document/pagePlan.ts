@@ -10,12 +10,19 @@
 import { PDFDocument, degrees, type PDFPage } from 'pdf-lib';
 import type { Annotation, Bookmark } from '../types/annotations';
 import { nanoid } from '../utils/nanoid';
+import { drawPageBackground, type PageBackground } from './newDocumentGenerator';
+
+export const A4_PORTRAIT_PT = { width: 595.28, height: 841.89 } as const;
 
 export type PagePlanEntry =
   /** A page of the current document. Using the same `from` twice duplicates it. */
   | { kind: 'existing'; from: number; rotateBy?: number }
-  /** A blank page with the size and rotation of page `likePage`. */
-  | { kind: 'blank'; likePage: number }
+  /**
+   * A blank page with the size and rotation of page `likePage`. With a
+   * `background` or a fixed `size` the page is created upright (rotation 0)
+   * at the size page `likePage` is shown at, so lines run the right way.
+   */
+  | { kind: 'blank'; likePage: number; background?: PageBackground; size?: 'like' | 'a4' }
   /** Page `sourceIndex` of the external PDF passed to buildPdfFromPlan. */
   | { kind: 'external'; sourceIndex: number };
 
@@ -77,8 +84,16 @@ export async function buildPdfFromPlan(
     if (entry.kind === 'blank') {
       const like = original[entry.likePage] ?? original[0];
       const { width, height } = like.getSize();
-      const page = doc.insertPage(index, [width, height]);
-      page.setRotation(degrees(like.getRotation().angle));
+      const angle = like.getRotation().angle;
+      if (!entry.background && entry.size !== 'a4') {
+        const page = doc.insertPage(index, [width, height]);
+        page.setRotation(degrees(angle));
+        return;
+      }
+      const shown = normalizeQuarterTurn(angle) % 180 === 0 ? { width, height } : { width: height, height: width };
+      const size = entry.size === 'a4' ? A4_PORTRAIT_PT : shown;
+      const page = doc.insertPage(index, [size.width, size.height]);
+      if (entry.background) drawPageBackground(page, size.width, size.height, entry.background);
       return;
     }
     const page = pages[index];
@@ -150,10 +165,17 @@ export function remapViewRotationsForPlan(rotations: Record<number, number>, pla
 
 const sortedUnique = (indices: Iterable<number>) => [...new Set(indices)].sort((a, b) => a - b);
 
-export function planInsertBlank(pageCount: number, afterIndex: number): PagePlan {
+export function planInsertBlank(
+  pageCount: number,
+  afterIndex: number,
+  options: { background?: PageBackground; size?: 'like' | 'a4' } = {},
+): PagePlan {
   const plan: PagePlan = identityPlan(pageCount);
   const at = Math.max(0, Math.min(pageCount, afterIndex + 1));
-  plan.splice(at, 0, { kind: 'blank', likePage: Math.max(0, Math.min(pageCount - 1, afterIndex)) });
+  const entry: PagePlanEntry = { kind: 'blank', likePage: Math.max(0, Math.min(pageCount - 1, afterIndex)) };
+  if (options.background && options.background.type !== 'blank') entry.background = options.background;
+  if (options.size === 'a4') entry.size = 'a4';
+  plan.splice(at, 0, entry);
   return plan;
 }
 

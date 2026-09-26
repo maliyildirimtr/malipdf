@@ -22,7 +22,9 @@ import {
   Minus,
   Monitor,
   MoreHorizontal,
+  MonitorPlay,
   MousePointer2,
+  Pointer as LaserIcon,
   Pen,
   Presentation,
   RectangleHorizontal,
@@ -32,6 +34,7 @@ import {
   Save,
   Scan,
   Square,
+  TextSelect,
   Type,
   Undo2,
   ZoomIn,
@@ -74,6 +77,8 @@ const TOOL_DEFINITIONS: Record<ToolType, ToolDefinition> = {
   ellipse: { icon: Circle, commandId: 'tool.ellipse' },
   freeform: { icon: Hexagon, commandId: 'tool.freeform' },
   lasso: { icon: LassoSelect, commandId: 'tool.lasso' },
+  textMarkup: { icon: TextSelect, commandId: 'tool.textMarkup' },
+  laserPointer: { icon: LaserIcon, commandId: 'tool.laserPointer' },
 };
 
 const DOCUMENT_COMMANDS = new Set<AppCommandId>([
@@ -113,6 +118,7 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
     toolOptions,
     updatePenOptions,
     updateHighlighterOptions,
+    updateTextMarkupOptions,
     updateEraserOptions,
     updateTextOptions,
     updateShapeOptions,
@@ -198,6 +204,7 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
         <ToolbarGroup label="Ink tools" segmented>
           <ToolButton tool="pen" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.pen')} />
           <ToolButton tool="highlighter" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.highlighter')} />
+          <ToolButton tool="textMarkup" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.textMarkup')} />
           <ToolButton tool="eraser" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.eraser')} />
         </ToolbarGroup>
 
@@ -212,6 +219,8 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
           <ToolButton tool="freeform" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.freeform')} />
           <CommandButton commandId="view.ruler" label="Ruler" shortcut="⌥⌘R" icon={RulerIcon} onCommand={runCommand} enabled={isEnabled('view.ruler')} pressed={rulerVisible} />
           <CommandButton commandId="view.replayInk" label="Replay Ink" icon={CirclePlay} onCommand={runCommand} enabled={isEnabled('view.replayInk')} />
+          <CommandButton commandId="view.presentation" label="Present" shortcut="⌥⌘P" icon={MonitorPlay} onCommand={runCommand} enabled={isEnabled('view.presentation')} />
+          <ToolButton tool="laserPointer" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.laserPointer')} />
           <ToolbarCustomizeMenu />
         </ToolbarGroup>
 
@@ -314,6 +323,7 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
         <div className={styles.propertyScroller}>
           {activeTool === 'select' && <PropertyHint>Select an annotation to move or resize it.</PropertyHint>}
           {activeTool === 'lasso' && <PropertyHint>Draw around ink to select it. Shift adds to the selection. Drag the selection to move it.</PropertyHint>}
+          {activeTool === 'laserPointer' && <PropertyHint>Drag to point with a fading red line. Nothing is saved.</PropertyHint>}
           {activeTool === 'hand' && <PropertyHint>Hold Space to temporarily pan the document.</PropertyHint>}
 
           {activeTool === 'pen' && (
@@ -346,6 +356,23 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
               <WidthControl value={toolOptions.highlighter.width} constraint={TOOL_WIDTH_CONSTRAINTS.highlighter} onChange={(width) => updateHighlighterOptions({ width })} onCommit={(width) => updateHighlighterOptions({ width })} />
               <PropertySeparator />
               <OpacityControl value={toolOptions.highlighter.opacity} onChange={(opacity) => updateHighlighterOptions({ opacity })} />
+            </>
+          )}
+
+          {activeTool === 'textMarkup' && (
+            <>
+              <div className={styles.propertySegment} role="group" aria-label="Text markup">
+                <PropertyToggle label="Highlight" pressed={toolOptions.textMarkup.markup === 'highlight'} onChange={() => updateTextMarkupOptions({ markup: 'highlight', opacity: 0.45 })} />
+                <PropertyToggle label="Underline" underline pressed={toolOptions.textMarkup.markup === 'underline'} onChange={() => updateTextMarkupOptions({ markup: 'underline', opacity: 1 })} />
+                <PropertyToggle label="Strikethrough" shortLabel="Strike" pressed={toolOptions.textMarkup.markup === 'strikeout'} onChange={() => updateTextMarkupOptions({ markup: 'strikeout', opacity: 1 })} />
+              </div>
+              <PropertySeparator />
+              <ColorWell label="Color" value={toolOptions.textMarkup.color} onChange={(color) => updateTextMarkupOptions({ color })} />
+              <QuickColors value={toolOptions.textMarkup.color} onPick={(color) => updateTextMarkupOptions({ color })} />
+              <PropertySeparator />
+              <OpacityControl value={toolOptions.textMarkup.opacity} onChange={(opacity) => updateTextMarkupOptions({ opacity })} />
+              <PropertySeparator />
+              <PropertyHint>Drag across the PDF's text. Works on text PDFs, not on scans.</PropertyHint>
             </>
           )}
 

@@ -72,6 +72,7 @@ import {
   renderSelectionOverlay,
   renderSelectionRect,
   renderFreeform,
+  isMultiplyAnnotation,
 } from '../../pdf/annotationRenderer';
 import { simplifyInkPoints } from '../../pdf/inkGeometry';
 import { annotationsInLasso } from '../../pdf/lassoSelect';
@@ -103,6 +104,10 @@ import {
 import { CANCEL_ACTIVE_INTERACTION_EVENT } from '../../commands';
 import { errorMessage, notifyUser } from '../../utils/notify';
 import { isEditableTarget } from '../../commands/keyboardShortcuts';
+import { loadPageTextLayout, peekPageTextLayout } from '../../pdf/pageTextLayout';
+import { addLaserPoint, endLaserTrail, startLaserTrail } from '../Laser/laserTrail';
+import { selectText, type TextSelection } from '../../pdf/textSelection';
+import type { TextMarkupAnnotation } from '../../types/annotations';
 import { autoSizeTextBox, canvasMeasure, cssFont, LINE_HEIGHT, MAX_AUTO_TEXT_WIDTH, TEXT_PADDING } from '../../pdf/textLayout';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -123,6 +128,8 @@ type InteractionMode =
   | 'freeformDrawing' // freeform polygon drawing
   | 'selectDrag'    // rubber-band selection
   | 'lassoDrag'     // free-form lasso selection
+  | 'markupDrag'    // text highlight / underline / strikethrough selection
+  | 'laser'         // laser pointer (not saved)
   | 'moving'        // moving selected annotations
   | 'resizing';     // resizing selected annotation
 
@@ -156,6 +163,8 @@ function getCursor(tool: ToolType, mode: InteractionMode): string {
     case 'highlighter': return 'crosshair';
     case 'eraser':      return 'cell';
     case 'text':        return 'text';
+    case 'textMarkup':  return 'text';
+    case 'laserPointer': return 'crosshair';
     case 'freeform':    return 'crosshair';
     case 'line':
     case 'arrow':
@@ -244,6 +253,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
   // Interaction refs (no React re-renders during gestures)
   const mode             = useRef<InteractionMode>('idle');
   const activePoints     = useRef<InputPoint[]>([]);
+  const markupDrag       = useRef<{ from: PdfPoint; to: PdfPoint; selection: TextSelection | null } | null>(null);
   const shapeStart       = useRef<{ screenX: number; screenY: number; pdfX: number; pdfY: number } | null>(null);
   const selectionStart   = useRef<{ screenX: number; screenY: number } | null>(null);
   const currentEnd       = useRef<{ screenX: number; screenY: number }>({ screenX: 0, screenY: 0 });
@@ -304,6 +314,11 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     () => ({ docId, instanceId }),
     [docId, instanceId],
   );
+
+  // The text highlight tool needs the page's text positions: load them early.
+  useEffect(() => {
+    if (selectedTool === 'textMarkup') void loadPageTextLayout(identity, pageIndex);
+  }, [selectedTool, identity, pageIndex]);
 
   const selectionState = useSelectionStore(state => state.getSelection(identity));
   // Same stability rule for the ids array
@@ -508,8 +523,8 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
 
     const paint = (list: Annotation[]) => {
       if (highlightCtx) {
-        renderAnnotations(highlightCtx, list.filter((a) => a.type === 'highlight'), transform, dpr, identity);
-        renderAnnotations(ctx, list.filter((a) => a.type !== 'highlight'), transform, dpr, identity, () => redrawAnnotationLayer());
+        renderAnnotations(highlightCtx, list.filter(isMultiplyAnnotation), transform, dpr, identity);
+        renderAnnotations(ctx, list.filter((a) => !isMultiplyAnnotation(a)), transform, dpr, identity, () => redrawAnnotationLayer());
       } else {
         renderAnnotations(ctx, list, transform, dpr, identity, () => redrawAnnotationLayer());
       }
@@ -665,6 +680,9 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
         dpr,
         toolOptions.shape.borderStyle,
       );
+    } else if (m === 'markupDrag') {
+      const selection = markupDrag.current?.selection;
+      if (selection) renderAnnotations(ctx, [markupFromSelection(selection, 'preview')], transform, dpr);
     } else if (m === 'selectDrag' && selectionStart.current) {
       const { screenX: sx, screenY: sy } = selectionStart.current;
       const { screenX: ex, screenY: ey } = currentEnd.current;
@@ -837,8 +855,8 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
       if (newlyDone.length) {
         const ink = layerContext(annotationCanvasRef.current);
         const marker = layerContext(highlightCanvasRef.current);
-        if (ink) renderAnnotations(ink, newlyDone.filter((a) => a.type !== 'highlight'), transform, dpr, identity);
-        if (marker) renderAnnotations(marker, newlyDone.filter((a) => a.type === 'highlight'), transform, dpr, identity);
+        if (ink) renderAnnotations(ink, newlyDone.filter((a) => !isMultiplyAnnotation(a)), transform, dpr, identity);
+        if (marker) renderAnnotations(marker, newlyDone.filter(isMultiplyAnnotation), transform, dpr, identity);
         replay.painted = frame.done.length;
       }
       const canvas = drawingCanvasRef.current;
@@ -879,6 +897,53 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     if (replay?.raf != null) cancelAnimationFrame(replay.raf);
     replayRef.current = null;
   }, []);
+
+  // ── Text markup ─────────────────────────────────────────────────────────
+
+  function updateMarkupSelection() {
+    const drag = markupDrag.current;
+    if (!drag) return;
+    const layout = peekPageTextLayout(identity, pageIndex);
+    drag.selection = layout ? selectText(layout, drag.from, drag.to) : null;
+    if (!layout) {
+      // Still loading: select as soon as the text arrives.
+      void loadPageTextLayout(identity, pageIndex).then(() => {
+        if (markupDrag.current === drag && mode.current === 'markupDrag') {
+          updateMarkupSelection();
+          schedulePreviewRender();
+        }
+      });
+    }
+  }
+
+  function markupFromSelection(selection: TextSelection, id: string): TextMarkupAnnotation {
+    const now = Date.now();
+    const options = toolOptions.textMarkup;
+    return {
+      id, pageIndex, type: 'markup',
+      markup: options.markup,
+      quads: selection.quads.map((q) => q.map((p) => ({ x: p.x, y: p.y }))),
+      text: selection.text,
+      color: options.color, opacity: options.opacity,
+      locked: false, createdAt: now, updatedAt: now,
+    };
+  }
+
+  function commitMarkup() {
+    const drag = markupDrag.current;
+    markupDrag.current = null;
+    if (!drag) return;
+    if (!drag.selection) {
+      const layout = peekPageTextLayout(identity, pageIndex);
+      if (layout && layout.glyphs.length === 0) {
+        notifyUser('info', 'This page has no selectable text (it may be a scan). Use the Highlighter instead.');
+      }
+      return;
+    }
+    const ann = markupFromSelection(drag.selection, nanoid());
+    addAnnotation(docId, ann);
+    pushHistory(makeAddAction(docId, ann));
+  }
 
   function onPointerDown(e: React.PointerEvent<HTMLDivElement>) {
     if (replayRef.current) {
@@ -985,6 +1050,25 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
       activePoints.current = [{ x: screenX, y: screenY, pressure: 0.5, timestamp: e.timeStamp }];
       
       doEraseSweptPath(pdfPt);
+      return;
+    }
+
+    // ── Laser pointer ──
+    if (interactionTool === 'laserPointer') {
+      mode.current = 'laser';
+      startLaserTrail(e.clientX, e.clientY, e.timeStamp);
+      return;
+    }
+
+    // ── Text highlight / underline / strikethrough ──
+    if (interactionTool === 'textMarkup') {
+      mode.current = 'markupDrag';
+      markupDrag.current = { from: pdfPt, to: pdfPt, selection: null };
+      if (drawingCanvasRef.current) {
+        drawingCanvasRef.current.style.mixBlendMode = toolOptions.textMarkup.markup === 'highlight' ? 'multiply' : 'normal';
+      }
+      updateMarkupSelection();
+      schedulePreviewRender();
       return;
     }
 
@@ -1158,6 +1242,21 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     const { screenX, screenY } = getPagePoint(e);
     const pdfPt = screenToPdfPoint(screenX, screenY);
 
+    if (m === 'laser') {
+      const events = e.nativeEvent.getCoalescedEvents?.() ?? [e.nativeEvent];
+      for (const ev of events) addLaserPoint(ev.clientX, ev.clientY, ev.timeStamp);
+      return;
+    }
+
+    if (m === 'markupDrag') {
+      if (markupDrag.current) {
+        markupDrag.current.to = pdfPt;
+        updateMarkupSelection();
+        schedulePreviewRender();
+      }
+      return;
+    }
+
     if (m === 'drawing') {
       // Use coalesced events for stylus fidelity
       const events = e.nativeEvent.getCoalescedEvents?.() ?? [e.nativeEvent];
@@ -1300,6 +1399,10 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
       commitRubberBand(e);
     } else if (m === 'lassoDrag') {
       commitLasso(e);
+    } else if (m === 'markupDrag') {
+      commitMarkup();
+    } else if (m === 'laser') {
+      endLaserTrail(e.timeStamp);
     } else if (m === 'moving') {
       commitMove();
     } else if (m === 'resizing') {
@@ -1479,7 +1582,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
 
     // For object erasing, we can use the existing eraserHitTest on current and prev points
     const objectHits = new Set<string>();
-    if (toolOptions.eraser.mode === 'object') {
+    if (toolOptions.eraser.mode === 'object' || originalEraserSnapshotRef.current.some((a) => a.type === 'markup')) {
       const hitsCurrent = eraserHitTest(currentPdfPt, originalEraserSnapshotRef.current, eraserRadiusPdf);
       const hitsPrev = eraserHitTest(prevPdfPt, originalEraserSnapshotRef.current, eraserRadiusPdf);
       hitsCurrent.forEach(h => objectHits.add(h.id));
@@ -1498,6 +1601,13 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
            eraserHitsRef.current.set(ann.id, { type: 'delete' });
            markDirty(ann);
            changed = true;
+        }
+      } else if (ann.type === 'markup') {
+        // Text markup has no stroke to split: the stroke eraser removes it whole.
+        if (objectHits.has(ann.id)) {
+          eraserHitsRef.current.set(ann.id, { type: 'delete' });
+          markDirty(ann);
+          changed = true;
         }
       } else if (toolOptions.eraser.mode === 'stroke' && (ann.type === 'stroke' || ann.type === 'highlight')) {
         // Cheap reject: skip strokes whose padded bounds miss the eraser capsule.
@@ -1784,7 +1894,9 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     }
 
     activePointerIdRef.current = null;
+    if (mode.current === 'laser') endLaserTrail();
     mode.current = 'idle';
+    markupDrag.current = null;
     activePoints.current = [];
     shapeStart.current = null;
     selectionStart.current = null;

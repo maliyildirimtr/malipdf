@@ -23,7 +23,10 @@ function isFocusShapeTool(tool: ToolType): tool is FocusShapeTool {
 
 // ─── Default tool options ─────────────────────────────────────────────────────
 
+export const DEFAULT_TEXT_MARKUP_OPTIONS = { markup: 'highlight', color: '#FFEB3B', opacity: 0.45 } as const;
+
 const defaultToolOptions: ToolOptions = {
+  textMarkup: { ...DEFAULT_TEXT_MARKUP_OPTIONS },
   pen: {
     color: '#1a1a2e',
     width: 3,
@@ -78,6 +81,7 @@ interface UIStore {
   toolOptions: ToolOptions;
   updatePenOptions: (patch: Partial<ToolOptions['pen']>) => void;
   updateHighlighterOptions: (patch: Partial<ToolOptions['highlighter']>) => void;
+  updateTextMarkupOptions: (patch: Partial<ToolOptions['textMarkup']>) => void;
   updateEraserOptions: (patch: Partial<ToolOptions['eraser']>) => void;
   updateTextOptions: (patch: Partial<ToolOptions['text']>) => void;
   updateShapeOptions: (patch: Partial<ToolOptions['shape']>) => void;
@@ -144,7 +148,23 @@ interface UIStore {
   // Dialogs
   newDocumentDialogOpen: boolean;
   setNewDocumentDialogOpen: (open: boolean) => void;
+  notePageDialogOpen: boolean;
+  setNotePageDialogOpen: (open: boolean) => void;
+  presentationOpen: boolean;
+  setPresentationOpen: (open: boolean) => void;
+
+  /** Last choice in Insert Note Page (background, line spacing, page size). */
+  notePageStyle: NotePageStyle;
+  setNotePageStyle: (style: Partial<NotePageStyle>) => void;
 }
+
+export interface NotePageStyle {
+  type: 'blank' | 'lined' | 'grid' | 'dotted' | 'millimetric';
+  spacingMm: 5 | 8 | 10;
+  size: 'like' | 'a4';
+}
+
+export const DEFAULT_NOTE_PAGE_STYLE: NotePageStyle = { type: 'lined', spacingMm: 8, size: 'like' };
 
 // ─── Store implementation ─────────────────────────────────────────────────────
 
@@ -224,6 +244,10 @@ export const useUIStore = create<UIStore>()(
         updateHighlighterOptions: (patch) =>
           set((s) => ({
             toolOptions: { ...s.toolOptions, highlighter: { ...s.toolOptions.highlighter, ...patch } },
+          })),
+        updateTextMarkupOptions: (patch) =>
+          set((s) => ({
+            toolOptions: { ...s.toolOptions, textMarkup: { ...s.toolOptions.textMarkup, ...patch } },
           })),
         updateEraserOptions: (patch) =>
           set((s) => ({ toolOptions: { ...s.toolOptions, eraser: { ...s.toolOptions.eraser, ...patch } } })),
@@ -340,6 +364,13 @@ export const useUIStore = create<UIStore>()(
 
         newDocumentDialogOpen: false,
         setNewDocumentDialogOpen: (open) => set({ newDocumentDialogOpen: open }),
+        notePageDialogOpen: false,
+        setNotePageDialogOpen: (open) => set({ notePageDialogOpen: open }),
+        presentationOpen: false,
+        setPresentationOpen: (open) => set({ presentationOpen: open }),
+
+        notePageStyle: DEFAULT_NOTE_PAGE_STYLE,
+        setNotePageStyle: (style) => set((state) => ({ notePageStyle: { ...state.notePageStyle, ...style } })),
       }),
       {
         name: 'malipedefe-ui',
@@ -363,6 +394,16 @@ export const useUIStore = create<UIStore>()(
           }
           return persistedState;
         },
+        // Tool options added in a later version get their defaults.
+        merge: (persisted, current) => {
+          const saved = (persisted ?? {}) as Partial<UIStore>;
+          const toolOptions = { ...current.toolOptions } as Record<string, unknown>;
+          for (const [key, value] of Object.entries(saved.toolOptions ?? {})) {
+            const base = toolOptions[key];
+            toolOptions[key] = base && typeof base === 'object' && value && typeof value === 'object' ? { ...base, ...value } : value;
+          }
+          return { ...current, ...saved, toolOptions: toolOptions as unknown as ToolOptions };
+        },
         // Only persist tool options, theme and favorite colors — not transient UI state
         partialize: (state) => ({
           toolOptions: state.toolOptions,
@@ -376,6 +417,7 @@ export const useUIStore = create<UIStore>()(
           signatures: state.signatures,
           shapeStyles: state.shapeStyles,
           hiddenToolbarTools: state.hiddenToolbarTools,
+          notePageStyle: state.notePageStyle,
         }),
       },
     ),

@@ -99,6 +99,12 @@ export const FloatingInspector = React.memo(function FloatingInspector({
       if ('opacity' in raw) patch.opacity = raw.opacity;
       return patch as Partial<Annotation>;
     }
+    if (ann.type === 'markup') {
+      const patch: Record<string, unknown> = {};
+      if ('color' in raw) patch.color = raw.color;
+      if ('opacity' in raw) patch.opacity = raw.opacity;
+      return patch as Partial<Annotation>;
+    }
     return {};
   }, []); // no deps — reads from ref
 
@@ -248,15 +254,18 @@ export const FloatingInspector = React.memo(function FloatingInspector({
     currentColor = annotation.color || '#000000';
   } else if (annotation.type === 'image') {
     currentOpacity = annotation.opacity ?? 1;
+  } else if (annotation.type === 'markup') {
+    currentColor = annotation.color;
+    currentOpacity = annotation.opacity ?? 1;
   } else {
     return null;
   }
 
   const hasStrokeColor = annotation.type !== 'image';
-  const hasWidth = annotation.type !== 'text' && annotation.type !== 'image';
+  const hasWidth = annotation.type !== 'text' && annotation.type !== 'image' && annotation.type !== 'markup';
   const hasBorderStyle = annotation.type === 'shape';
   const hasFill = annotation.type === 'shape' || annotation.type === 'freeform';
-  const hasOpacity = annotation.type === 'stroke' || annotation.type === 'highlight' || annotation.type === 'shape' || annotation.type === 'freeform' || annotation.type === 'image';
+  const hasOpacity = annotation.type === 'stroke' || annotation.type === 'highlight' || annotation.type === 'shape' || annotation.type === 'freeform' || annotation.type === 'image' || annotation.type === 'markup';
 
   const content = (
     <div

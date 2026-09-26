@@ -36,6 +36,9 @@ export function translateAnnotation(annotation: Annotation, dx: number, dy: numb
         y: annotation.y + dy,
       };
     }
+    case 'markup':
+      // Text markup belongs to the text under it and does not move.
+      return annotation;
   }
 }
 
@@ -94,6 +97,8 @@ export function scaleAnnotationFromBounds(
         height: newHeight,
       };
     }
+    case 'markup':
+      return annotation;
   }
 }
 

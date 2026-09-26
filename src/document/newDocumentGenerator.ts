@@ -156,6 +156,28 @@ function drawMillimetricBackground(page: PDFPage, width: number, height: number,
   }
 }
 
+/** Default background of the given kind, as the New Document dialog makes it. */
+export function makePageBackground(type: PageBackground['type'], spacingMm: BackgroundSpacing, color = '#999999'): PageBackground {
+  if (type === 'blank') return { type: 'blank' };
+  if (type === 'millimetric') {
+    return { type: 'millimetric', majorSpacingMm: spacingMm, color, minorOpacity: 0.4, majorOpacity: 1, minorWeight: 'light', majorWeight: 'normal' };
+  }
+  return { type, spacingMm, color, opacity: 1, weight: 'normal' };
+}
+
+/** Draw `background` over the whole (unrotated) page. */
+export function drawPageBackground(page: PDFPage, width: number, height: number, background: PageBackground): void {
+  if (background.type === 'grid') {
+    drawGridBackground(page, width, height, background.spacingMm, background.color, background.opacity, background.weight);
+  } else if (background.type === 'lined') {
+    drawLinedBackground(page, width, height, background.spacingMm, background.color, background.opacity, background.weight);
+  } else if (background.type === 'dotted') {
+    drawDottedBackground(page, width, height, background.spacingMm, background.color, background.opacity, background.weight);
+  } else if (background.type === 'millimetric') {
+    drawMillimetricBackground(page, width, height, background.majorSpacingMm, background.color, background.minorOpacity, background.majorOpacity, background.minorWeight, background.majorWeight);
+  }
+}
+
 export async function generateNewDocument(spec: NewDocumentSpec): Promise<Uint8Array> {
   const complexity = estimateComplexity(spec);
   // Complexity safety guard: If over 1,000,000 operations, throw an error to prevent freezing
@@ -170,19 +192,7 @@ export async function generateNewDocument(spec: NewDocumentSpec): Promise<Uint8A
   for (let i = 0; i < Math.max(1, pageCount); i++) {
     const page = doc.addPage([widthPt, heightPt]);
 
-    if (background.type === 'blank') {
-      continue;
-    }
-
-    if (background.type === 'grid') {
-      drawGridBackground(page, widthPt, heightPt, background.spacingMm, background.color, background.opacity, background.weight);
-    } else if (background.type === 'lined') {
-      drawLinedBackground(page, widthPt, heightPt, background.spacingMm, background.color, background.opacity, background.weight);
-    } else if (background.type === 'dotted') {
-      drawDottedBackground(page, widthPt, heightPt, background.spacingMm, background.color, background.opacity, background.weight);
-    } else if (background.type === 'millimetric') {
-      drawMillimetricBackground(page, widthPt, heightPt, background.majorSpacingMm, background.color, background.minorOpacity, background.majorOpacity, background.minorWeight, background.majorWeight);
-    }
+    drawPageBackground(page, widthPt, heightPt, background);
   }
 
   return await doc.save();

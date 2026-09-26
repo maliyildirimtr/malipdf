@@ -34,6 +34,9 @@ import {
 } from './clipboardCommands';
 import { SHOW_RECOVERY_EVENT } from '../components/RecoveryDialog/recoveryEvents';
 import { OPEN_SIGN_MENU_EVENT } from '../components/SignStamp/signStampEvents';
+
+/** Custom clipboard type that carries the annotation marker next to plain text. */
+const ANNOTATION_CLIPBOARD_TYPE = 'application/x-malipdf-annotations';
 import { REPLAY_INK_EVENT } from '../components/AnnotationCanvas/replayEvents';
 import {
   insertImageFromFile,
@@ -225,6 +228,9 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
       case 'page.insertBlank':
         void import('./pageCommands').then((m) => m.insertBlankPage());
         return;
+      case 'page.insertNotePage':
+        ui.setNotePageDialogOpen(true);
+        return;
       case 'page.duplicate':
         void import('./pageCommands').then((m) => m.duplicatePages());
         return;
@@ -260,7 +266,6 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
       case 'tool.crop':
       case 'tool.measure':
       case 'tool.formula':
-      case 'tool.laserPointer':
       case 'tool.pointer':
         return;
       case 'insert.image':
@@ -288,6 +293,9 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
         return;
       case 'view.ruler':
         void import('../store/rulerStore').then(({ useRulerStore }) => useRulerStore.getState().toggle());
+        return;
+      case 'view.presentation':
+        ui.setPresentationOpen(true);
         return;
       case 'view.replayInk': {
         const doc = docId ? documents.documents.get(docId) : null;
@@ -486,10 +494,16 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
     // ⌘C / ⌘X arrive as DOM copy/cut events (native Edit menu roles), so text
     // fields keep their normal behaviour and annotations use the same keys.
     function onCopyOrCut(event: ClipboardEvent) {
-      if (isEditableTarget(event.target) || !getActiveSelection()) return;
+      const selection = getActiveSelection();
+      if (isEditableTarget(event.target) || !selection) return;
+      // Copying text highlights puts their text on the clipboard for other apps.
+      const markedText = selection.annotations.every((a) => a.type === 'markup')
+        ? selection.annotations.map((a) => (a.type === 'markup' ? a.text : '')).filter(Boolean).join('\n')
+        : '';
       const marker = event.type === 'cut' ? cutSelection() : copySelection();
       if (!marker) return;
-      event.clipboardData?.setData('text/plain', marker);
+      event.clipboardData?.setData('text/plain', markedText || marker);
+      event.clipboardData?.setData(ANNOTATION_CLIPBOARD_TYPE, marker);
       event.preventDefault();
     }
 
@@ -499,7 +513,8 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
       }
 
       // Annotations copied in MaliPDF (the system clipboard still holds our marker).
-      if (isOwnClipboardMarker(event.clipboardData?.getData('text/plain'))) {
+      if (isOwnClipboardMarker(event.clipboardData?.getData(ANNOTATION_CLIPBOARD_TYPE))
+        || isOwnClipboardMarker(event.clipboardData?.getData('text/plain'))) {
         event.preventDefault();
         useUIStore.getState().setActiveTool('select');
         pasteAnnotations();

@@ -49,6 +49,7 @@ export type AnnotationType =
   | 'text'
   | 'shape'
   | 'freeform'
+  | 'markup'
   | 'image'   // future
   | 'stamp';  // future
 
@@ -150,6 +151,19 @@ export interface ImageAnnotation extends BaseAnnotation {
   opacity: number;                 // 0–1
 }
 
+// ─── Text markup (highlight / underline / strikethrough on PDF text) ─────────
+
+export type TextMarkupKind = 'highlight' | 'underline' | 'strikeout';
+
+export interface TextMarkupAnnotation extends BaseAnnotation {
+  type: 'markup';
+  markup: TextMarkupKind;
+  /** One quad per text run: bottom-left, bottom-right, top-right, top-left (PDF user space). */
+  quads: PdfPoint[][];
+  /** The marked text, for copying and the annotations list. */
+  text: string;
+}
+
 // ─── Union type ───────────────────────────────────────────────────────────────
 
 export type Annotation =
@@ -158,7 +172,8 @@ export type Annotation =
   | TextAnnotation
   | ShapeAnnotation
   | FreeformAnnotation
-  | ImageAnnotation;
+  | ImageAnnotation
+  | TextMarkupAnnotation;
 
 // ─── Tool types ───────────────────────────────────────────────────────────────
 
@@ -175,7 +190,9 @@ export type ToolType =
   | 'roundedRect'
   | 'ellipse'
   | 'freeform'
-  | 'lasso';
+  | 'lasso'
+  | 'textMarkup'
+  | 'laserPointer';
 
 // ─── Tool options (shared across all instances, not per-annotation) ───────────
 
@@ -229,7 +246,14 @@ export interface FreeformOptions {
   opacity: number;
 }
 
+export interface TextMarkupOptions {
+  markup: TextMarkupKind;
+  color: string;
+  opacity: number;
+}
+
 export interface ToolOptions {
+  textMarkup: TextMarkupOptions;
   pen: PenOptions;
   highlighter: HighlighterOptions;
   eraser: EraserOptions;

@@ -132,6 +132,8 @@ export function hitTestAnnotation(
       return hitTestFreeform(pdfPoint, annotation, tolerance);
     case 'image':
       return hitTestImage(pdfPoint, annotation, tolerance);
+    case 'markup':
+      return annotation.quads.some((quad) => quad.length === 4 && pointNearQuad(pdfPoint, quad, tolerance));
     default:
       return false;
   }
@@ -569,3 +571,18 @@ export function hitTestResizeHandle(
 }
 
 export { HANDLE_SIZE_PDF };
+
+/** Point inside a (convex) quad, or within `tolerance` of it. */
+function pointNearQuad(p: PdfPoint, quad: readonly PdfPoint[], tolerance: number): boolean {
+  if (pointInPolygon(p, quad as PdfPoint[])) return true;
+  for (let i = 0; i < 4; i++) {
+    const a = quad[i];
+    const b = quad[(i + 1) % 4];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len2 = dx * dx + dy * dy || 1;
+    const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2));
+    if (Math.hypot(p.x - (a.x + dx * t), p.y - (a.y + dy * t)) <= tolerance) return true;
+  }
+  return false;
+}

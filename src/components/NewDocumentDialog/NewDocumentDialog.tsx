@@ -8,7 +8,7 @@ import { getCanonicalPageDimensions, type PageSizePreset, type Orientation, type
 import { openDocumentBytes } from '../../document/openDocumentBytes';
 import styles from './NewDocumentDialog.module.css';
 
-const BACKGROUND_TYPES: { type: PageBackground['type']; label: string }[] = [
+export const BACKGROUND_TYPES: { type: PageBackground['type']; label: string }[] = [
   { type: 'blank', label: 'Blank' },
   { type: 'grid', label: 'Grid' },
   { type: 'lined', label: 'Lined' },
@@ -16,7 +16,7 @@ const BACKGROUND_TYPES: { type: PageBackground['type']; label: string }[] = [
   { type: 'millimetric', label: 'Millimetric' },
 ];
 
-function BackgroundThumbnail({ 
+export function BackgroundThumbnail({ 
   type, 
   spacing, 
   color, 

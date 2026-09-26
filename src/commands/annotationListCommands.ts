@@ -21,7 +21,7 @@ export function matchesFilter(annotation: Annotation, filter: AnnotationFilter):
   switch (filter) {
     case 'all': return true;
     case 'pen': return annotation.type === 'stroke';
-    case 'highlight': return annotation.type === 'highlight';
+    case 'highlight': return annotation.type === 'highlight' || annotation.type === 'markup';
     case 'text': return annotation.type === 'text';
     case 'shape': return annotation.type === 'shape' || annotation.type === 'freeform';
     case 'image': return annotation.type === 'image';
@@ -39,6 +39,11 @@ export function describeAnnotation(annotation: Annotation): string {
     case 'shape': return ({ line: 'Line', arrow: 'Arrow', rectangle: 'Rectangle', roundedRect: 'Rounded rectangle', ellipse: 'Ellipse' })[annotation.shapeKind];
     case 'freeform': return 'Polygon';
     case 'image': return 'Image';
+    case 'markup': {
+      const kind = ({ highlight: 'Highlight', underline: 'Underline', strikeout: 'Strikethrough' })[annotation.markup];
+      const text = annotation.text.replace(/\s+/g, ' ').trim();
+      return text ? `${kind}: ${text.length > 22 ? `${text.slice(0, 22)}…` : text}` : kind;
+    }
   }
 }
 

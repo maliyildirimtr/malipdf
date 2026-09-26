@@ -3,7 +3,7 @@ import type { WorkspaceMode } from '../store/uiStore';
 
 export type CanonicalTool = Extract<ToolType,
   'select' | 'hand' | 'pen' | 'highlighter' | 'eraser' | 'text' |
-  'line' | 'arrow' | 'rectangle' | 'ellipse' | 'freeform' | 'lasso'>;
+  'line' | 'arrow' | 'rectangle' | 'ellipse' | 'freeform' | 'lasso' | 'textMarkup' | 'laserPointer'>;
 
 export type ToolCommandId = `tool.${CanonicalTool}`;
 
@@ -25,9 +25,9 @@ export type AppCommandId =
   | 'view.focusMode' | 'extras.favorites' | 'extras.toolStyles' | 'help.open'
   | 'app.requestQuit' | 'app.requestCloseWindow'
   | 'file.recoveredDocuments' | 'help.checkForUpdates' | 'help.about' | 'help.crashReports'
-  | 'page.insertBlank' | 'page.duplicate' | 'page.delete' | 'page.rotateLeft' | 'page.rotateRight'
+  | 'page.insertBlank' | 'page.insertNotePage' | 'page.duplicate' | 'page.delete' | 'page.rotateLeft' | 'page.rotateRight'
   | 'page.insertFromPdf' | 'page.exportSelected' | 'page.addBookmark'
-  | 'view.ruler' | 'view.replayInk';
+  | 'view.ruler' | 'view.replayInk' | 'view.presentation';
 
 export type CommandGroup = 'file' | 'history' | 'edit' | 'tool' | 'view' | 'insert' | 'page' | 'extras' | 'help';
 export type CommandKind = 'action' | 'tool' | 'toggle' | 'radio';
@@ -105,11 +105,12 @@ export const APP_COMMANDS = {
   'tool.stamp': unavailableTool('tool.stamp', 'Stamp', 'stamp'),
   'tool.dimension': unavailableTool('tool.dimension', 'Dimension', 'dimension'),
   'tool.lasso': toolCommand('lasso', 'Lasso Select', 'S', 'lasso'),
+  'tool.textMarkup': toolCommand('textMarkup', 'Text Highlight', 'U', 'highlighter'),
   'tool.snapshot': unavailableTool('tool.snapshot', 'Snapshot', 'snapshot'),
   'tool.crop': unavailableTool('tool.crop', 'Crop', 'crop'),
   'tool.measure': unavailableTool('tool.measure', 'Measure', 'measure'),
   'tool.formula': unavailableTool('tool.formula', 'Formula', 'formula'),
-  'tool.laserPointer': unavailableTool('tool.laserPointer', 'Laser Pointer', 'laserPointer'),
+  'tool.laserPointer': toolCommand('laserPointer', 'Laser Pointer', undefined, 'laserPointer'),
   'tool.pointer': unavailableTool('tool.pointer', 'Pointer', 'pointer'),
   'insert.image': command('insert.image', 'Insert Image…', 'insert', 'action', 'document', { icon: 'image', menuPlacements: ['edit'], toolbarPlacements: ['primary.insert'] }),
   'insert.signature': command('insert.signature', 'Signature & Stamps…', 'insert', 'action', 'document', { icon: 'pen', shortcut: '⌥⌘S', menuPlacements: ['edit'], toolbarPlacements: ['primary.insert'] }),
@@ -143,12 +144,14 @@ export const APP_COMMANDS = {
   'extras.toolStyles': command('extras.toolStyles', 'Tool Styles Coming Later', 'extras', 'action', 'unavailable', { icon: 'toolStyles', menuPlacements: ['tool.styles', 'extras'] }),
   'help.open': command('help.open', 'MaliPDF Help', 'help', 'action', 'unavailable', { icon: 'help', menuPlacements: ['help'] }),
   'page.insertBlank': command('page.insertBlank', 'Insert Blank Page', 'page', 'action', 'document', { icon: 'newDocument', shortcut: '⇧⌘N', menuPlacements: ['page'] }),
+  'page.insertNotePage': command('page.insertNotePage', 'Insert Note Page…', 'page', 'action', 'document', { icon: 'newDocument', shortcut: '⌥⌘N', menuPlacements: ['page'] }),
   'page.duplicate': command('page.duplicate', 'Duplicate Page', 'page', 'action', 'document', { icon: 'selectAll', menuPlacements: ['page'] }),
   'page.delete': command('page.delete', 'Delete Page', 'page', 'action', 'document', { icon: 'delete', menuPlacements: ['page'] }),
   'page.rotateLeft': command('page.rotateLeft', 'Rotate Page Left', 'page', 'action', 'document', { icon: 'rotateLeft', shortcut: '⇧⌘[', menuPlacements: ['page'] }),
   'page.rotateRight': command('page.rotateRight', 'Rotate Page Right', 'page', 'action', 'document', { icon: 'rotateRight', shortcut: '⇧⌘]', menuPlacements: ['page'] }),
   'page.insertFromPdf': command('page.insertFromPdf', 'Insert Pages from PDF…', 'page', 'action', 'document', { icon: 'open', menuPlacements: ['page'] }),
   'view.ruler': command('view.ruler', 'Ruler', 'view', 'action', 'document', { icon: 'measure', shortcut: '⌥⌘R', menuPlacements: ['view'] }),
+  'view.presentation': command('view.presentation', 'Present', 'view', 'action', 'document', { icon: 'fullscreen', shortcut: '⌥⌘P', menuPlacements: ['view'] }),
   'view.replayInk': command('view.replayInk', 'Replay Ink on This Page', 'view', 'action', 'document', { icon: 'annotations', menuPlacements: ['view'] }),
   'page.addBookmark': command('page.addBookmark', 'Add Bookmark', 'page', 'action', 'document', { icon: 'favorites', shortcut: '⌥⌘B', menuPlacements: ['page'] }),
   'page.exportSelected': command('page.exportSelected', 'Export Selected Pages…', 'page', 'action', 'document', { icon: 'export', menuPlacements: ['page'] }),
@@ -204,7 +207,7 @@ export function isAppCommandId(value: unknown): value is AppCommandId {
 function command(id: AppCommandId, label: string, group: CommandGroup, kind: CommandKind, availability: CommandAvailability, options: CommandOptions): AppCommandDefinition {
   return { id, label, shortLabel: options.shortLabel ?? label.replace(/…$/, ''), group, kind, availability, ...options };
 }
-function toolCommand(tool: CanonicalTool, label: string, shortcut: string, icon: CommandIconId): AppCommandDefinition {
+function toolCommand(tool: CanonicalTool, label: string, shortcut: string | undefined, icon: CommandIconId): AppCommandDefinition {
   return { id: `tool.${tool}`, label, shortLabel: label, group: 'tool', kind: 'tool', availability: 'document', icon, shortcut, tool, checkedState: 'activeTool', menuPlacements: ['tool'], toolbarPlacements: ['primary.tools'] };
 }
 function unavailableTool(id: AppCommandId, label: string, icon: CommandIconId): AppCommandDefinition {
@@ -214,14 +217,14 @@ function unavailableTool(id: AppCommandId, label: string, icon: CommandIconId): 
 export interface ToolShortcutDefinition {
   readonly commandId: ToolCommandId;
   readonly tool: CanonicalTool;
-  readonly key: 'V' | 'H' | 'P' | 'M' | 'E' | 'T' | 'L' | 'A' | 'R' | 'C' | 'S';
+  readonly key: 'V' | 'H' | 'P' | 'M' | 'E' | 'T' | 'L' | 'A' | 'R' | 'C' | 'S' | 'U';
   readonly label: string;
 }
 export const TOOL_SHORTCUTS = [
   toolShortcut('V', 'select'), toolShortcut('H', 'hand'), toolShortcut('P', 'pen'),
   toolShortcut('M', 'highlighter'), toolShortcut('E', 'eraser'), toolShortcut('T', 'text'),
   toolShortcut('L', 'line'), toolShortcut('A', 'arrow'), toolShortcut('R', 'rectangle'),
-  toolShortcut('C', 'ellipse'), toolShortcut('S', 'lasso'),
+  toolShortcut('C', 'ellipse'), toolShortcut('S', 'lasso'), toolShortcut('U', 'textMarkup'),
 ] as const satisfies readonly ToolShortcutDefinition[];
 const TOOL_SHORTCUT_BY_KEY = new Map<string, ToolShortcutDefinition>(TOOL_SHORTCUTS.map((shortcut) => [shortcut.key.toLowerCase(), shortcut]));
 const TOOL_COMMAND_BY_TOOL = new Map<CanonicalTool, ToolCommandId>(TOOL_SHORTCUTS.map(({ tool, commandId }) => [tool, commandId]));

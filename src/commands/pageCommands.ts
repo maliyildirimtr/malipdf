@@ -32,6 +32,7 @@ import {
 } from '../document/pagePlan';
 import { exportAnnotatedPdf, loadDefaultExportFonts } from '../pdf/annotationExporter';
 import { errorMessage, notifyUser } from '../utils/notify';
+import type { PageBackground } from '../document/newDocumentGenerator';
 
 let busy = false;
 
@@ -155,6 +156,14 @@ export async function insertBlankPage(): Promise<boolean> {
   if (!doc) return false;
   const after = Math.max(...targetPages(doc));
   return applyPagePlan(doc, planInsertBlank(doc.pageCount, after), { activePageAfter: after + 1, selectAfter: [after + 1] });
+}
+
+/** Insert a lined / grid / dotted note page after the current page. */
+export async function insertNotePage(style: { background: PageBackground; size: 'like' | 'a4' }): Promise<boolean> {
+  const doc = activeDocument();
+  if (!doc) return false;
+  const after = Math.max(...targetPages(doc));
+  return applyPagePlan(doc, planInsertBlank(doc.pageCount, after, style), { activePageAfter: after + 1, selectAfter: [after + 1] });
 }
 
 export async function duplicatePages(): Promise<boolean> {

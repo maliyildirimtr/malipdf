@@ -42,7 +42,7 @@ describe('native macOS menu schema', () => {
     for (const id of [
       'tool.extractText', 'tool.zoom', 'tool.stamp', 'tool.polygon', 'tool.dimension',
       'tool.snapshot', 'tool.crop', 'tool.measure', 'tool.formula',
-      'tool.laserPointer', 'tool.pointer',
+      'tool.pointer',
     ]) {
       expect(findCommand(tools.items, id)?.enabled, id).toBe(false);
     }
