@@ -95,6 +95,8 @@ interface UIStore {
   /** Settings ▸ Reset: every tool back to its default style. */
   resetToolDefaults: () => void;
   settingsOpen: boolean;
+  headerFooterOpen: boolean;
+  setHeaderFooterOpen: (open: boolean) => void;
   /** Side-by-side view: the document shown in the right pane. */
   splitView: { docId: string } | null;
   setSplitView: (split: { docId: string } | null) => void;
@@ -422,6 +424,8 @@ export const useUIStore = create<UIStore>()(
 
         splitView: null,
         setSplitView: (splitView) => set({ splitView }),
+        headerFooterOpen: false,
+        setHeaderFooterOpen: (headerFooterOpen) => set({ headerFooterOpen }),
         settingsOpen: false,
         setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
         resetToolDefaults: () => set({ toolOptions: defaultToolOptions, laserOptions: { ...DEFAULT_LASER_OPTIONS }, shapeStyles: {} }),

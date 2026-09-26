@@ -36,6 +36,7 @@ import { NotePageDialog } from './components/NewDocumentDialog/NotePageDialog';
 import { SplitDialog } from './components/NewDocumentDialog/SplitDialog';
 import { SettingsDialog } from './components/Settings/SettingsDialog';
 import { SplitView } from './components/SplitView/SplitView';
+import { HeaderFooterDialog } from './components/NewDocumentDialog/HeaderFooterDialog';
 import { PresentationView } from './components/Presentation/PresentationView';
 import { FormulaDialog } from './components/Formula/FormulaDialog';
 import { TaskProgressPanel } from './components/TaskProgress/TaskProgress';
@@ -257,6 +258,7 @@ export default function App() {
       <NotePageDialog />
       <SplitDialog />
       <SettingsDialog />
+      <HeaderFooterDialog />
       <LaserOverlay />
       <PresentationView />
       <FormulaDialog />

@@ -165,6 +165,8 @@ export function createNativeMenuSchema(isMac: boolean, isDev: boolean): readonly
         separator(),
         command('page.addBookmark', 'Add Bookmark', { accelerator: 'Alt+CmdOrCtrl+B', enabled: false }),
         separator(),
+        command('insert.headerFooter', 'Header, Footer & Page Numbers…', { enabled: false }),
+        separator(),
         command('page.exportSelected', 'Export Selected Pages…', { enabled: false }),
         command('page.split', 'Split Document…', { enabled: false }),
         separator(),

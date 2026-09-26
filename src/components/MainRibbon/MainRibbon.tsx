@@ -40,6 +40,8 @@ import {
   Square,
   TextSelect,
   StickyNote,
+  Wrench,
+  Hash,
   Columns2,
   Settings,
   Scissors,
@@ -295,6 +297,14 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
             icon={Crop}
             onCommand={runCommand}
             enabled={isEnabled('insert.regionScreenshot')}
+          />
+          <ToolbarMenu
+            label="PDF tools"
+            icon={Wrench}
+            onCommand={runCommand}
+            items={[
+              { commandId: 'insert.headerFooter', label: 'Header, Footer & Page Numbers…', enabled: isEnabled('insert.headerFooter'), icon: Hash },
+            ]}
           />
         </ToolbarGroup>
 
