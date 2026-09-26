@@ -144,7 +144,16 @@ export class LibreOfficeProvider implements PptxConversionProvider {
     const commonPaths: string[] = [];
 
     if (platform === 'darwin') {
-      commonPaths.push('/Applications/LibreOffice.app/Contents/MacOS/soffice');
+      // Apps opened from Finder do not get the shell PATH, so check the usual
+      // install places: /Applications, ~/Applications and Homebrew.
+      commonPaths.push(
+        '/Applications/LibreOffice.app/Contents/MacOS/soffice',
+        path.join(os.homedir(), 'Applications', 'LibreOffice.app', 'Contents', 'MacOS', 'soffice'),
+        '/opt/homebrew/bin/soffice',
+        '/usr/local/bin/soffice',
+      );
+    } else if (platform === 'linux') {
+      commonPaths.push('/usr/bin/soffice', '/usr/bin/libreoffice', '/snap/bin/libreoffice', '/usr/local/bin/soffice');
     } else if (platform === 'win32') {
       commonPaths.push(
         path.join(process.env['PROGRAMFILES'] || 'C:\\Program Files', 'LibreOffice', 'program', 'soffice.exe'),

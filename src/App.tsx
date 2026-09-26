@@ -86,6 +86,11 @@ function ImportJobOverlay() {
             Cancel
           </button>
         )}
+        {job.status === 'failed' && job.errorMessage?.startsWith('LibreOffice') && window.electronAPI?.pptxOpenLibreOfficeDownload && (
+          <button style={{ ...styles.cancelButton, marginRight: 8 }} onClick={() => void window.electronAPI.pptxOpenLibreOfficeDownload?.()}>
+            Download LibreOffice
+          </button>
+        )}
         {(job.status === 'failed' || job.status === 'cancelled' || job.status === 'completed') && (
           <button style={styles.cancelButton} onClick={clearJob}>
             Dismiss

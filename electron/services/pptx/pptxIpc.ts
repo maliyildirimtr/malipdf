@@ -1,4 +1,4 @@
-import { dialog, BrowserWindow, app } from 'electron';
+import { dialog, BrowserWindow, app, shell } from 'electron';
 import fs from 'fs';
 import path from 'path';
 import { randomUUID } from 'crypto';
@@ -16,6 +16,7 @@ const MAX_CONVERTED_PDF_BYTES = 500 * 1024 * 1024;
 
 const TEMP_DIR_PREFIX = 'malipdf-pptx-';
 const PRESENTATION_EXTENSIONS = ['.pptx', '.ppt', '.odp'];
+export const LIBREOFFICE_DOWNLOAD_URL = 'https://www.libreoffice.org/download/download-libreoffice/';
 /** Temp folders older than this are leftovers of a crash and are removed at startup. */
 const STALE_TEMP_AGE_MS = 24 * 60 * 60 * 1000;
 
@@ -99,6 +100,12 @@ async function convertJob(
 export function setupPptxIpc(isDev: boolean) {
   app.whenReady().then(() => { void removeStaleTempDirs(); });
   app.on('will-quit', abortAllPptxJobs);
+
+  // Fixed URL: the renderer cannot choose what gets opened.
+  handleTrusted('pptx:openLibreOfficeDownload', isDev, async () => {
+    await shell.openExternal(LIBREOFFICE_DOWNLOAD_URL);
+    return true;
+  });
 
   handleTrusted('pptx:isAvailable', isDev, async () => {
     return await provider.isAvailable();

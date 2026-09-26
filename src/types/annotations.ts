@@ -410,6 +410,7 @@ declare global {
       }>>;
       recoveryLoad: (docId: string) => Promise<{ meta: string; source: ArrayBuffer; assets: { id: string; data: ArrayBuffer }[] }>;
       pptxIsAvailable: () => Promise<boolean>;
+      pptxOpenLibreOfficeDownload?: () => Promise<boolean>;
       pptxStartConversion: (jobId: string) => Promise<{ buffer: ArrayBuffer; name: string } | null>;
       pptxConvertBytes?: (jobId: string, data: ArrayBuffer, name: string) => Promise<{ buffer: ArrayBuffer; name: string }>;
       pptxCancelConversion: (jobId: string) => Promise<void>;

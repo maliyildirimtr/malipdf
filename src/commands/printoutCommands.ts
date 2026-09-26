@@ -208,6 +208,10 @@ export async function insertPrintoutFromFile(): Promise<void> {
   }
 }
 
+/** Shown when the converter is missing; the import panel offers a download button for it. */
+export const LIBREOFFICE_MISSING_MESSAGE =
+  'LibreOffice (free) is needed to convert PowerPoint files and was not found. Install it, then try again — no restart needed.';
+
 export function insertPptxPrintoutFromFile(): Promise<void> {
   return runPptxImport((jobId) => window.electronAPI.pptxStartConversion(jobId));
 }
@@ -241,7 +245,7 @@ export async function openPresentationAsDocument(data: ArrayBuffer, name: string
     }
     if (data.byteLength > MAX_DROPPED_PRESENTATION_BYTES) throw new Error('The presentation is larger than 300 MB.');
     if (!(await api.pptxIsAvailable())) {
-      throw new Error('LibreOffice was not found. Install LibreOffice to import PowerPoint files.');
+      throw new Error(LIBREOFFICE_MISSING_MESSAGE);
     }
     notifyUser('info', `Converting "${name}" to PDF…`);
     const result = await api.pptxConvertBytes(`open-${Date.now().toString(36)}`, data, name);
@@ -282,7 +286,7 @@ async function runPptxImport(
     isAvailable = false;
   }
   if (!isAvailable) {
-    useImportJobStore.getState().updateStatus('failed', 'LibreOffice was not found. Install LibreOffice to import PowerPoint files.');
+    useImportJobStore.getState().updateStatus('failed', LIBREOFFICE_MISSING_MESSAGE);
     return;
   }
   if (abortController.signal.aborted) {
