@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import type { OcrLine } from './services/ocr/ocrIpc';
 import type { NativeCommandState } from './commandBridge';
 
 // The preload runs in a sandboxed renderer, where require() only resolves
@@ -78,6 +79,8 @@ export interface ElectronAPI {
   pptxStartConversion: (jobId: string) => Promise<{ buffer: ArrayBuffer; name: string } | null>;
   pptxConvertBytes: (jobId: string, data: ArrayBuffer, name: string) => Promise<{ buffer: ArrayBuffer; name: string }>;
   pptxCancelConversion: (jobId: string) => Promise<void>;
+  ocrIsAvailable: () => Promise<boolean>;
+  ocrRecognize: (png: ArrayBuffer, languages?: string[]) => Promise<OcrLine[]>;
 }
 
 const electronAPI: ElectronAPI = {
@@ -123,6 +126,8 @@ const electronAPI: ElectronAPI = {
   pptxStartConversion: (jobId) => ipcRenderer.invoke('pptx:startConversion', jobId),
   pptxConvertBytes: (jobId, data, name) => ipcRenderer.invoke('pptx:convertBytes', jobId, data, name),
   pptxCancelConversion: (jobId) => ipcRenderer.invoke('pptx:cancelConversion', jobId),
+  ocrIsAvailable: () => ipcRenderer.invoke('ocr:isAvailable'),
+  ocrRecognize: (png, languages) => ipcRenderer.invoke('ocr:recognize', png, languages),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);

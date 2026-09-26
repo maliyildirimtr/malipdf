@@ -23,6 +23,7 @@ import {
   Monitor,
   MoreHorizontal,
   MonitorPlay,
+  Moon,
   Sigma,
   MousePointer2,
   Pointer as LaserIcon,
@@ -124,6 +125,7 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
     updateEraserOptions,
     laserOptions,
     updateLaserOptions,
+    pageTheme,
     updateTextOptions,
     updateShapeOptions,
     workspaceMode,
@@ -223,6 +225,7 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
           <ToolButton tool="freeform" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.freeform')} />
           <CommandButton commandId="view.ruler" label="Ruler" shortcut="⌥⌘R" icon={RulerIcon} onCommand={runCommand} enabled={isEnabled('view.ruler')} pressed={rulerVisible} />
           <CommandButton commandId="view.replayInk" label="Replay Ink" icon={CirclePlay} onCommand={runCommand} enabled={isEnabled('view.replayInk')} />
+          <CommandButton commandId="view.nightMode" label="Night Mode" shortcut="⌥⌘D" icon={Moon} onCommand={runCommand} enabled pressed={pageTheme === 'dark'} />
           <CommandButton commandId="view.presentation" label="Present" shortcut="⌥⌘P" icon={MonitorPlay} onCommand={runCommand} enabled={isEnabled('view.presentation')} />
           <ToolButton tool="laserPointer" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.laserPointer')} />
           <ToolbarCustomizeMenu />
@@ -334,7 +337,7 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
 
         <div className={styles.propertyScroller}>
           {activeTool === 'select' && <PropertyHint>Select an annotation to move or resize it.</PropertyHint>}
-          {activeTool === 'lasso' && <PropertyHint>Draw around ink to select it. Shift adds to the selection. Drag the selection to move it.</PropertyHint>}
+          {activeTool === 'lasso' && <PropertyHint>Draw around ink to select it. Shift adds to the selection. Drag the selection to move it. ⌥⌘T turns selected handwriting into text.</PropertyHint>}
           {activeTool === 'laserPointer' && (
             <>
               <div className={styles.propertySegment} role="group" aria-label="Laser mode">

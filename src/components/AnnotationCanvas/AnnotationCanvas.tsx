@@ -1042,7 +1042,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     if (!drag.selection) {
       const layout = peekPageTextLayout(identity, pageIndex);
       if (layout && layout.glyphs.length === 0) {
-        notifyUser('info', 'This page has no selectable text (it may be a scan). Use the Highlighter instead.');
+        notifyUser('info', 'This page has no selectable text (it may be a scan). Use Page ▸ Recognize Text on This Page first, or the Highlighter.');
       }
       return;
     }

@@ -27,7 +27,8 @@ export type AppCommandId =
   | 'file.recoveredDocuments' | 'help.checkForUpdates' | 'help.about' | 'help.crashReports'
   | 'page.insertBlank' | 'page.insertNotePage' | 'page.duplicate' | 'page.delete' | 'page.rotateLeft' | 'page.rotateRight'
   | 'page.insertFromPdf' | 'page.exportSelected' | 'page.addBookmark'
-  | 'view.ruler' | 'view.replayInk' | 'view.presentation';
+  | 'view.ruler' | 'view.replayInk' | 'view.presentation' | 'view.nightMode'
+  | 'page.ocrPage' | 'page.ocrAll' | 'edit.inkToText';
 
 export type CommandGroup = 'file' | 'history' | 'edit' | 'tool' | 'view' | 'insert' | 'page' | 'extras' | 'help';
 export type CommandKind = 'action' | 'tool' | 'toggle' | 'radio';
@@ -42,7 +43,7 @@ export type CommandIconId =
   | 'pointer' | 'image' | 'screenshot' | 'regionScreenshot' | 'sidebar' | 'zoomIn' | 'zoomOut' | 'actualSize' | 'fitWidth'
   | 'fitPage' | 'layout' | 'rotateLeft' | 'rotateRight' | 'annotations'
   | 'toolbar' | 'fullscreen' | 'focus' | 'favorites' | 'toolStyles' | 'help';
-export type CommandCheckedState = 'activeTool' | 'sidebarOpen' | 'focusMode' | 'continuousLayout';
+export type CommandCheckedState = 'activeTool' | 'sidebarOpen' | 'focusMode' | 'continuousLayout' | 'nightMode';
 
 export interface AppCommandDefinition {
   readonly id: AppCommandId;
@@ -152,6 +153,10 @@ export const APP_COMMANDS = {
   'page.rotateRight': command('page.rotateRight', 'Rotate Page Right', 'page', 'action', 'document', { icon: 'rotateRight', shortcut: '⇧⌘]', menuPlacements: ['page'] }),
   'page.insertFromPdf': command('page.insertFromPdf', 'Insert Pages from PDF…', 'page', 'action', 'document', { icon: 'open', menuPlacements: ['page'] }),
   'view.ruler': command('view.ruler', 'Ruler', 'view', 'action', 'document', { icon: 'measure', shortcut: '⌥⌘R', menuPlacements: ['view'] }),
+  'page.ocrPage': command('page.ocrPage', 'Recognize Text on This Page', 'page', 'action', 'document', { icon: 'extractText', menuPlacements: ['page'] }),
+  'page.ocrAll': command('page.ocrAll', 'Recognize Text in Document (OCR)', 'page', 'action', 'document', { icon: 'extractText', menuPlacements: ['page'] }),
+  'edit.inkToText': command('edit.inkToText', 'Convert Ink to Text', 'edit', 'action', 'selection', { icon: 'text', shortcut: '⌥⌘T', menuPlacements: ['edit'] }),
+  'view.nightMode': command('view.nightMode', 'Night Mode', 'view', 'toggle', 'always', { icon: 'focus', shortcut: '⌥⌘D', checkedState: 'nightMode', menuPlacements: ['view'] }),
   'view.presentation': command('view.presentation', 'Present', 'view', 'action', 'document', { icon: 'fullscreen', shortcut: '⌥⌘P', menuPlacements: ['view'] }),
   'view.replayInk': command('view.replayInk', 'Replay Ink on This Page', 'view', 'action', 'document', { icon: 'annotations', menuPlacements: ['view'] }),
   'page.addBookmark': command('page.addBookmark', 'Add Bookmark', 'page', 'action', 'document', { icon: 'favorites', shortcut: '⌥⌘B', menuPlacements: ['page'] }),
@@ -176,6 +181,7 @@ export interface CommandPresentationContext extends CommandAvailabilityContext {
   readonly activeTool?: ToolType;
   readonly sidebarOpen?: boolean;
   readonly workspaceMode?: WorkspaceMode;
+  readonly nightMode?: boolean;
 }
 
 export function isCommandAvailable(commandId: AppCommandId, context: CommandAvailabilityContext): boolean {
@@ -198,6 +204,7 @@ export function isCommandChecked(commandId: AppCommandId, context: CommandPresen
   if (definition.checkedState === 'sidebarOpen') return context.sidebarOpen === true;
   if (definition.checkedState === 'focusMode') return context.workspaceMode === 'focus';
   if (definition.checkedState === 'continuousLayout') return true;
+  if (definition.checkedState === 'nightMode') return context.nightMode === true;
   return false;
 }
 

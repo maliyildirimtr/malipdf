@@ -163,6 +163,10 @@ interface UIStore {
   formulaStyle: { color: string; size: number };
   setFormulaStyle: (style: { color: string; size: number }) => void;
 
+  /** How pages are shown: as printed, dark (night mode) or sepia. View only. */
+  pageTheme: PageTheme;
+  setPageTheme: (theme: PageTheme) => void;
+
   /** Laser pointer look and fade (MaliPen style). */
   laserOptions: LaserOptions;
   updateLaserOptions: (patch: Partial<LaserOptions>) => void;
@@ -171,6 +175,8 @@ interface UIStore {
   notePageStyle: NotePageStyle;
   setNotePageStyle: (style: Partial<NotePageStyle>) => void;
 }
+
+export type PageTheme = 'normal' | 'dark' | 'sepia';
 
 export interface FormulaDialogState {
   edit?: { docId: string; annotationId: string; pageIndex: number; latex: string; color: string; size: number };
@@ -392,6 +398,9 @@ export const useUIStore = create<UIStore>()(
         formulaStyle: { color: '#1a1a2e', size: 16 },
         setFormulaStyle: (formulaStyle) => set({ formulaStyle }),
 
+        pageTheme: 'normal',
+        setPageTheme: (pageTheme) => set({ pageTheme }),
+
         laserOptions: DEFAULT_LASER_OPTIONS,
         updateLaserOptions: (patch) => set((state) => ({ laserOptions: { ...state.laserOptions, ...patch } })),
 
@@ -445,6 +454,7 @@ export const useUIStore = create<UIStore>()(
           hiddenToolbarTools: state.hiddenToolbarTools,
           notePageStyle: state.notePageStyle,
           laserOptions: state.laserOptions,
+          pageTheme: state.pageTheme,
           formulaStyle: state.formulaStyle,
         }),
       },

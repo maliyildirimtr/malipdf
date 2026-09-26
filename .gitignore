@@ -29,3 +29,6 @@ release/
 
 # Screenshots/files delivered by Claude
 Claude outputs/
+
+# Built text recognition helper (npm run build:ocr)
+build/native/

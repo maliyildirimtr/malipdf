@@ -34,6 +34,7 @@ import { NewDocumentDialog } from './components/NewDocumentDialog/NewDocumentDia
 import { NotePageDialog } from './components/NewDocumentDialog/NotePageDialog';
 import { PresentationView } from './components/Presentation/PresentationView';
 import { FormulaDialog } from './components/Formula/FormulaDialog';
+import { TaskProgressPanel } from './components/TaskProgress/TaskProgress';
 import { LaserOverlay } from './components/Laser/LaserOverlay';
 import { RecoveryDialog } from './components/RecoveryDialog/RecoveryDialog';
 import { Ruler } from './components/Ruler/Ruler';
@@ -252,6 +253,7 @@ export default function App() {
       <LaserOverlay />
       <PresentationView />
       <FormulaDialog />
+      <TaskProgressPanel />
       <RecoveryDialog />
       <Ruler />
 

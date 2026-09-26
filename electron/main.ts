@@ -25,6 +25,7 @@ import {
   type NativeMenuNode,
 } from './nativeMenuSchema';
 import { setupPptxIpc } from './services/pptx/pptxIpc';
+import { setupOcrIpc } from './services/ocr/ocrIpc';
 import { setupRecoveryIpc } from './services/recovery';
 import { setupUpdates } from './services/updates';
 import { logCrash, setupAppInfo } from './services/appInfo';
@@ -52,6 +53,7 @@ let mainWindow: BrowserWindow | null = null;
 
 installWebContentsPolicy(isDev);
 setupPptxIpc(isDev);
+setupOcrIpc(isDev);
 setupRecoveryIpc(isDev);
 setupAppInfo(isDev);
 setupUpdates(isDev);

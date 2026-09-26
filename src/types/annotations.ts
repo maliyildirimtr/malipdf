@@ -444,6 +444,8 @@ declare global {
       pptxStartConversion: (jobId: string) => Promise<{ buffer: ArrayBuffer; name: string } | null>;
       pptxConvertBytes?: (jobId: string, data: ArrayBuffer, name: string) => Promise<{ buffer: ArrayBuffer; name: string }>;
       pptxCancelConversion: (jobId: string) => Promise<void>;
+      ocrIsAvailable?: () => Promise<boolean>;
+      ocrRecognize?: (png: ArrayBuffer, languages?: string[]) => Promise<import('../pdf/ocr').OcrLine[]>;
     };
   }
 }

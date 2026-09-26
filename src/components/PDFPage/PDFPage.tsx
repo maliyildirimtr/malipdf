@@ -13,6 +13,7 @@ import type { PageLayout } from '../../types/documentSession';
 import AnnotationCanvas from '../AnnotationCanvas/AnnotationCanvas';
 import { SearchHighlights } from './SearchHighlights';
 import { PdfDetailLayer } from './PdfDetailLayer';
+import { useUIStore } from '../../store/uiStore';
 import styles from './PDFPage.module.css';
 
 interface PDFPageProps {
@@ -42,6 +43,7 @@ const PDFPage = React.memo<PDFPageProps>(function PDFPage({
   onSlotElement,
   onInteractionPinChange,
 }) {
+  const pageTheme = useUIStore((state) => state.pageTheme);
   const pdfCanvasRef = useRef<HTMLCanvasElement>(null);
   const renderTaskRef = useRef<RenderTask | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -123,7 +125,7 @@ const PDFPage = React.memo<PDFPageProps>(function PDFPage({
       data-instance-id={instanceId}
       data-page-index={pageIndex}
     >
-      <div className={styles.pageSurface} style={{ width, height }}>
+      <div className={`${styles.pageSurface} ${pageTheme === 'dark' ? styles.pageDark : pageTheme === 'sepia' ? styles.pageSepia : ''}`} style={{ width, height }}>
         {renderEnabled && transform && (
           <>
             <canvas

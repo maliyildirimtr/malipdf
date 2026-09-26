@@ -18,6 +18,16 @@
   overflow: hidden;
 }
 
+/* Night mode / sepia: view only, the file is not changed. The whole page
+   (PDF + ink + highlights) is filtered together, so highlights keep working. */
+.pageDark {
+  filter: invert(0.9) hue-rotate(180deg);
+}
+
+.pageSepia {
+  filter: sepia(0.45) saturate(1.1) brightness(0.96);
+}
+
 .pdfCanvas {
   display: block;
   position: absolute;

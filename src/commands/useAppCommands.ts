@@ -297,6 +297,18 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
       case 'view.ruler':
         void import('../store/rulerStore').then(({ useRulerStore }) => useRulerStore.getState().toggle());
         return;
+      case 'page.ocrPage':
+        void import('./ocrCommands').then((m) => m.recognizeText('page'));
+        return;
+      case 'page.ocrAll':
+        void import('./ocrCommands').then((m) => m.recognizeText('all'));
+        return;
+      case 'edit.inkToText':
+        void import('./ocrCommands').then((m) => m.convertInkToText());
+        return;
+      case 'view.nightMode':
+        ui.setPageTheme(ui.pageTheme === 'dark' ? 'normal' : 'dark');
+        return;
       case 'view.presentation':
         ui.setPresentationOpen(true);
         return;
@@ -413,6 +425,7 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
         activeTool: useUIStore.getState().activeTool,
         sidebarOpen: useUIStore.getState().sidebarOpen,
         workspaceMode: useUIStore.getState().workspaceMode,
+        nightMode: useUIStore.getState().pageTheme === 'dark',
       };
       const states = (Object.keys(APP_COMMANDS) as AppCommandId[]).map((commandId) => ({
         commandId,
