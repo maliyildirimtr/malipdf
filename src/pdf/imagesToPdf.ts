@@ -1,9 +1,10 @@
 /** PDF from Images: one page per picture. */
 import { PDFDocument } from 'pdf-lib';
+import { embedPicture, type PackedMime } from './imagePacking';
 
 export type ImagePageSize = 'image' | 'a4' | 'letter';
 
-export interface PreparedImage { mimeType: 'image/png' | 'image/jpeg'; width: number; height: number; data: Uint8Array }
+export interface PreparedImage { mimeType: PackedMime; width: number; height: number; data: Uint8Array }
 
 const PAPER: Record<Exclude<ImagePageSize, 'image'>, [number, number]> = {
   a4: [595.28, 841.89],
@@ -30,8 +31,9 @@ export function layoutImage(width: number, height: number, size: ImagePageSize, 
 export async function imagesToPdf(images: readonly PreparedImage[], size: ImagePageSize, marginPt: number): Promise<Uint8Array> {
   const pdf = await PDFDocument.create();
   for (const image of images) {
-    const embedded = image.mimeType === 'image/jpeg' ? await pdf.embedJpg(image.data) : await pdf.embedPng(image.data);
     const { page, box } = layoutImage(image.width, image.height, size, marginPt);
+    // Photos go in as JPEG at print resolution for the box they fill.
+    const embedded = await embedPicture(pdf, image, box.width, box.height);
     pdf.addPage(page).drawImage(embedded, box);
   }
   return pdf.save();

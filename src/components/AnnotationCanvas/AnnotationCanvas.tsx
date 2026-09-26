@@ -2461,7 +2461,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     for (const { file, mime } of validFiles) {
       try {
         const buffer = await file.arrayBuffer();
-        const asset = await normalizeAndCreateImageAsset(buffer, mime);
+        const asset = await normalizeAndCreateImageAsset(buffer, mime, { compactPhotos: true });
 
         // Target gone (closed/reloaded): stop, but still record history for
         // images already added so nothing is left untracked.

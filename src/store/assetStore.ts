@@ -17,7 +17,8 @@ import { evictDocumentImageCache } from '../pdf/imageRenderCache';
 
 export interface ImageAsset {
   readonly id: string;
-  readonly mimeType: 'image/png' | 'image/jpeg';
+  /** WebP is used for stored photos with transparency (see imagePacking.ts). */
+  readonly mimeType: 'image/png' | 'image/jpeg' | 'image/webp';
   readonly width: number;
   readonly height: number;
   readonly data: Uint8Array;

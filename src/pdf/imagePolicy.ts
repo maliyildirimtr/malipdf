@@ -5,8 +5,8 @@
 
 /** Refuse images above this many pixels (decoded RGBA would exceed ~200 MB). */
 export const MAX_IMAGE_PIXELS = 50_000_000;
-/** Downscale so the longest side is at most this (plenty for print at 300 DPI on A3). */
-export const MAX_IMAGE_DIMENSION = 6000;
+/** Downscale so the longest side is at most this (a full A4 page at over 300 DPI). */
+export const MAX_IMAGE_DIMENSION = 3000;
 
 export interface ImageSize {
   width: number;

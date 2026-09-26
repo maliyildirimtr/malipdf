@@ -41,7 +41,7 @@ const N = (name: string) => PDFName.of(name);
 
 export interface EditableAsset {
   id: string;
-  mimeType: 'image/png' | 'image/jpeg';
+  mimeType: 'image/png' | 'image/jpeg' | 'image/webp';
   width: number;
   height: number;
   data: Uint8Array;
@@ -138,7 +138,8 @@ export function writeEditableData(
     assets: assets.map(({ id, mimeType, width, height }) => ({ id, mimeType, width, height })),
   });
   const data = context.register(context.flateStream(new TextEncoder().encode(json)));
-  const assetStreams = assets.map((asset) => context.register(context.flateStream(asset.data)));
+  // Picture bytes are already compressed; Flate would only cost time.
+  const assetStreams = assets.map((asset) => context.register(context.stream(asset.data)));
 
   const entry = context.obj({
     Version: PDFNumber.of(EDITABLE_VERSION),

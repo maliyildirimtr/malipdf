@@ -4,6 +4,7 @@
  * Image validation, normalization, default sizing, and async target snapshotting.
  */
 
+import { packPicture } from './imagePacking';
 import type { DocumentIdentity } from '../types/documentSession';
 import type { PdfBox } from './coordinateTransform';
 import type { PdfPoint, PdfRect } from '../types/annotations';
@@ -54,10 +55,26 @@ export function validateImageBytes(bytes: Uint8Array, mimeType: string): void {
  * - Transcodes WebP once on import to PNG bytes (so exporter and render cache only deal with PNG/JPEG)
  * - Returns a semantic ImageAsset ready to store
  */
+export interface NormalizeOptions {
+  /** Store photos as JPEG / WebP instead of PNG (annotations; see imagePacking.ts). */
+  compactPhotos?: boolean;
+}
+
 export async function normalizeAndCreateImageAsset(
   rawBytes: Uint8Array | ArrayBuffer,
   inputMimeType: string,
+  options: NormalizeOptions = {},
 ): Promise<ImageAsset> {
+  const asset = await normalizeImage(rawBytes, inputMimeType);
+  if (!options.compactPhotos) return asset;
+  const packed = await packPicture(asset);
+  return packed === asset ? asset : { ...asset, mimeType: packed.mimeType, data: packed.data };
+}
+
+async function normalizeImage(
+  rawBytes: Uint8Array | ArrayBuffer,
+  inputMimeType: string,
+): Promise<ImageAsset & { mimeType: 'image/png' | 'image/jpeg' }> {
   const bytes = rawBytes instanceof Uint8Array ? rawBytes : new Uint8Array(rawBytes);
   const mime = inputMimeType.toLowerCase() === 'image/jpg' ? 'image/jpeg' : inputMimeType.toLowerCase();
   validateImageBytes(bytes, mime);

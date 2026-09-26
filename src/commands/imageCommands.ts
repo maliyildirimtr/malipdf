@@ -36,7 +36,7 @@ export async function insertImageFromBytes(
   if (!target) return false;
 
   try {
-    const asset = await normalizeAndCreateImageAsset(rawBytes, mimeType);
+    const asset = await normalizeAndCreateImageAsset(rawBytes, mimeType, { compactPhotos: true });
     if (!isInsertTargetValid(target)) return false;
 
     const session = documentSessionStore.getState().sessions.get(documentIdentityKey(target.identity));

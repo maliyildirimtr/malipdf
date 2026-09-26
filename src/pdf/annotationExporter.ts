@@ -68,6 +68,7 @@ import type {
   DocumentAnnotationState,
   Bookmark,
 } from '../types/annotations';
+import { embedPicture, packPicture } from './imagePacking';
 import type { ImageAsset } from '../store/assetStore';
 import type { ExportFontSet } from './exportFonts';
 import { fontFamilyKey, fontStyleKey, type FontFamilyKey, type FontStyleKey } from './fontFamilies';
@@ -993,6 +994,16 @@ export async function exportAnnotatedPdf(
   let totalAnnotationCount = 0;
   // Deduplicate embedded images across all annotations
   const embeddedImages = new Map<string, PDFImage>();
+  // Largest size each picture is shown at, so it is embedded sharp enough once.
+  const placedSizes = new Map<string, { width: number; height: number }>();
+  for (const annotation of [...snapshot.values()].flat()) {
+    if (annotation.type !== 'image' || annotation.hidden) continue;
+    const seen = placedSizes.get(annotation.assetId);
+    placedSizes.set(annotation.assetId, {
+      width: Math.max(seen?.width ?? 0, Math.abs(annotation.width)),
+      height: Math.max(seen?.height ?? 0, Math.abs(annotation.height)),
+    });
+  }
   let measureFont: PDFFont | undefined;
 
   for (let pageIndex = 0; pageIndex < pages.length; pageIndex++) {
@@ -1047,11 +1058,8 @@ export async function exportAnnotatedPdf(
               if (!asset) {
                 throw new Error(`Image asset ${annotation.assetId} not found for export.`);
               }
-              if (asset.mimeType === 'image/jpeg') {
-                pdfImg = await pdfDoc.embedJpg(asset.data);
-              } else {
-                pdfImg = await pdfDoc.embedPng(asset.data);
-              }
+              const placed = placedSizes.get(annotation.assetId) ?? { width: annotation.width, height: annotation.height };
+              pdfImg = await embedPicture(pdfDoc, asset, placed.width, placed.height);
               embeddedImages.set(annotation.assetId, pdfImg);
             }
             exportImage(page, pdfImg, annotation, info);
@@ -1083,7 +1091,10 @@ export async function exportAnnotatedPdf(
       const assets: EditableAsset[] = [];
       for (const assetId of new Set(all.flatMap((annotation) => (annotation.type === 'image' ? [annotation.assetId] : [])))) {
         const asset = resolveAsset(options?.assets, assetId);
-        if (asset) assets.push({ id: asset.id, mimeType: asset.mimeType, width: asset.width, height: asset.height, data: asset.data });
+        if (!asset) continue;
+        // Photos are stored as JPEG / WebP instead of a large PNG.
+        const stored = await packPicture(asset);
+        assets.push({ id: asset.id, mimeType: stored.mimeType, width: asset.width, height: asset.height, data: stored.data });
       }
       writeEditableData(pdfDoc, editableCapture, all, assets, outlineChange ? bookmarks : [], outlineChange);
       keepEditable = true;

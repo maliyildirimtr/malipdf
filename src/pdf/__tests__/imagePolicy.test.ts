@@ -62,7 +62,7 @@ describe('image policy', () => {
 
   it('downscales oversized images and refuses gigantic ones', () => {
     const plan = planImageNormalization({ width: 12000, height: 3000 }, 'image/png', 1);
-    expect(plan).toMatchObject({ reencode: true, width: MAX_IMAGE_DIMENSION, height: 1500 });
+    expect(plan).toMatchObject({ reencode: true, width: MAX_IMAGE_DIMENSION, height: 750 });
     expect(() => planImageNormalization({ width: 20000, height: 20000 }, 'image/png', 1)).toThrow(/too large/);
   });
 });
