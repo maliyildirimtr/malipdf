@@ -6,9 +6,13 @@ import { getNextUntitledName } from '../../document/untitledNaming';
 import { generateNewDocument, type PageBackground, type BackgroundSpacing, type BackgroundWeight } from '../../document/newDocumentGenerator';
 import { getCanonicalPageDimensions, type PageSizePreset, type Orientation, type Unit, ISO_A_MM, ISO_B_MM, ISO_C_MM, NA_INCH, SCREEN_PT } from '../../document/pageSizes';
 import { openDocumentBytes } from '../../document/openDocumentBytes';
+import { NOTE_TEMPLATES, type NoteTemplateId } from '../../document/noteTemplates';
+import { TemplateThumbnail } from './TemplateThumbnail';
 import styles from './NewDocumentDialog.module.css';
 
-export const BACKGROUND_TYPES: { type: PageBackground['type']; label: string }[] = [
+export type PaperType = Exclude<PageBackground['type'], 'template'>;
+
+export const BACKGROUND_TYPES: { type: PaperType; label: string }[] = [
   { type: 'blank', label: 'Blank' },
   { type: 'grid', label: 'Grid' },
   { type: 'lined', label: 'Lined' },
@@ -23,7 +27,7 @@ export function BackgroundThumbnail({
   selected, 
   onClick 
 }: { 
-  type: PageBackground['type']; 
+  type: PaperType;
   spacing: BackgroundSpacing;
   color: string;
   selected: boolean; 
@@ -97,7 +101,8 @@ export function NewDocumentDialog() {
   const [orientation, setOrientation] = useState<Orientation>('Portrait');
   const [pageCount, setPageCount] = useState<number>(1);
 
-  const [bgType, setBgType] = useState<PageBackground['type']>('blank');
+  const [bgType, setBgType] = useState<PaperType>('blank');
+  const [template, setTemplate] = useState<NoteTemplateId | null>(null);
   const [bgSpacing, setBgSpacing] = useState<BackgroundSpacing>(5);
   const [bgColor, setBgColor] = useState<string>('#999999');
   const [bgOpacity, setBgOpacity] = useState<number>(1.0);
@@ -152,7 +157,9 @@ export function NewDocumentDialog() {
       );
 
       let background: PageBackground = { type: 'blank' };
-      if (bgType !== 'blank') {
+      if (template) {
+        background = { type: 'template', template, spacingMm: bgSpacing, color: bgColor };
+      } else if (bgType !== 'blank') {
         if (bgType === 'millimetric') {
           background = {
             type: 'millimetric',
@@ -231,13 +238,19 @@ export function NewDocumentDialog() {
                   type={bg.type}
                   spacing={bgSpacing}
                   color={bgColor}
-                  selected={bgType === bg.type}
-                  onClick={() => setBgType(bg.type)}
+                  selected={!template && bgType === bg.type}
+                  onClick={() => { setBgType(bg.type); setTemplate(null); }}
                 />
               ))}
             </div>
+            <div className={styles.sectionHeader}>TEMPLATES</div>
+            <div className={styles.thumbnailRow}>
+              {NOTE_TEMPLATES.map((t) => (
+                <TemplateThumbnail key={t.id} id={t.id} color={bgColor} selected={template === t.id} onClick={() => setTemplate(t.id)} />
+              ))}
+            </div>
 
-            {bgType !== 'blank' && (
+            {(bgType !== 'blank' || template) && (
               <div className={styles.contextualRow}>
                 <div className={styles.chipGroup}>
                   {([5, 8, 10] as BackgroundSpacing[]).map(s => (

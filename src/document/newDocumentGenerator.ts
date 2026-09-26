@@ -1,5 +1,6 @@
 import { PDFDocument, PDFPage, rgb, setGraphicsState } from 'pdf-lib';
 import { convertToPt } from './pageSizes';
+import { drawNoteTemplate, type NoteTemplateId } from './noteTemplates';
 
 export type BackgroundSpacing = 5 | 8 | 10;
 export type BackgroundWeight = 'light' | 'normal' | 'strong';
@@ -13,6 +14,7 @@ export type PageBackground =
       opacity: number;
       weight: BackgroundWeight;
     }
+  | { type: 'template'; template: NoteTemplateId; spacingMm: BackgroundSpacing; color: string }
   | {
       type: 'millimetric';
       majorSpacingMm: BackgroundSpacing;
@@ -65,6 +67,8 @@ function estimateComplexity(spec: NewDocumentSpec): number {
     } else {
       linesPerPage = hLines + vLines;
     }
+  } else if (spec.background.type === 'template') {
+    linesPerPage = 200;
   } else if (spec.background.type === 'millimetric') {
     const minorPt = convertToPt(1, 'mm');
     linesPerPage = Math.floor(heightPt / minorPt) + Math.floor(widthPt / minorPt);
@@ -157,7 +161,7 @@ function drawMillimetricBackground(page: PDFPage, width: number, height: number,
 }
 
 /** Default background of the given kind, as the New Document dialog makes it. */
-export function makePageBackground(type: PageBackground['type'], spacingMm: BackgroundSpacing, color = '#999999'): PageBackground {
+export function makePageBackground(type: Exclude<PageBackground['type'], 'template'>, spacingMm: BackgroundSpacing, color = '#999999'): PageBackground {
   if (type === 'blank') return { type: 'blank' };
   if (type === 'millimetric') {
     return { type: 'millimetric', majorSpacingMm: spacingMm, color, minorOpacity: 0.4, majorOpacity: 1, minorWeight: 'light', majorWeight: 'normal' };
@@ -173,6 +177,8 @@ export function drawPageBackground(page: PDFPage, width: number, height: number,
     drawLinedBackground(page, width, height, background.spacingMm, background.color, background.opacity, background.weight);
   } else if (background.type === 'dotted') {
     drawDottedBackground(page, width, height, background.spacingMm, background.color, background.opacity, background.weight);
+  } else if (background.type === 'template') {
+    drawNoteTemplate(page, width, height, background.template, background.spacingMm, background.color);
   } else if (background.type === 'millimetric') {
     drawMillimetricBackground(page, width, height, background.majorSpacingMm, background.color, background.minorOpacity, background.majorOpacity, background.minorWeight, background.majorWeight);
   }

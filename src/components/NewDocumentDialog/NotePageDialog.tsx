@@ -3,6 +3,8 @@ import { useUIStore, type NotePageStyle } from '../../store/uiStore';
 import { useDocumentStore } from '../../store/documentStore';
 import { makePageBackground, type BackgroundSpacing } from '../../document/newDocumentGenerator';
 import { BACKGROUND_TYPES, BackgroundThumbnail } from './NewDocumentDialog';
+import { NOTE_TEMPLATES } from '../../document/noteTemplates';
+import { TemplateThumbnail } from './TemplateThumbnail';
 import styles from './NewDocumentDialog.module.css';
 
 const LINE_COLOR = '#999999';
@@ -35,7 +37,9 @@ export function NotePageDialog() {
     setSaved(style);
     const { insertNotePage } = await import('../../commands/pageCommands');
     const ok = await insertNotePage({
-      background: makePageBackground(style.type, style.spacingMm as BackgroundSpacing, LINE_COLOR),
+      background: style.template
+        ? { type: 'template', template: style.template, spacingMm: style.spacingMm as BackgroundSpacing, color: LINE_COLOR }
+        : makePageBackground(style.type, style.spacingMm as BackgroundSpacing, LINE_COLOR),
       size: style.size,
     });
     setBusy(false);
@@ -76,12 +80,18 @@ export function NotePageDialog() {
                   type={bg.type}
                   spacing={style.spacingMm}
                   color={LINE_COLOR}
-                  selected={style.type === bg.type}
-                  onClick={() => update({ type: bg.type })}
+                  selected={!style.template && style.type === bg.type}
+                  onClick={() => update({ type: bg.type, template: null })}
                 />
               ))}
             </div>
-            {style.type !== 'blank' && (
+            <div className={styles.sectionHeader}>TEMPLATES</div>
+            <div className={styles.thumbnailRow}>
+              {NOTE_TEMPLATES.map((t) => (
+                <TemplateThumbnail key={t.id} id={t.id} color={LINE_COLOR} selected={style.template === t.id} onClick={() => update({ template: t.id })} />
+              ))}
+            </div>
+            {(style.type !== 'blank' || style.template) && (
               <div className={styles.contextualRow}>
                 <div className={styles.chipGroup}>
                   {([5, 8, 10] as const).map((s) => (

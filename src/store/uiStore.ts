@@ -1,3 +1,4 @@
+import type { NoteTemplateId } from '../document/noteTemplates';
 import { create } from 'zustand';
 import { subscribeWithSelector, persist } from 'zustand/middleware';
 import type {
@@ -197,6 +198,8 @@ export interface NotePageStyle {
   type: 'blank' | 'lined' | 'grid' | 'dotted' | 'millimetric';
   spacingMm: 5 | 8 | 10;
   size: 'like' | 'a4';
+  /** A ready-made template instead of plain paper. */
+  template?: NoteTemplateId | null;
 }
 
 export const DEFAULT_NOTE_PAGE_STYLE: NotePageStyle = { type: 'lined', spacingMm: 8, size: 'like' };
