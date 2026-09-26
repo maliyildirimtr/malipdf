@@ -57,6 +57,7 @@ export interface ElectronAPI {
   captureScreen: () => Promise<{ success: boolean; data?: ArrayBuffer; mimeType?: string; width?: number; height?: number; error?: string }>;
   captureRegion: () => Promise<{ success: boolean; canceled?: boolean; data?: ArrayBuffer; mimeType?: string; width?: number; height?: number; error?: string }>;
   readClipboardImage: () => Promise<{ data: ArrayBuffer; mimeType: string } | null>;
+  writeClipboardImage: (png: ArrayBuffer) => Promise<boolean>;
 
   // Crash recovery (Auto Save)
   recoveryWrite: (docId: string, meta: string, source: Uint8Array | null, assets: RecoveryAsset[]) => Promise<boolean>;
@@ -104,6 +105,7 @@ const electronAPI: ElectronAPI = {
   captureScreen: () => ipcRenderer.invoke('screenshot:captureDisplay'),
   captureRegion: () => ipcRenderer.invoke('screenshot:captureRegion'),
   readClipboardImage: () => ipcRenderer.invoke('clipboard:readImage'),
+  writeClipboardImage: (png) => ipcRenderer.invoke('clipboard:writeImage', png),
 
   recoveryWrite: (docId, meta, source, assets) => ipcRenderer.invoke('recovery:write', docId, meta, source, assets),
   recoveryRemove: (docId) => ipcRenderer.invoke('recovery:remove', docId),

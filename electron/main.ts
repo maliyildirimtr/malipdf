@@ -8,6 +8,7 @@ import {
   screen,
   desktopCapturer,
   clipboard,
+  nativeImage,
   systemPreferences,
 } from 'electron';
 import path from 'path';
@@ -494,6 +495,15 @@ handleTrusted('clipboard:readImage', isDev, async () => {
       pngBuffer.byteOffset + pngBuffer.byteLength,
     ) as ArrayBuffer,
   };
+});
+
+// Write a PNG to the clipboard (Snapshot tool)
+handleTrusted('clipboard:writeImage', isDev, async (_event, raw: unknown) => {
+  const png = requireBinary(raw, 'Image', 120 * 1024 * 1024);
+  const image = nativeImage.createFromBuffer(Buffer.from(png));
+  if (image.isEmpty()) throw new Error('The image could not be copied.');
+  clipboard.writeImage(image);
+  return true;
 });
 
 // Capture Display Screenshot

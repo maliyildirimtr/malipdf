@@ -132,6 +132,7 @@ type InteractionMode =
   | 'selectDrag'    // rubber-band selection
   | 'lassoDrag'     // free-form lasso selection
   | 'markupDrag'    // text highlight / underline / strikethrough selection
+  | 'snapshotDrag'  // Snapshot tool: region to copy as an image
   | 'laser'         // laser pointer (not saved)
   | 'shapeHold'     // pen held still: the stroke became a shape that follows the pen
   | 'moving'        // moving selected annotations
@@ -169,6 +170,7 @@ function getCursor(tool: ToolType, mode: InteractionMode): string {
     case 'text':        return 'text';
     case 'textMarkup':  return 'text';
     case 'note':        return 'copy';
+    case 'snapshot':    return 'crosshair';
     case 'laserPointer': return LASER_CURSOR;
     case 'freeform':    return 'crosshair';
     case 'line':
@@ -743,6 +745,21 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     } else if (m === 'markupDrag') {
       const selection = markupDrag.current?.selection;
       if (selection) renderAnnotations(ctx, [markupFromSelection(selection, 'preview')], transform, dpr);
+    } else if (m === 'snapshotDrag' && selectionStart.current) {
+      const { screenX: sx, screenY: sy } = selectionStart.current;
+      const { screenX: ex, screenY: ey } = currentEnd.current;
+      const x = Math.min(sx, ex), y = Math.min(sy, ey), w = Math.abs(ex - sx), h = Math.abs(ey - sy);
+      ctx.save();
+      ctx.scale(dpr, dpr);
+      // Dim everything outside the region.
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
+      ctx.fillRect(0, 0, transform.cssWidth, transform.cssHeight);
+      ctx.clearRect(x, y, w, h);
+      ctx.setLineDash([6, 4]);
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = '#007aff';
+      ctx.strokeRect(x + 0.5, y + 0.5, w, h);
+      ctx.restore();
     } else if (m === 'selectDrag' && selectionStart.current) {
       const { screenX: sx, screenY: sy } = selectionStart.current;
       const { screenX: ex, screenY: ey } = currentEnd.current;
@@ -1055,6 +1072,19 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     pushHistory(makeAddAction(docId, ann));
   }
 
+  function commitSnapshot() {
+    const start = selectionStart.current;
+    if (!start) return;
+    const end = currentEnd.current;
+    const x = Math.max(0, Math.min(start.screenX, end.screenX));
+    const y = Math.max(0, Math.min(start.screenY, end.screenY));
+    const w = Math.min(transform.cssWidth, Math.max(start.screenX, end.screenX)) - x;
+    const h = Math.min(transform.cssHeight, Math.max(start.screenY, end.screenY)) - y;
+    if (w < 6 || h < 6) return;
+    const rect = screenRectToPdfBounds({ x, y, width: w, height: h }, transform);
+    void import('../../commands/snapshotCommands').then((m) => m.copySnapshot(identity, pageIndex, rect, transform.displayRotation));
+  }
+
   /** Double-click a formula (Select tool) to edit its LaTeX. */
   function onDoubleClick(e: React.MouseEvent<HTMLDivElement>) {
     if (selectedTool !== 'select' || e.metaKey || e.shiftKey) return;
@@ -1194,6 +1224,15 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     if (interactionTool === 'laserPointer') {
       mode.current = 'laser';
       startLaserTrail(e.clientX, e.clientY, e.timeStamp);
+      return;
+    }
+
+    // ── Snapshot ──
+    if (interactionTool === 'snapshot') {
+      mode.current = 'snapshotDrag';
+      selectionStart.current = { screenX, screenY };
+      currentEnd.current = { screenX, screenY };
+      schedulePreviewRender();
       return;
     }
 
@@ -1508,7 +1547,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
       return;
     }
 
-    if (m === 'selectDrag') {
+    if (m === 'selectDrag' || m === 'snapshotDrag') {
       currentEnd.current = { screenX, screenY };
       schedulePreviewRender();
       return;
@@ -1573,6 +1612,8 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
       commitLasso(e);
     } else if (m === 'markupDrag') {
       commitMarkup();
+    } else if (m === 'snapshotDrag') {
+      commitSnapshot();
     } else if (m === 'laser') {
       endLaserTrail(e.timeStamp);
     } else if (m === 'moving') {

@@ -38,6 +38,7 @@ import {
   Square,
   TextSelect,
   StickyNote,
+  Scissors,
   Type,
   Undo2,
   ZoomIn,
@@ -83,6 +84,7 @@ const TOOL_DEFINITIONS: Record<ToolType, ToolDefinition> = {
   textMarkup: { icon: TextSelect, commandId: 'tool.textMarkup' },
   laserPointer: { icon: LaserIcon, commandId: 'tool.laserPointer' },
   note: { icon: StickyNote, commandId: 'tool.note' },
+  snapshot: { icon: Scissors, commandId: 'tool.snapshot' },
 };
 
 const DOCUMENT_COMMANDS = new Set<AppCommandId>([
@@ -206,6 +208,7 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
           <ToolButton tool="select" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.select')} />
           <ToolButton tool="hand" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.hand')} />
           <ToolButton tool="lasso" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.lasso')} />
+          <ToolButton tool="snapshot" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.snapshot')} />
         </ToolbarGroup>
 
         <ToolbarSeparator />
@@ -430,6 +433,10 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
               <PropertySeparator />
               <PropertyHint>Drag across the PDF's text. Works on text PDFs, not on scans.</PropertyHint>
             </>
+          )}
+
+          {activeTool === 'snapshot' && (
+            <PropertyHint>Drag around part of a page to copy it as a picture. Paste with ⌘V.</PropertyHint>
           )}
 
           {activeTool === 'note' && (

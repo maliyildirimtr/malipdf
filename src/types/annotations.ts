@@ -210,7 +210,8 @@ export type ToolType =
   | 'lasso'
   | 'textMarkup'
   | 'laserPointer'
-  | 'note';
+  | 'note'
+  | 'snapshot';
 
 // ─── Tool options (shared across all instances, not per-annotation) ───────────
 
@@ -444,6 +445,7 @@ declare global {
       captureScreen: () => Promise<{ success: boolean; data?: ArrayBuffer; mimeType?: string; width?: number; height?: number; error?: string }>;
       captureRegion: () => Promise<{ success: boolean; canceled?: boolean; data?: ArrayBuffer; mimeType?: string; width?: number; height?: number; error?: string }>;
       readClipboardImage: () => Promise<{ data: ArrayBuffer; mimeType: string } | null>;
+      writeClipboardImage?: (png: ArrayBuffer) => Promise<boolean>;
       recoveryWrite: (
         docId: string,
         meta: string,
