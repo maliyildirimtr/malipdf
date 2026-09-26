@@ -34,6 +34,7 @@ import { useAppCommands } from './commands';
 import { NewDocumentDialog } from './components/NewDocumentDialog/NewDocumentDialog';
 import { NotePageDialog } from './components/NewDocumentDialog/NotePageDialog';
 import { SplitDialog } from './components/NewDocumentDialog/SplitDialog';
+import { SettingsDialog } from './components/Settings/SettingsDialog';
 import { PresentationView } from './components/Presentation/PresentationView';
 import { FormulaDialog } from './components/Formula/FormulaDialog';
 import { TaskProgressPanel } from './components/TaskProgress/TaskProgress';
@@ -253,6 +254,7 @@ export default function App() {
       <NewDocumentDialog />
       <NotePageDialog />
       <SplitDialog />
+      <SettingsDialog />
       <LaserOverlay />
       <PresentationView />
       <FormulaDialog />

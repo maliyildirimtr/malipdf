@@ -46,7 +46,8 @@ export function createNativeMenuSchema(isMac: boolean, isDev: boolean): readonly
     menus.push({
       label: 'MaliPDF',
       items: [
-        role('about'), command('help.checkForUpdates', 'Check for Updates…'), separator(), role('services'), separator(),
+        role('about'), command('help.checkForUpdates', 'Check for Updates…'), separator(),
+        command('app.settings', 'Settings…', { accelerator: 'CmdOrCtrl+,' }), separator(), role('services'), separator(),
         role('hide'), role('hideOthers'), role('unhide'), separator(), role('quit'),
       ],
     });
@@ -58,6 +59,7 @@ export function createNativeMenuSchema(isMac: boolean, isDev: boolean): readonly
       items: [
         command('file.new', 'New Document…', { accelerator: 'CmdOrCtrl+N', enabled: true }),
         command('file.combine', 'Combine Files…', { enabled: true }),
+        ...(isMac ? [] : [command('app.settings', 'Settings…', { accelerator: 'CmdOrCtrl+,' })]),
         command('file.open', 'Open…', { accelerator: 'CmdOrCtrl+O' }),
         ...(isMac ? [{ kind: 'submenu', label: 'Open Recent', role: 'recentDocuments', items: [role('clearRecentDocuments')] } as NativeMenuNode] : []),
         command('file.recoveredDocuments', 'Recovered Documents…'),

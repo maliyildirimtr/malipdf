@@ -178,6 +178,9 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
       case 'page.split':
         ui.setSplitDialogOpen(true);
         return;
+      case 'app.settings':
+        ui.setSettingsOpen(true);
+        return;
       case 'file.save':
         if (docId) void saveDocument(docId);
         return;
@@ -465,6 +468,12 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
         if (!ui.isDrawing && ui.activeTool !== 'hand') {
           ui.setTemporaryTool('hand');
         }
+        event.preventDefault();
+        return;
+      }
+
+      if ((event.metaKey || event.ctrlKey) && event.key === ',' && !event.altKey && !event.shiftKey) {
+        executeCommand('app.settings');
         event.preventDefault();
         return;
       }

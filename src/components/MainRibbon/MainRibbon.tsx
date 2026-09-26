@@ -40,6 +40,7 @@ import {
   Square,
   TextSelect,
   StickyNote,
+  Settings,
   Scissors,
   MoveHorizontal,
   Type,
@@ -338,6 +339,7 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
             enabled={isEnabled('view.focusMode')}
             pressed={workspaceMode === 'focus'}
           />
+          <CommandButton commandId="app.settings" label="Settings" shortcut="⌘," icon={Settings} onCommand={runCommand} enabled />
         </ToolbarGroup>
       </div>
 

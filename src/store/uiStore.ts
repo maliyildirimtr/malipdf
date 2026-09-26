@@ -92,6 +92,10 @@ interface UIStore {
   updateHighlighterOptions: (patch: Partial<ToolOptions['highlighter']>) => void;
   updateTextMarkupOptions: (patch: Partial<ToolOptions['textMarkup']>) => void;
   updateNoteOptions: (patch: Partial<ToolOptions['note']>) => void;
+  /** Settings ▸ Reset: every tool back to its default style. */
+  resetToolDefaults: () => void;
+  settingsOpen: boolean;
+  setSettingsOpen: (open: boolean) => void;
   updateMeasureOptions: (patch: Partial<ToolOptions['measure']>) => void;
   updateEraserOptions: (patch: Partial<ToolOptions['eraser']>) => void;
   updateTextOptions: (patch: Partial<ToolOptions['text']>) => void;
@@ -413,6 +417,9 @@ export const useUIStore = create<UIStore>()(
         presentationOpen: false,
         setPresentationOpen: (open) => set({ presentationOpen: open }),
 
+        settingsOpen: false,
+        setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
+        resetToolDefaults: () => set({ toolOptions: defaultToolOptions, laserOptions: { ...DEFAULT_LASER_OPTIONS }, shapeStyles: {} }),
         splitDialogOpen: false,
         setSplitDialogOpen: (splitDialogOpen) => set({ splitDialogOpen }),
         openNote: null,
