@@ -432,9 +432,9 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     canvas.style.height = `${layerRegion.h}px`;
   }
 
-  // Cancel any active drawing if the user switches tools
+  // Switching tools ends the current gesture (a stroke in progress is kept).
   useEffect(() => {
-    cancelActiveInteraction();
+    if (!finishInkIfDrawing()) cancelActiveInteraction();
   }, [interactionTool]);
 
   useEffect(() => {
@@ -887,6 +887,8 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
       stopReplay();
       return;
     }
+    // A stroke whose pointerup never arrived: keep it before starting anew.
+    if (mode.current === 'drawing' && e.pointerType !== 'touch') finishInkIfDrawing();
     // Pen hardware: the eraser end erases, the barrel button lassoes.
     const penButton = penButtonTool(e);
     if (e.button !== 0 && !penButton) return; // left button (or pen tip) only
@@ -1269,7 +1271,13 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
   // ── Pointer up ────────────────────────────────────────────────────────────
 
   function onPointerUp(e: React.PointerEvent<HTMLDivElement>) {
-    if (activePointerIdRef.current !== null && e.pointerId !== activePointerIdRef.current) return;
+    if (activePointerIdRef.current !== null && e.pointerId !== activePointerIdRef.current) {
+      // Some tablet drivers report the pen lift with another pointer id
+      // (e.g. as the mouse). Still end the stroke instead of losing it.
+      if (mode.current !== 'drawing' || e.pointerType === 'touch') return;
+      finishInkIfDrawing();
+      return;
+    }
     const m = mode.current;
     predictedPoints.current = [];
     if (interactionRef.current?.hasPointerCapture(e.pointerId)) {
@@ -1327,16 +1335,41 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     }
   }
 
+  /**
+   * Keep what was written: a pen/highlighter stroke in progress is committed
+   * (not thrown away) when the gesture ends in an unusual way — pointercancel,
+   * lost capture, a missing pointerup, or a tool switch.
+   */
+  function finishInkIfDrawing(): boolean {
+    if (mode.current !== 'drawing' || activePoints.current.length === 0) return false;
+    const pointerId = activePointerIdRef.current;
+    if (pointerId !== null && interactionRef.current?.hasPointerCapture(pointerId)) {
+      interactionRef.current.releasePointerCapture(pointerId);
+    }
+    activePointerIdRef.current = null;
+    predictedPoints.current = [];
+    clearDrawingCanvas();
+    commitStroke();
+    mode.current = 'idle';
+    activePoints.current = [];
+    gestureToolRef.current = null;
+    rulerSnapRef.current = null;
+    setIsDrawing(textEditingRef.current);
+    if (!textEditingRef.current) onInteractionPinChange?.(false);
+    redrawAnnotationLayer();
+    return true;
+  }
+
   function onPointerCancel() {
-    cancelActiveInteraction();
+    if (!finishInkIfDrawing()) cancelActiveInteraction();
   }
 
   // Capture lost without a pointerup/pointercancel (OS focus change, window
-  // hidden for a screenshot, …): abandon the gesture instead of leaving it armed.
+  // hidden for a screenshot, …): keep ink, abandon other gestures.
   function onLostPointerCapture(e: React.PointerEvent<HTMLDivElement>) {
     if (activePointerIdRef.current !== e.pointerId) return;
     if (mode.current === 'idle' || mode.current === 'freeformDrawing') return;
-    cancelActiveInteraction();
+    if (!finishInkIfDrawing()) cancelActiveInteraction();
   }
 
   // ── Stroke commit ─────────────────────────────────────────────────────────
