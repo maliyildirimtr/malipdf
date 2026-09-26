@@ -575,6 +575,42 @@ handleTrusted('dialog:openImage', isDev, async () => {
   };
 });
 
+// Pick several images (PDF from Images). Formats Chromium cannot decode
+// (HEIC from iPhone, TIFF…) are converted with macOS's own image support.
+const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp', 'heic', 'heif', 'tif', 'tiff', 'bmp', 'gif'];
+handleTrusted('dialog:openImages', isDev, async () => {
+  if (!mainWindow) return null;
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Choose Images',
+    filters: [{ name: 'Images', extensions: IMAGE_EXTENSIONS }],
+    properties: ['openFile', 'multiSelections'],
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+  const files: { name: string; mimeType: string; data: ArrayBuffer }[] = [];
+  for (const filePath of result.filePaths.slice(0, 500)) {
+    const { size } = await fs.promises.stat(filePath);
+    if (size > MAX_IMAGE_FILE_BYTES) throw new Error(`${path.basename(filePath)} is larger than ${MAX_IMAGE_FILE_BYTES / 1024 / 1024} MB.`);
+    const ext = path.extname(filePath).toLowerCase().slice(1);
+    let buffer: Buffer;
+    let mimeType: string;
+    if (ext === 'png' || ext === 'jpg' || ext === 'jpeg' || ext === 'webp') {
+      buffer = await fs.promises.readFile(filePath);
+      mimeType = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+    } else {
+      const image = nativeImage.createFromPath(filePath);
+      if (image.isEmpty()) throw new Error(`${path.basename(filePath)} could not be read.`);
+      buffer = image.toJPEG(92);
+      mimeType = 'image/jpeg';
+    }
+    files.push({
+      name: path.basename(filePath),
+      mimeType,
+      data: buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer,
+    });
+  }
+  return files;
+});
+
 // Read Clipboard Image
 handleTrusted('clipboard:readImage', isDev, async () => {
   const image = clipboard.readImage();

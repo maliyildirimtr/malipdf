@@ -58,6 +58,7 @@ export function createNativeMenuSchema(isMac: boolean, isDev: boolean): readonly
       label: 'File',
       items: [
         command('file.new', 'New Document…', { accelerator: 'CmdOrCtrl+N', enabled: true }),
+        command('file.fromImages', 'New PDF from Images…', { enabled: true }),
         command('file.combine', 'Combine Files…', { enabled: true }),
         command('file.reduceSize', 'Reduce File Size…', { enabled: false }),
         command('file.exportImages', 'Export Pages as Images…', { enabled: false }),

@@ -483,6 +483,7 @@ declare global {
       writeClipboardImage?: (png: ArrayBuffer) => Promise<boolean>;
       chooseFolder?: (title?: string) => Promise<string | null>;
       moveTabToNewWindow?: (docId: string) => Promise<boolean>;
+      openImages?: () => Promise<{ name: string; mimeType: string; data: ArrayBuffer }[] | null>;
       writeFilesToFolder?: (folder: string, files: { name: string; data: ArrayBuffer; ext?: 'pdf' | 'png' | 'jpg' }[]) => Promise<string[]>;
       recoveryWrite: (
         docId: string,

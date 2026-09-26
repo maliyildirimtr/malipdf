@@ -310,6 +310,9 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
               { commandId: 'page.removeCrop', label: 'Remove Crop from This Page', enabled: isEnabled('page.removeCrop'), icon: Crop },
               { commandId: 'file.reduceSize', label: 'Reduce File Size…', enabled: isEnabled('file.reduceSize'), icon: Minimize2 },
               { commandId: 'file.exportImages', label: 'Export Pages as Images…', enabled: isEnabled('file.exportImages'), icon: ImageIcon },
+              { commandId: 'file.fromImages', label: 'New PDF from Images…', enabled: isEnabled('file.fromImages'), icon: FileText },
+              { commandId: 'file.combine', label: 'Combine Files…', enabled: isEnabled('file.combine'), icon: FileText },
+              { commandId: 'page.split', label: 'Split Document…', enabled: isEnabled('page.split'), icon: FileText },
             ]}
           />
         </ToolbarGroup>

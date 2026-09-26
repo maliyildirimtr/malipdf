@@ -97,6 +97,8 @@ interface UIStore {
   settingsOpen: boolean;
   headerFooterOpen: boolean;
   compressOpen: boolean;
+  imagesToPdfOpen: boolean;
+  setImagesToPdfOpen: (open: boolean) => void;
   exportImagesOpen: boolean;
   setExportImagesOpen: (open: boolean) => void;
   setCompressOpen: (open: boolean) => void;
@@ -430,6 +432,8 @@ export const useUIStore = create<UIStore>()(
         setSplitView: (splitView) => set({ splitView }),
         exportImagesOpen: false,
         setExportImagesOpen: (exportImagesOpen) => set({ exportImagesOpen }),
+        imagesToPdfOpen: false,
+        setImagesToPdfOpen: (imagesToPdfOpen) => set({ imagesToPdfOpen }),
         compressOpen: false,
         setCompressOpen: (compressOpen) => set({ compressOpen }),
         headerFooterOpen: false,
