@@ -13,6 +13,7 @@ import type { PageLayout } from '../../types/documentSession';
 import AnnotationCanvas from '../AnnotationCanvas/AnnotationCanvas';
 import { SearchHighlights } from './SearchHighlights';
 import { PdfDetailLayer } from './PdfDetailLayer';
+import { FormLayer } from './FormLayer';
 import { useUIStore } from '../../store/uiStore';
 import styles from './PDFPage.module.css';
 
@@ -146,6 +147,7 @@ const PDFPage = React.memo<PDFPageProps>(function PDFPage({
               transform={transform}
               onInteractionPinChange={handlePinChange}
             />
+            {page && !isLoading && <FormLayer page={page} transform={transform} docId={docId} />}
           </>
         )}
 

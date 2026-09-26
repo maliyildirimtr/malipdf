@@ -3,6 +3,7 @@ import { useAnnotationStore } from '../store/annotationStore';
 import { buildAnnotationsMap, exportAnnotatedPdf, loadDefaultExportFonts } from '../pdf/annotationExporter';
 
 import { useAssetStore } from '../store/assetStore';
+import { useFormStore } from '../store/formStore';
 import { removeRecoverySnapshot } from '../document/autoSave';
 
 async function performSave(docId: string, saveAs: boolean): Promise<boolean> {
@@ -25,7 +26,7 @@ async function performSave(docId: string, saveAs: boolean): Promise<boolean> {
     const assets = useAssetStore.getState().getAssetsForDocument({ docId, instanceId: doc.instanceId });
     const needsTextFonts = [...annotations.values()].some((list) => list.some((a) => a.type === 'text'));
     const fonts = needsTextFonts ? await loadDefaultExportFonts() : undefined;
-    const exportResult = await exportAnnotatedPdf(doc.sourceData, annotations, { assets, fonts, editable: true, bookmarks: doc.bookmarks });
+    const exportResult = await exportAnnotatedPdf(doc.sourceData, annotations, { assets, fonts, editable: true, bookmarks: doc.bookmarks, formValues: useFormStore.getState().getValues(docId) });
 
     let filePath = doc.filePath;
     if (saveAs || !filePath) {

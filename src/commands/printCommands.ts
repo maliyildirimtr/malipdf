@@ -3,6 +3,7 @@
  * flattened exactly like Export PDF, each page is rendered to an image and the
  * system print dialog is opened for a print-only copy of those images.
  */
+import { useFormStore } from '../store/formStore';
 import { useDocumentStore } from '../store/documentStore';
 import { useAnnotationStore } from '../store/annotationStore';
 import { useAssetStore } from '../store/assetStore';
@@ -53,7 +54,7 @@ export async function printDocument(docId = useDocumentStore.getState().activeDo
     const hasText = [...annotations.values()].some((list) => list.some((a) => a.type === 'text' && !a.hidden));
     const fonts = hasText ? await loadDefaultExportFonts() : undefined;
     const assets = useAssetStore.getState().getAssetsForDocument({ docId, instanceId: doc.instanceId });
-    const { data } = await exportAnnotatedPdf(doc.sourceData, annotations, { assets, fonts });
+    const { data } = await exportAnnotatedPdf(doc.sourceData, annotations, { assets, fonts, formValues: useFormStore.getState().getValues(docId) });
 
     const pdf = await loadPdfDocument(data);
     try {

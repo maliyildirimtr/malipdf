@@ -6,6 +6,7 @@
  * This layer re-renders just the visible part of the page at full device
  * resolution on top of it — the same idea as pdf.js's own "detail view".
  */
+import { ANNOTATION_MODE_ENABLE_FORMS } from '../../pdf/renderer';
 import { useEffect, useRef } from 'react';
 import type { PDFPageProxy, RenderTask } from 'pdfjs-dist';
 import type { PageTransform } from '../../pdf/coordinateTransform';
@@ -47,6 +48,7 @@ export function PdfDetailLayer({ page, transform }: { page: PDFPageProxy; transf
       const current = page.render({
         canvasContext: ctx,
         viewport: transform.viewport,
+        annotationMode: ANNOTATION_MODE_ENABLE_FORMS,
         transform: [scaleOut, 0, 0, scaleOut, -next.x * scaleOut, -next.y * scaleOut],
       });
       task = current;

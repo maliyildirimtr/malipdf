@@ -7,6 +7,7 @@
  * that the document did not change meanwhile — one MUTATE_DOCUMENT_BYTES
  * history entry, so Undo/Redo restore pages AND annotations exactly.
  */
+import { useFormStore } from '../store/formStore';
 import { useDocumentStore } from '../store/documentStore';
 import { useAnnotationStore } from '../store/annotationStore';
 import { useHistoryStore, makeMutateDocumentBytesAction } from '../store/historyStore';
@@ -242,7 +243,7 @@ export async function buildPagesPdf(doc: DocumentState, pages: readonly number[]
   }
   const fonts = subsetAnnotations.some((a) => a.type === 'text') ? await loadDefaultExportFonts() : undefined;
   const assets = useAssetStore.getState().getAssetsForDocument(identityOf(doc));
-  return (await exportAnnotatedPdf(subsetBytes, annotationMap, { assets, fonts })).data;
+  return (await exportAnnotatedPdf(subsetBytes, annotationMap, { assets, fonts, formValues: useFormStore.getState().getValues(doc.id) })).data;
 }
 
 /** Save the selected pages (with their annotations flattened) as a new PDF. */

@@ -1,0 +1,81 @@
+.layer {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  pointer-events: none;
+}
+
+.layer > * {
+  position: absolute;
+  box-sizing: border-box;
+  margin: 0;
+  pointer-events: none;
+}
+
+.active > * {
+  pointer-events: auto;
+}
+
+.field {
+  padding: 0 3px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: rgba(0, 84, 255, 0.07);
+  color: #000000;
+  font-family: Helvetica, Arial, sans-serif;
+  line-height: 1.15;
+  outline: none;
+  resize: none;
+}
+
+.active .field:hover {
+  border-color: rgba(0, 84, 255, 0.45);
+}
+
+.field:focus {
+  background: rgba(255, 255, 255, 0.95);
+  border-color: #0a84ff;
+  box-shadow: 0 0 0 2px rgba(10, 132, 255, 0.25);
+}
+
+.multiLine {
+  padding-top: 2px;
+  overflow: auto;
+}
+
+.check {
+  appearance: none;
+  -webkit-appearance: none;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(0, 0, 0, 0.35);
+  border-radius: 2px;
+  background: rgba(0, 84, 255, 0.07);
+  cursor: pointer;
+}
+
+.check:checked::after {
+  content: '';
+  width: 55%;
+  height: 30%;
+  border-left: 2px solid #000000;
+  border-bottom: 2px solid #000000;
+  transform: translateY(-15%) rotate(-45deg);
+}
+
+.radio {
+  border-radius: 50%;
+}
+
+.radio:checked::after {
+  width: 50%;
+  height: 50%;
+  border: 0;
+  border-radius: 50%;
+  background: #000000;
+  transform: none;
+}
+
+.check:focus-visible {
+  outline: 2px solid #0a84ff;
+}

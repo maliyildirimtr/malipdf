@@ -75,6 +75,7 @@ import { appendBookmarksToOutline } from './outlineWriter';
 import { highlightShape, penShape, type InkShape, type PathCommand } from './inkGeometry';
 import { markupShape } from './textSelection';
 import { addNoteAnnotation } from './noteExport';
+import { applyFormValues, type FormValue } from './formFields';
 import { labelAnchor, measureLabel, measureTicks, MEASURE_FONT } from './measure';
 
 export type ImageAssetResolver =
@@ -93,6 +94,8 @@ export interface ExportAnnotatedPdfOptions {
    * the file with editable annotations (see editableData.ts).
    */
   editable?: boolean;
+  /** Values typed into the PDF's form fields (field name → value). */
+  formValues?: ReadonlyMap<string, FormValue>;
   /** User bookmarks, written into the PDF's table of contents. */
   bookmarks?: readonly Bookmark[];
 }
@@ -944,6 +947,16 @@ export async function exportAnnotatedPdf(
     }
   }
 
+  if (options?.formValues?.size) {
+    await applyFormValues(pdfDoc, options.formValues, async () => {
+      const fonts = options.fonts ?? await loadDefaultExportFonts();
+      if (!fonts) return undefined;
+      pdfDoc.registerFontkit(fonts.fontkit);
+      // Whole font: other apps may need any glyph when the field is edited there.
+      return pdfDoc.embedFont(await fonts.load('sans', 'regular'), { subset: false });
+    });
+  }
+
   const editableCapture = options?.editable ? captureEditableState(pdfDoc) : null;
   let totalAnnotationCount = 0;
   // Deduplicate embedded images across all annotations
@@ -1043,7 +1056,11 @@ export async function exportAnnotatedPdf(
   }
   // Editable saves keep the catalog outside object streams so reopening can
   // detect MaliPDF data with a cheap byte search.
-  const pdfBytes = await pdfDoc.save(keepEditable ? { useObjectStreams: false } : undefined);
+  // Field appearances were already made above (with a Unicode font if needed).
+  const pdfBytes = await pdfDoc.save({
+    ...(keepEditable ? { useObjectStreams: false } : {}),
+    ...(options?.formValues?.size ? { updateFieldAppearances: false } : {}),
+  });
   return {
     data: pdfBytes,
     pageCount: pages.length,

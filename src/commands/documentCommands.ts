@@ -1,3 +1,4 @@
+import { useFormStore } from '../store/formStore';
 import { closeDocument as closeManagedDocument } from '../pdf/documentManager';
 import { useAnnotationStore } from '../store/annotationStore';
 import { documentSessionStore } from '../store/documentSessionStore';
@@ -40,6 +41,7 @@ export async function closeDocumentById(docId: string): Promise<boolean> {
   documentSessionStore.getState().removeSession(identity);
   documents.closeDocument(docId);
   useAnnotationStore.getState().removeDocument(docId);
+  useFormStore.getState().clearDocument(docId);
   useHistoryStore.getState().removeDocument(docId);
   useSelectionStore.getState().removeDocument(identity);
   useAssetStore.getState().removeDocument(identity);
@@ -56,6 +58,7 @@ function forceCloseDocumentById(docId: string) {
   documentSessionStore.getState().removeSession(identity);
   documents.closeDocument(docId);
   useAnnotationStore.getState().removeDocument(docId);
+  useFormStore.getState().clearDocument(docId);
   useHistoryStore.getState().removeDocument(docId);
   useSelectionStore.getState().removeDocument(identity);
   useAssetStore.getState().removeDocument(identity);

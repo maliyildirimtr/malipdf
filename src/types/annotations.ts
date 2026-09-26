@@ -382,7 +382,8 @@ export type HistoryActionType =
   | 'RESIZE_ANNOTATION'
   | 'BATCH_ACTION'
   | 'MUTATE_DOCUMENT_BYTES'
-  | 'SET_BOOKMARKS';
+  | 'SET_BOOKMARKS'
+  | 'SET_FORM_VALUE';
 
 export interface HistoryAction {
   type: HistoryActionType;
@@ -413,6 +414,11 @@ export interface HistoryAction {
   // For SET_BOOKMARKS (and MUTATE_DOCUMENT_BYTES that moved pages)
   beforeBookmarks?: Bookmark[];
   afterBookmarks?: Bookmark[];
+
+  // For SET_FORM_VALUE (undefined = the value stored in the PDF)
+  fieldName?: string;
+  beforeValue?: string | boolean;
+  afterValue?: string | boolean;
 
   beforeStateId: string;
   afterStateId: string;

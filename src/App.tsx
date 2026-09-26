@@ -16,6 +16,7 @@
  * - Export status toast notifications
  */
 
+import { useFormStore } from './store/formStore';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { TopBar } from './components/TopBar/TopBar';
 import { MainRibbon } from './components/MainRibbon/MainRibbon';
@@ -208,7 +209,7 @@ export default function App() {
       const assets = useAssetStore.getState().getAssetsForDocument({ docId: activeDoc.id, instanceId: activeDoc.instanceId });
       const hasText = [...docAnnotState.pages.values()].some((page) => page.annotations.some((a) => a.type === 'text'));
       const fonts = hasText ? await loadDefaultExportFonts() : undefined;
-      const saved = await exportAndSave(activeDoc.sourceData, docAnnotState, baseName, { assets, fonts, bookmarks: activeDoc.bookmarks });
+      const saved = await exportAndSave(activeDoc.sourceData, docAnnotState, baseName, { assets, fonts, bookmarks: activeDoc.bookmarks, formValues: useFormStore.getState().getValues(activeDoc.id) });
       if (saved) {
         showToast('success', 'PDF exported successfully.');
       }

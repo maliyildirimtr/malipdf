@@ -126,8 +126,12 @@ export function renderPage(options: RenderOptions): RenderTask {
   ctx.scale(dpr, dpr);
   ctx.clearRect(0, 0, cssWidth, cssHeight);
 
-  return page.render({ canvasContext: ctx, viewport });
+  // Form fields are drawn by the FormLayer (live values), not on the canvas.
+  return page.render({ canvasContext: ctx, viewport, annotationMode: ANNOTATION_MODE_ENABLE_FORMS });
 }
+
+/** pdf.js AnnotationMode.ENABLE_FORMS. */
+export const ANNOTATION_MODE_ENABLE_FORMS = 2;
 
 // ─── Thumbnail rendering ──────────────────────────────────────────────────────
 

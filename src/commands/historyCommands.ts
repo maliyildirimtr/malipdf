@@ -1,3 +1,4 @@
+import { useFormStore } from '../store/formStore';
 import { useAnnotationStore } from '../store/annotationStore';
 import { useHistoryStore } from '../store/historyStore';
 import type { Annotation, HistoryAction } from '../types/annotations';
@@ -115,6 +116,9 @@ function applyUndoAction(
     case 'SET_BOOKMARKS':
       if (action.beforeBookmarks) document.updateDocument(action.docId, { bookmarks: action.beforeBookmarks });
       return;
+    case 'SET_FORM_VALUE':
+      if (action.fieldName) useFormStore.getState().setValue(action.docId, action.fieldName, action.beforeValue);
+      return;
     case 'BATCH_ACTION':
       if (action.actions) {
         // Undo batch actions in reverse order
@@ -182,6 +186,9 @@ function applyRedoAction(
       return;
     case 'SET_BOOKMARKS':
       if (action.afterBookmarks) document.updateDocument(action.docId, { bookmarks: action.afterBookmarks });
+      return;
+    case 'SET_FORM_VALUE':
+      if (action.fieldName) useFormStore.getState().setValue(action.docId, action.fieldName, action.afterValue);
       return;
     case 'BATCH_ACTION':
       if (action.actions) {
