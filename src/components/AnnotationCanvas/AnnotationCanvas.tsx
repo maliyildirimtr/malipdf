@@ -74,9 +74,9 @@ import {
   renderFreeform,
   isMultiplyAnnotation,
 } from '../../pdf/annotationRenderer';
-import { simplifyInkPoints } from '../../pdf/inkGeometry';
+import { simplifyInkPoints, stabilizePoints } from '../../pdf/inkGeometry';
 import { annotationsInLasso } from '../../pdf/lassoSelect';
-import { recognizeShape } from '../../pdf/shapeRecognizer';
+import { recognizeShape, type RecognizedShape } from '../../pdf/shapeRecognizer';
 import { penButtonTool } from '../../utils/penButtons';
 import { computeLayerRegion, regionOutputScale, type LayerRegion } from '../../pdf/layerRegion';
 import { projectOntoEdge, snapEdgeFor, useRulerStore, type EdgeLine } from '../../store/rulerStore';
@@ -106,6 +106,7 @@ import { errorMessage, notifyUser } from '../../utils/notify';
 import { isEditableTarget } from '../../commands/keyboardShortcuts';
 import { loadPageTextLayout, peekPageTextLayout } from '../../pdf/pageTextLayout';
 import { addLaserPoint, endLaserTrail, startLaserTrail } from '../Laser/laserTrail';
+import { ERASER_CURSOR, HIGHLIGHTER_CURSOR, LASER_CURSOR, PEN_CURSOR } from './toolCursors';
 import { selectText, type TextSelection } from '../../pdf/textSelection';
 import type { TextMarkupAnnotation } from '../../types/annotations';
 import { autoSizeTextBox, canvasMeasure, cssFont, LINE_HEIGHT, MAX_AUTO_TEXT_WIDTH, TEXT_PADDING } from '../../pdf/textLayout';
@@ -130,6 +131,7 @@ type InteractionMode =
   | 'lassoDrag'     // free-form lasso selection
   | 'markupDrag'    // text highlight / underline / strikethrough selection
   | 'laser'         // laser pointer (not saved)
+  | 'shapeHold'     // pen held still: the stroke became a shape that follows the pen
   | 'moving'        // moving selected annotations
   | 'resizing';     // resizing selected annotation
 
@@ -159,12 +161,12 @@ function getCursor(tool: ToolType, mode: InteractionMode): string {
     case 'hand':        return 'grab';
     case 'select':      return 'default';
     case 'lasso':       return 'crosshair';
-    case 'pen':         return 'crosshair';
-    case 'highlighter': return 'crosshair';
-    case 'eraser':      return 'cell';
+    case 'pen':         return PEN_CURSOR;
+    case 'highlighter': return HIGHLIGHTER_CURSOR;
+    case 'eraser':      return ERASER_CURSOR;
     case 'text':        return 'text';
     case 'textMarkup':  return 'text';
-    case 'laserPointer': return 'crosshair';
+    case 'laserPointer': return LASER_CURSOR;
     case 'freeform':    return 'crosshair';
     case 'line':
     case 'arrow':
@@ -221,13 +223,61 @@ function shapeFromInk(stroke: Extract<Annotation, { type: 'stroke' }>): Annotati
   if (shape.kind === 'polygon') {
     return { ...common, type: 'freeform', points: shape.points, strokeWidth: stroke.width, fillColor: 'transparent' };
   }
-  const [startPoint, endPoint] = shape.kind === 'line'
+  const [startPoint, endPoint] = shape.kind === 'line' || shape.kind === 'arrow'
     ? [shape.start, shape.end]
     : [{ x: shape.x, y: shape.y }, { x: shape.x + shape.width, y: shape.y + shape.height }];
   return {
     ...common, type: 'shape', shapeKind: shape.kind,
     startPoint, endPoint, strokeWidth: stroke.width, fillColor: 'transparent',
   };
+}
+
+/** Pen held still this long (while drawing) turns the stroke into a shape. */
+const HOLD_TO_SHAPE_MS = 420;
+/** Moving more than this (screen px) restarts the hold timer. */
+const HOLD_TO_SHAPE_SLOP_PX = 10;
+
+/**
+ * Hold-to-shape: the recognized shape stretches with the pen until it lifts.
+ * Lines and arrows move their end, rectangles and ellipses their far corner,
+ * polygons scale around their centre.
+ */
+function stretchShape(shape: RecognizedShape, snapAt: PdfPoint, pointer: PdfPoint): RecognizedShape {
+  if (shape.kind === 'line' || shape.kind === 'arrow') return { ...shape, end: { ...pointer } };
+  if (shape.kind === 'rectangle' || shape.kind === 'ellipse') {
+    // Keep the corner farthest from where the pen was when the shape appeared.
+    const corners = [
+      { x: shape.x, y: shape.y }, { x: shape.x + shape.width, y: shape.y },
+      { x: shape.x, y: shape.y + shape.height }, { x: shape.x + shape.width, y: shape.y + shape.height },
+    ];
+    const anchor = corners.reduce((a, b) => (Math.hypot(b.x - snapAt.x, b.y - snapAt.y) > Math.hypot(a.x - snapAt.x, a.y - snapAt.y) ? b : a));
+    return {
+      ...shape,
+      x: Math.min(anchor.x, pointer.x), y: Math.min(anchor.y, pointer.y),
+      width: Math.abs(pointer.x - anchor.x), height: Math.abs(pointer.y - anchor.y),
+    };
+  }
+  const cx = shape.points.reduce((a, p) => a + p.x, 0) / shape.points.length;
+  const cy = shape.points.reduce((a, p) => a + p.y, 0) / shape.points.length;
+  const k = Math.max(0.2, Math.hypot(pointer.x - cx, pointer.y - cy) / (Math.hypot(snapAt.x - cx, snapAt.y - cy) || 1));
+  return { kind: 'polygon', points: shape.points.map((p) => ({ x: cx + (p.x - cx) * k, y: cy + (p.y - cy) * k })) };
+}
+
+function annotationFromShape(
+  shape: RecognizedShape,
+  base: { id: string; pageIndex: number; color: string; opacity: number; width: number; createdAt: number },
+): Annotation {
+  const common = {
+    id: base.id, pageIndex: base.pageIndex, color: base.color, opacity: base.opacity,
+    locked: false, createdAt: base.createdAt, updatedAt: base.createdAt,
+  };
+  if (shape.kind === 'polygon') {
+    return { ...common, type: 'freeform', points: shape.points, strokeWidth: base.width, fillColor: 'transparent' };
+  }
+  const [startPoint, endPoint] = shape.kind === 'line' || shape.kind === 'arrow'
+    ? [{ x: shape.start.x, y: shape.start.y }, { x: shape.end.x, y: shape.end.y }]
+    : [{ x: shape.x, y: shape.y }, { x: shape.x + shape.width, y: shape.y + shape.height }];
+  return { ...common, type: 'shape', shapeKind: shape.kind, startPoint, endPoint, strokeWidth: base.width, fillColor: 'transparent' };
 }
 
 /** Points closer than this (screen px) to the drawn line are dropped on pen-up. */
@@ -253,6 +303,9 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
   // Interaction refs (no React re-renders during gestures)
   const mode             = useRef<InteractionMode>('idle');
   const activePoints     = useRef<InputPoint[]>([]);
+  const holdTimer        = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const holdAnchor       = useRef<{ x: number; y: number } | null>(null);
+  const holdShape        = useRef<{ base: RecognizedShape; current: RecognizedShape; snapAt: PdfPoint } | null>(null);
   const markupDrag       = useRef<{ from: PdfPoint; to: PdfPoint; selection: TextSelection | null } | null>(null);
   const shapeStart       = useRef<{ screenX: number; screenY: number; pdfX: number; pdfY: number } | null>(null);
   const selectionStart   = useRef<{ screenX: number; screenY: number } | null>(null);
@@ -680,6 +733,9 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
         dpr,
         toolOptions.shape.borderStyle,
       );
+    } else if (m === 'shapeHold') {
+      const ann = holdShapeAnnotation('preview');
+      if (ann) renderAnnotations(ctx, [ann], transform, dpr);
     } else if (m === 'markupDrag') {
       const selection = markupDrag.current?.selection;
       if (selection) renderAnnotations(ctx, [markupFromSelection(selection, 'preview')], transform, dpr);
@@ -772,7 +828,8 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
   function buildInkAnnotation(screenPts: InputPoint[], tool: ToolType | null, simplify = false): Annotation | null {
     const isHighlight = tool === 'highlighter';
     if (screenPts.length < (isHighlight ? 2 : 1)) return null;
-    let pdfPts = screenPointsToPdf(screenPts, transform);
+    const stabilized = isHighlight ? screenPts : stabilizePoints(screenPts, toolOptions.pen.stabilizer);
+    let pdfPts = screenPointsToPdf(stabilized, transform);
     const now = Date.now();
     if (isHighlight) {
       const options = toolOptions.highlighter;
@@ -893,10 +950,59 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
 
   // Stop a running replay when the page goes away.
   useEffect(() => () => {
+    if (holdTimer.current) clearTimeout(holdTimer.current);
     const replay = replayRef.current;
     if (replay?.raf != null) cancelAnimationFrame(replay.raf);
     replayRef.current = null;
   }, []);
+
+  // ── Hold to shape ───────────────────────────────────────────────────────
+
+  function clearHoldTimer() {
+    if (holdTimer.current) clearTimeout(holdTimer.current);
+    holdTimer.current = null;
+  }
+
+  /** (Re)start the hold timer when the pen has moved away from where it rested. */
+  function armHoldToShape(x: number, y: number, force = false) {
+    if (gestureToolRef.current !== 'pen' || toolOptions.pen.holdToShape === false) return;
+    const anchor = holdAnchor.current;
+    if (!force && anchor && Math.hypot(x - anchor.x, y - anchor.y) <= HOLD_TO_SHAPE_SLOP_PX) return;
+    holdAnchor.current = { x, y };
+    clearHoldTimer();
+    holdTimer.current = setTimeout(snapHeldStroke, HOLD_TO_SHAPE_MS);
+  }
+
+  function snapHeldStroke() {
+    holdTimer.current = null;
+    if (mode.current !== 'drawing' || gestureToolRef.current !== 'pen') return;
+    const pts = activePoints.current;
+    if (pts.length < 5) return;
+    const ink = buildInkAnnotation(pts, 'pen');
+    if (!ink || ink.type !== 'stroke') return;
+    const shape = recognizeShape(ink.points);
+    if (!shape) return;
+    const last = pts[pts.length - 1];
+    holdShape.current = { base: shape, current: shape, snapAt: screenToPdfPoint(last.x, last.y) };
+    mode.current = 'shapeHold';
+    rulerSnapRef.current = null;
+    schedulePreviewRender();
+  }
+
+  function holdShapeAnnotation(id: string): Annotation | null {
+    const held = holdShape.current;
+    if (!held) return null;
+    const options = toolOptions.pen;
+    return annotationFromShape(held.current, { id, pageIndex, color: options.color, opacity: options.opacity, width: options.width, createdAt: Date.now() });
+  }
+
+  function commitHeldShape() {
+    const ann = holdShapeAnnotation(nanoid());
+    holdShape.current = null;
+    if (!ann) return;
+    addAnnotation(docId, ann);
+    pushHistory(makeAddAction(docId, ann));
+  }
 
   // ── Text markup ─────────────────────────────────────────────────────────
 
@@ -953,7 +1059,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
       return;
     }
     // A stroke whose pointerup never arrived: keep it before starting anew.
-    if (mode.current === 'drawing' && e.pointerType !== 'touch') finishInkIfDrawing();
+    if ((mode.current === 'drawing' || mode.current === 'shapeHold') && e.pointerType !== 'touch') finishInkIfDrawing();
     // Pen hardware: the eraser end erases, the barrel button lassoes.
     const penButton = penButtonTool(e);
     if (e.button !== 0 && !penButton) return; // left button (or pen tip) only
@@ -1004,6 +1110,8 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
       rulerSnapRef.current = edge ? { edge, offset: inkWidth / 2 } : null;
       const start = toLocalInkPoint(e.clientX, e.clientY);
       activePoints.current = [{ x: start.x, y: start.y, pressure: e.pressure > 0 ? e.pressure : 0.5, timestamp: e.timeStamp }];
+      holdShape.current = null;
+      armHoldToShape(start.x, start.y, true);
       schedulePreviewRender();
       return;
     }
@@ -1274,7 +1382,18 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
         const local = toLocalInkPoint(ev.clientX, ev.clientY);
         return { x: local.x, y: local.y, pressure: ev.pressure > 0 ? ev.pressure : 0.5, timestamp: ev.timeStamp };
       });
+      const lastPoint = activePoints.current[activePoints.current.length - 1];
+      armHoldToShape(lastPoint.x, lastPoint.y);
       schedulePreviewRender();
+      return;
+    }
+
+    if (m === 'shapeHold') {
+      const held = holdShape.current;
+      if (held) {
+        held.current = stretchShape(held.base, held.snapAt, pdfPt);
+        schedulePreviewRender();
+      }
       return;
     }
 
@@ -1373,7 +1492,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     if (activePointerIdRef.current !== null && e.pointerId !== activePointerIdRef.current) {
       // Some tablet drivers report the pen lift with another pointer id
       // (e.g. as the mouse). Still end the stroke instead of losing it.
-      if (mode.current !== 'drawing' || e.pointerType === 'touch') return;
+      if ((mode.current !== 'drawing' && mode.current !== 'shapeHold') || e.pointerType === 'touch') return;
       finishInkIfDrawing();
       return;
     }
@@ -1389,8 +1508,11 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
       clearDrawingCanvas();
     }
 
+    clearHoldTimer();
     if (m === 'drawing') {
       commitStroke();
+    } else if (m === 'shapeHold') {
+      commitHeldShape();
     } else if (m === 'erasing') {
       commitEraser();
     } else if (m === 'shapeDrawing') {
@@ -1444,6 +1566,23 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
    * lost capture, a missing pointerup, or a tool switch.
    */
   function finishInkIfDrawing(): boolean {
+    clearHoldTimer();
+    if (mode.current === 'shapeHold') {
+      const pointerId = activePointerIdRef.current;
+      if (pointerId !== null && interactionRef.current?.hasPointerCapture(pointerId)) {
+        interactionRef.current.releasePointerCapture(pointerId);
+      }
+      activePointerIdRef.current = null;
+      clearDrawingCanvas();
+      commitHeldShape();
+      mode.current = 'idle';
+      activePoints.current = [];
+      gestureToolRef.current = null;
+      setIsDrawing(textEditingRef.current);
+      if (!textEditingRef.current) onInteractionPinChange?.(false);
+      redrawAnnotationLayer();
+      return true;
+    }
     if (mode.current !== 'drawing' || activePoints.current.length === 0) return false;
     const pointerId = activePointerIdRef.current;
     if (pointerId !== null && interactionRef.current?.hasPointerCapture(pointerId)) {
@@ -1895,6 +2034,8 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
 
     activePointerIdRef.current = null;
     if (mode.current === 'laser') endLaserTrail();
+    clearHoldTimer();
+    holdShape.current = null;
     mode.current = 'idle';
     markupDrag.current = null;
     activePoints.current = [];

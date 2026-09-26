@@ -14,6 +14,7 @@ export type ToolColorFamily = 'pen' | 'highlighter' | 'text' | 'shape';
 export type FocusShapeTool = Extract<ToolType, 'line' | 'arrow' | 'rectangle' | 'ellipse'>;
 
 import { normalizeColor } from '../constants/palette';
+import { DEFAULT_LASER_OPTIONS, type LaserOptions } from '../components/Laser/laserTrail';
 
 const SHAPE_TOOLS: readonly FocusShapeTool[] = ['line', 'arrow', 'rectangle', 'ellipse'];
 
@@ -33,6 +34,8 @@ const defaultToolOptions: ToolOptions = {
     opacity: 1,
     smooth: true,
     pressureSensitive: true,
+    stabilizer: 'basic',
+    holdToShape: true,
   },
   highlighter: {
     color: '#FFEB3B',
@@ -152,6 +155,10 @@ interface UIStore {
   setNotePageDialogOpen: (open: boolean) => void;
   presentationOpen: boolean;
   setPresentationOpen: (open: boolean) => void;
+
+  /** Laser pointer look and fade (MaliPen style). */
+  laserOptions: LaserOptions;
+  updateLaserOptions: (patch: Partial<LaserOptions>) => void;
 
   /** Last choice in Insert Note Page (background, line spacing, page size). */
   notePageStyle: NotePageStyle;
@@ -369,6 +376,9 @@ export const useUIStore = create<UIStore>()(
         presentationOpen: false,
         setPresentationOpen: (open) => set({ presentationOpen: open }),
 
+        laserOptions: DEFAULT_LASER_OPTIONS,
+        updateLaserOptions: (patch) => set((state) => ({ laserOptions: { ...state.laserOptions, ...patch } })),
+
         notePageStyle: DEFAULT_NOTE_PAGE_STYLE,
         setNotePageStyle: (style) => set((state) => ({ notePageStyle: { ...state.notePageStyle, ...style } })),
       }),
@@ -418,6 +428,7 @@ export const useUIStore = create<UIStore>()(
           shapeStyles: state.shapeStyles,
           hiddenToolbarTools: state.hiddenToolbarTools,
           notePageStyle: state.notePageStyle,
+          laserOptions: state.laserOptions,
         }),
       },
     ),

@@ -1,18 +1,24 @@
 /**
- * Laser pointer trails: short-lived red lines in window (client) coordinates.
- * Nothing here is saved; each trail fades out shortly after the pointer lifts.
+ * Laser pointer trails: short-lived lines in window (client) coordinates,
+ * never saved. Works like MaliPen's laser: each trail is one smooth glowing
+ * line that fades out after the pen lifts.
+ *
+ * - 'individual': every line fades on its own, `durationMs` after it ends.
+ * - 'group': lines stay while you keep pointing and all fade together
+ *   `durationMs` after the last one ends.
  */
 
-export interface LaserPoint { x: number; y: number; t: number }
+export interface LaserPoint { x: number; y: number }
 export interface LaserTrail { points: LaserPoint[]; endedAt: number | null }
+export type LaserMode = 'individual' | 'group';
+export interface LaserOptions { mode: LaserMode; durationMs: number; color: string; width: number }
 
-/** Points older than this fade from the tail while drawing. */
-export const LASER_TAIL_MS = 700;
-/** How long a finished trail takes to fade out. */
-export const LASER_FADE_MS = 450;
+export const DEFAULT_LASER_OPTIONS: LaserOptions = { mode: 'individual', durationMs: 2000, color: '#ff2d2d', width: 4 };
 
 const trails: LaserTrail[] = [];
 const listeners = new Set<() => void>();
+/** Last time a laser line was being drawn (group mode fades from here). */
+let lastActivity = 0;
 
 function notify() {
   listeners.forEach((listener) => listener());
@@ -27,26 +33,31 @@ export function laserTrails(): readonly LaserTrail[] {
   return trails;
 }
 
-export function startLaserTrail(x: number, y: number, t = performance.now()): void {
-  endLaserTrail(t);
-  trails.push({ points: [{ x, y, t }], endedAt: null });
+export function startLaserTrail(x: number, y: number, now = performance.now()): void {
+  endLaserTrail(now);
+  trails.push({ points: [{ x, y }], endedAt: null });
+  lastActivity = now;
   notify();
 }
 
-export function addLaserPoint(x: number, y: number, t = performance.now()): void {
+export function addLaserPoint(x: number, y: number, now = performance.now()): void {
   const trail = trails[trails.length - 1];
   if (!trail || trail.endedAt !== null) {
-    startLaserTrail(x, y, t);
+    startLaserTrail(x, y, now);
     return;
   }
-  trail.points.push({ x, y, t });
+  const last = trail.points[trail.points.length - 1];
+  if (last && Math.abs(last.x - x) < 0.5 && Math.abs(last.y - y) < 0.5) return;
+  trail.points.push({ x, y });
+  lastActivity = now;
   notify();
 }
 
-export function endLaserTrail(t = performance.now()): void {
+export function endLaserTrail(now = performance.now()): void {
   const trail = trails[trails.length - 1];
   if (trail && trail.endedAt === null) {
-    trail.endedAt = t;
+    trail.endedAt = now;
+    lastActivity = now;
     notify();
   }
 }
@@ -56,24 +67,35 @@ export function clearLaser(): void {
   notify();
 }
 
-/**
- * Drop what has fully faded. Returns true while something is still visible
- * (the overlay keeps animating until then).
- */
-export function pruneLaser(now: number): boolean {
+function isDrawing(): boolean {
+  return trails.some((t) => t.endedAt === null);
+}
+
+/** Opacity of a trail at `now` (1 while drawing, then fading to 0). */
+export function laserAlpha(trail: LaserTrail, now: number, options: LaserOptions): number {
+  const duration = Math.max(100, options.durationMs);
+  if (options.mode === 'group') {
+    if (isDrawing()) return 1;
+    return fade((now - lastActivity) / duration);
+  }
+  if (trail.endedAt === null) return 1;
+  return fade((now - trail.endedAt) / duration);
+}
+
+/** Stays bright for most of its time, then eases out. */
+function fade(progress: number): number {
+  if (progress <= 0) return 1;
+  if (progress >= 1) return 0;
+  const hold = 0.35;
+  if (progress < hold) return 1;
+  const t = (progress - hold) / (1 - hold);
+  return 1 - t * t * (3 - 2 * t);
+}
+
+/** Drop what has fully faded. Returns true while something is still visible. */
+export function pruneLaser(now: number, options: LaserOptions): boolean {
   for (let i = trails.length - 1; i >= 0; i--) {
-    const trail = trails[i];
-    if (trail.endedAt !== null && now - trail.endedAt > LASER_FADE_MS) {
-      trails.splice(i, 1);
-      continue;
-    }
-    // Trim the tail of a trail that is still being drawn.
-    if (trail.endedAt === null) {
-      const cutoff = now - LASER_TAIL_MS;
-      let drop = 0;
-      while (drop < trail.points.length - 1 && trail.points[drop].t < cutoff) drop++;
-      if (drop > 0) trail.points.splice(0, drop);
-    }
+    if (laserAlpha(trails[i], now, options) <= 0) trails.splice(i, 1);
   }
   return trails.length > 0;
 }

@@ -14,6 +14,7 @@ import { isMultiplyAnnotation, renderAnnotations } from '../../pdf/annotationRen
 import type { Annotation } from '../../types/annotations';
 import { addLaserPoint, clearLaser, endLaserTrail, startLaserTrail } from '../Laser/laserTrail';
 import { LaserOverlay } from '../Laser/LaserOverlay';
+import { LASER_CURSOR } from '../AnnotationCanvas/toolCursors';
 import styles from './PresentationView.module.css';
 
 const EMPTY: Annotation[] = [];
@@ -210,6 +211,7 @@ function PresentationSurface() {
     <div
       ref={rootRef}
       className={`${styles.root} ${controlsVisible ? '' : styles.hideCursor}`}
+      style={controlsVisible ? { cursor: LASER_CURSOR } : undefined}
       role="dialog"
       aria-label="Presentation"
       onPointerDown={onPointerDown}

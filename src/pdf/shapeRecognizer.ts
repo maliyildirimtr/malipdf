@@ -7,6 +7,7 @@ import type { PdfPoint } from '../types/annotations';
 
 export type RecognizedShape =
   | { kind: 'line'; start: PdfPoint; end: PdfPoint }
+  | { kind: 'arrow'; start: PdfPoint; end: PdfPoint }
   | { kind: 'ellipse'; x: number; y: number; width: number; height: number }
   | { kind: 'rectangle'; x: number; y: number; width: number; height: number }
   | { kind: 'polygon'; points: PdfPoint[] };
@@ -84,8 +85,8 @@ export function recognizeShape(points: readonly PdfPoint[]): RecognizedShape | n
     return null; // an open curve stays ink
   }
 
-  // Everything else must be a closed loop.
-  if (gap > Math.max(diagonal * 0.2, 6)) return null;
+  // Everything else must be a closed loop — or an arrow drawn in one go.
+  if (gap > Math.max(diagonal * 0.2, 6)) return recognizeArrow(points);
 
   // ── Ellipse / circle ──
   const cx = minX + width / 2;
@@ -127,4 +128,37 @@ export function recognizeShape(points: readonly PdfPoint[]): RecognizedShape | n
     if (axisAligned) return { kind: 'rectangle', x: minX, y: minY, width, height };
   }
   return { kind: 'polygon', points: corners.map((c) => ({ x: c.x, y: c.y })) };
+}
+
+/**
+ * An arrow drawn in one stroke: a straight shaft to the tip (the point
+ * farthest from the start), then a short head drawn back from the tip.
+ */
+function recognizeArrow(points: readonly PdfPoint[]): RecognizedShape | null {
+  const first = points[0];
+  let tipIndex = 0;
+  let far = 0;
+  points.forEach((p, i) => {
+    const d = dist(first, p);
+    if (d > far) { far = d; tipIndex = i; }
+  });
+  const tip = points[tipIndex];
+  if (far < 20 || tipIndex < 2 || tipIndex >= points.length - 2) return null;
+
+  // The shaft must be straight.
+  const shaft = points.slice(0, tipIndex + 1);
+  const deviation = Math.max(...shaft.map((p) => distToSegment(p, first, tip)));
+  if (deviation > Math.max(2, far * 0.06)) return null;
+
+  // The head: short compared to the shaft, and pointing back from the tip.
+  const dir = { x: (tip.x - first.x) / far, y: (tip.y - first.y) / far };
+  let headLength = 0;
+  let back = 0;
+  for (let i = tipIndex + 1; i < points.length; i++) {
+    headLength += dist(points[i - 1], points[i]);
+    back = Math.max(back, (tip.x - points[i].x) * dir.x + (tip.y - points[i].y) * dir.y);
+  }
+  if (headLength < far * 0.08 || headLength > far * 0.9) return null;
+  if (back < Math.max(3, far * 0.04)) return null;
+  return { kind: 'arrow', start: { ...first }, end: { ...tip } };
 }

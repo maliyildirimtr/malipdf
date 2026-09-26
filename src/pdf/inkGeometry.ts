@@ -253,3 +253,44 @@ function distance3(p: InputPoint, a: InputPoint, b: InputPoint, k: number): numb
   const t = lengthSq === 0 ? 0 : Math.max(0, Math.min(1, (wx * vx + wy * vy + wz * vz) / lengthSq));
   return Math.hypot(wx - t * vx, wy - t * vy, wz - t * vz);
 }
+
+// ─── Stabilizer ───────────────────────────────────────────────────────────────
+
+export type InkStabilizer = 'off' | 'basic' | 'soft' | 'silky' | 'fluid';
+
+/** Streamline amount per level (same scale as perfect-freehand / MaliPen). */
+export const STABILIZER_STREAMLINE: Record<InkStabilizer, number> = {
+  off: 0, basic: 0.25, soft: 0.5, silky: 0.75, fluid: 0.9,
+};
+
+/**
+ * Pulls each input point part of the way towards the previous (already
+ * stabilized) one, so the line follows the hand smoothly instead of every
+ * tremor. The real last point is kept, so the stroke ends where the pen
+ * lifted. Pressure and time come from the input point.
+ */
+export function stabilizePoints(points: readonly InputPoint[], level: InkStabilizer | undefined): InputPoint[] {
+  const streamline = STABILIZER_STREAMLINE[level ?? 'off'] ?? 0;
+  if (streamline <= 0 || points.length < 3) return points.slice();
+  const t = 0.15 + (1 - streamline) * 0.85;
+  const out: InputPoint[] = [points[0]];
+  let prev = points[0];
+  for (let i = 1; i < points.length - 1; i++) {
+    const p = points[i];
+    const next = { ...p, x: prev.x + (p.x - prev.x) * t, y: prev.y + (p.y - prev.y) * t };
+    out.push(next);
+    prev = next;
+  }
+  // Catch up to where the pen actually is.
+  const last = points[points.length - 1];
+  const gap = Math.hypot(last.x - prev.x, last.y - prev.y);
+  if (gap > 0.5) {
+    const steps = Math.min(8, Math.ceil(gap / 2));
+    for (let s = 1; s < steps; s++) {
+      const k = s / steps;
+      out.push({ ...last, x: prev.x + (last.x - prev.x) * k, y: prev.y + (last.y - prev.y) * k });
+    }
+  }
+  out.push(last);
+  return out;
+}

@@ -204,6 +204,10 @@ export interface PenOptions {
   pressureSensitive: boolean;
   /** Ink to Shape: clean up hand-drawn lines, circles, rectangles, polygons. */
   inkToShape?: boolean;
+  /** Smooths the line so it follows the hand, not every tremor (MaliPen levels). */
+  stabilizer?: 'off' | 'basic' | 'soft' | 'silky' | 'fluid';
+  /** Hold the pen still for a moment while drawing to turn the line into a shape. */
+  holdToShape?: boolean;
 }
 
 export interface HighlighterOptions {

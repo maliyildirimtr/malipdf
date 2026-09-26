@@ -120,6 +120,8 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
     updateHighlighterOptions,
     updateTextMarkupOptions,
     updateEraserOptions,
+    laserOptions,
+    updateLaserOptions,
     updateTextOptions,
     updateShapeOptions,
     workspaceMode,
@@ -323,7 +325,31 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
         <div className={styles.propertyScroller}>
           {activeTool === 'select' && <PropertyHint>Select an annotation to move or resize it.</PropertyHint>}
           {activeTool === 'lasso' && <PropertyHint>Draw around ink to select it. Shift adds to the selection. Drag the selection to move it.</PropertyHint>}
-          {activeTool === 'laserPointer' && <PropertyHint>Drag to point with a fading red line. Nothing is saved.</PropertyHint>}
+          {activeTool === 'laserPointer' && (
+            <>
+              <div className={styles.propertySegment} role="group" aria-label="Laser mode">
+                <PropertyToggle label="Fade each line" shortLabel="Each" pressed={laserOptions.mode === 'individual'} onChange={() => updateLaserOptions({ mode: 'individual' })} />
+                <PropertyToggle label="Fade all lines together" shortLabel="Together" pressed={laserOptions.mode === 'group'} onChange={() => updateLaserOptions({ mode: 'group' })} />
+              </div>
+              <PropertySeparator />
+              <label className={styles.compactControl}>
+                <span className={styles.propertyLabel}>Fade</span>
+                <select className={styles.compactSelect} value={laserOptions.durationMs} aria-label="Laser fade time" onChange={(event) => updateLaserOptions({ durationMs: Number(event.target.value) })}>
+                  {[1000, 1500, 2000, 3000, 5000].map((ms) => <option key={ms} value={ms}>{ms / 1000} s</option>)}
+                </select>
+              </label>
+              <PropertySeparator />
+              <ColorWell label="Color" value={laserOptions.color} onChange={(color) => updateLaserOptions({ color })} />
+              <label className={styles.compactControl}>
+                <span className={styles.propertyLabel}>Width</span>
+                <select className={styles.compactSelect} value={laserOptions.width} aria-label="Laser width" onChange={(event) => updateLaserOptions({ width: Number(event.target.value) })}>
+                  {[3, 4, 6, 8].map((w) => <option key={w} value={w}>{w} px</option>)}
+                </select>
+              </label>
+              <PropertySeparator />
+              <PropertyHint>Nothing is saved. Also used in Present (⌥⌘P).</PropertyHint>
+            </>
+          )}
           {activeTool === 'hand' && <PropertyHint>Hold Space to temporarily pan the document.</PropertyHint>}
 
           {activeTool === 'pen' && (
@@ -338,10 +364,23 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
               <OpacityControl value={toolOptions.pen.opacity} onChange={(opacity) => updatePenOptions({ opacity })} />
               <PropertySeparator />
               <PropertyToggle label="Pressure" pressed={toolOptions.pen.pressureSensitive} onChange={(pressureSensitive) => updatePenOptions({ pressureSensitive })} />
+              <label className={styles.compactControl} title="Smooths the line so it follows your hand, not every tremor">
+                <span className={styles.propertyLabel}>Stabilizer</span>
+                <select className={styles.compactSelect} value={toolOptions.pen.stabilizer ?? 'off'} aria-label="Pen stabilizer" onChange={(event) => updatePenOptions({ stabilizer: event.target.value as NonNullable<typeof toolOptions.pen.stabilizer> })}>
+                  <option value="off">Off</option>
+                  <option value="basic">Basic</option>
+                  <option value="soft">Soft</option>
+                  <option value="silky">Silky</option>
+                  <option value="fluid">Fluid</option>
+                </select>
+              </label>
               <PropertyToggle label="Ink to Shape" shortLabel="Shapes" pressed={toolOptions.pen.inkToShape === true} onChange={(inkToShape) => updatePenOptions({ inkToShape })} />
               <PropertyOptionsMenu
                 label="More pen properties"
-                items={[{ label: 'Smooth strokes', checked: toolOptions.pen.smooth, onSelect: () => updatePenOptions({ smooth: !toolOptions.pen.smooth }) }]}
+                items={[
+                  { label: 'Smooth strokes', checked: toolOptions.pen.smooth, onSelect: () => updatePenOptions({ smooth: !toolOptions.pen.smooth }) },
+                  { label: 'Hold still to make a shape', checked: toolOptions.pen.holdToShape !== false, onSelect: () => updatePenOptions({ holdToShape: toolOptions.pen.holdToShape === false }) },
+                ]}
               />
             </>
           )}
