@@ -481,6 +481,7 @@ declare global {
       readClipboardImage: () => Promise<{ data: ArrayBuffer; mimeType: string } | null>;
       writeClipboardImage?: (png: ArrayBuffer) => Promise<boolean>;
       chooseFolder?: (title?: string) => Promise<string | null>;
+      moveTabToNewWindow?: (docId: string) => Promise<boolean>;
       writeFilesToFolder?: (folder: string, files: { name: string; data: ArrayBuffer }[]) => Promise<string[]>;
       recoveryWrite: (
         docId: string,

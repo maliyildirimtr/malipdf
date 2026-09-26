@@ -108,6 +108,7 @@ import '../../../electron/main';
 let writeFileHandler: any;
 let saveDialogHandler: any;
 let confirmLifecycleHandler: any;
+let moveHandler: any;
 
 // IPC is only accepted from the app page (production: dist/index.html).
 const appPageUrl = pathToFileURL(resolve(process.cwd(), 'dist/index.html')).href;
@@ -119,6 +120,7 @@ describe('Electron Main Process Guard & Lifecycle', () => {
     writeFileHandler = mockIpcMain.handle.mock.calls.find((c: any) => c[0] === 'fs:writeFile')![1];
     saveDialogHandler = mockIpcMain.handle.mock.calls.find((c: any) => c[0] === 'dialog:saveFile')![1];
     confirmLifecycleHandler = mockIpcMain.on.mock.calls.find((c: any) => c[0] === 'app:confirmLifecycle')![1];
+    moveHandler = mockIpcMain.handle.mock.calls.find((c: any) => c[0] === 'window:moveTabToNewWindow')![1];
     // Flush app.whenReady() so createWindow is called
     await Promise.resolve();
   });
@@ -241,6 +243,30 @@ describe('Electron Main Process Guard & Lifecycle', () => {
       const finalEvent = { preventDefault: vi.fn() };
       mockApp.emit('before-quit', finalEvent);
       expect(finalEvent.preventDefault).not.toHaveBeenCalled();
+    });
+
+    it('with several windows, asks each one in turn before quitting', async () => {
+      const first = (MockBrowserWindow as any)._lastInstance;
+      await moveHandler(trustedEvent, 'doc_1');
+      const second = (MockBrowserWindow as any)._lastInstance;
+      expect(second).not.toBe(first);
+      const requests = (win: any) => win.webContents.send.mock.calls.filter((c: any) => c[1] === 'app.requestQuit');
+
+      const quitEvent = { preventDefault: vi.fn() };
+      mockApp.emit('before-quit', quitEvent);
+      expect(quitEvent.preventDefault).toHaveBeenCalled();
+      // The newest (focused) window first.
+      expect(requests(second)).toHaveLength(1);
+      expect(requests(first)).toHaveLength(0);
+      confirmLifecycleHandler(trustedEvent, requests(second)[0][2], true);
+      expect(mockApp.quit).not.toHaveBeenCalled();
+      expect(requests(first)).toHaveLength(1);
+      confirmLifecycleHandler(trustedEvent, requests(first)[0][2], true);
+      expect(mockApp.quit).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects a bad document id for Move Tab to New Window', async () => {
+      await expect(moveHandler(trustedEvent, '../x')).rejects.toThrow(/Invalid document/);
     });
 
   });

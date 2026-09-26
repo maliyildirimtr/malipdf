@@ -135,6 +135,7 @@ export function createNativeMenuSchema(isMac: boolean, isDev: boolean): readonly
         command('view.presentation', 'Present', { accelerator: 'Alt+CmdOrCtrl+P', enabled: false }),
         command('view.nightMode', 'Night Mode', { accelerator: 'Alt+CmdOrCtrl+D', type: 'checkbox' }),
         command('view.splitView', 'Side by Side', { accelerator: 'Alt+CmdOrCtrl+\\', enabled: false }),
+        command('view.moveTabToNewWindow', 'Move Tab to New Window', { enabled: false }),
         submenu('Sidebar', [
           command('view.sidebarPages', 'Pages', { enabled: false }),
           command('view.sidebarBookmarks', 'Bookmarks', { enabled: false }),

@@ -34,7 +34,9 @@ export function RecoveryDialog() {
   }, []);
 
   useEffect(() => {
-    void refresh(false);
+    // Extra windows do not offer the snapshots of the other windows' documents.
+    const secondary = new URLSearchParams(window.location.search).get('secondary') === '1';
+    if (!secondary) void refresh(false);
     const onShow = () => void refresh(true);
     window.addEventListener(SHOW_RECOVERY_EVENT, onShow);
     return () => window.removeEventListener(SHOW_RECOVERY_EVENT, onShow);

@@ -199,13 +199,26 @@ export function TopBar() {
                 className={styles.tab}
                 onClick={() => activateTab(docId)}
                 onKeyDown={(event) => handleTabKeyDown(event, docId)}
+                draggable={!!window.electronAPI?.moveTabToNewWindow}
+                onDragStart={(event) => {
+                  event.dataTransfer.setData('application/x-malipdf-tab', docId);
+                  event.dataTransfer.effectAllowed = 'move';
+                }}
+                onDragEnd={(event) => {
+                  // Dropped outside the window: open the tab in a new window.
+                  const outside = event.clientX < 0 || event.clientY < 0
+                    || event.clientX > window.innerWidth || event.clientY > window.innerHeight;
+                  if (outside && event.dataTransfer.dropEffect === 'none') {
+                    void import('../../commands/documentCommands').then((m) => m.moveTabToNewWindow(docId));
+                  }
+                }}
+                title={`${doc.filePath ?? doc.title}\nDrag out of the window to open it in a new window.`}
                 role="tab"
                 id={`document-tab-${docId}`}
                 aria-controls="document-workspace"
                 aria-selected={isActive}
                 aria-label={`${doc.title}${isDirty ? ', modified' : ''}`}
                 tabIndex={isActive ? 0 : -1}
-                title={doc.filePath ?? doc.title}
                 type="button"
               >
                 <FileText size={13} className={styles.tabIcon} aria-hidden="true" />

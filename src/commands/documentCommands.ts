@@ -114,3 +114,29 @@ export async function closeAllDocuments(): Promise<number> {
   
   return allDocIds.length;
 }
+
+/**
+ * Move a tab into a new window. The document (pages, annotations, images,
+ * bookmarks, form values) goes over through a recovery snapshot; undo history
+ * stays behind.
+ */
+export async function moveTabToNewWindow(docId: string): Promise<boolean> {
+  const api = window.electronAPI;
+  const doc = useDocumentStore.getState().documents.get(docId);
+  if (!doc || !api?.moveTabToNewWindow) return false;
+  const { writeTransferSnapshot, untrackRecoverySnapshot } = await import('../document/autoSave');
+  await writeTransferSnapshot(doc, useFormStore.getState().getValues(docId));
+  await api.moveTabToNewWindow(docId);
+  // Close here without asking and without deleting the snapshot.
+  const identity = { docId, instanceId: doc.instanceId };
+  untrackRecoverySnapshot(docId);
+  void closeManagedDocument(identity);
+  documentSessionStore.getState().removeSession(identity);
+  useDocumentStore.getState().closeDocument(docId);
+  useAnnotationStore.getState().removeDocument(docId);
+  useFormStore.getState().clearDocument(docId);
+  useHistoryStore.getState().removeDocument(docId);
+  useSelectionStore.getState().removeDocument(identity);
+  useAssetStore.getState().removeDocument(identity);
+  return true;
+}

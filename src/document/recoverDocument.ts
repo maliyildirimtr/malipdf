@@ -1,3 +1,4 @@
+import { useFormStore } from '../store/formStore';
 import { openDocumentBytes } from './openDocumentBytes';
 import { useAnnotationStore } from '../store/annotationStore';
 import { useAssetStore, type ImageAsset } from '../store/assetStore';
@@ -35,7 +36,7 @@ export async function restoreRecoveredDocument(recoveryId: string): Promise<stri
     throw new Error('This recovery file was made by a different version of MaliPDF.');
   }
 
-  const docId = await openDocumentBytes(meta.title, meta.filePath, source, { markDirty: true, restoreEditable: false });
+  const docId = await openDocumentBytes(meta.title, meta.filePath, source, { markDirty: meta.wasSaved !== true, restoreEditable: false });
   const doc = useDocumentStore.getState().documents.get(docId)!;
   const identity = { docId, instanceId: doc.instanceId };
 
@@ -60,6 +61,12 @@ export async function restoreRecoveredDocument(recoveryId: string): Promise<stri
   }
   if (meta.pageRotations && typeof meta.pageRotations === 'object') {
     useDocumentStore.getState().updateDocument(docId, { pageRotations: { ...meta.pageRotations } });
+  }
+
+  if (Array.isArray(meta.formValues)) {
+    for (const [name, value] of meta.formValues) {
+      if (typeof name === 'string' && (typeof value === 'string' || typeof value === 'boolean')) useFormStore.getState().setValue(docId, name, value);
+    }
   }
 
   // Snapshot the restored tab under its new id before dropping the old one.

@@ -52,7 +52,21 @@ const MAX_IMAGE_FILE_BYTES = 50 * 1024 * 1024;
 const fileGrants = new FileAccessGrants();
 const folderGrants = new FolderGrants();
 
+/** The window commands, dialogs and opened files go to: the last focused one. */
 let mainWindow: BrowserWindow | null = null;
+
+/** Per-window state (MaliPDF can show documents in several windows). */
+interface WindowState {
+  readyForFiles: boolean;
+  allowClose: boolean;
+  /** A tab moved here from another window: its recovery snapshot id. */
+  restoreId: string | null;
+}
+const windowStates = new Map<BrowserWindow, WindowState>();
+
+function liveWindows(): BrowserWindow[] {
+  return [...windowStates.keys()].filter((w) => !w.isDestroyed());
+}
 
 installWebContentsPolicy(isDev);
 setupPptxIpc(isDev);
@@ -79,7 +93,7 @@ if (!app.requestSingleInstanceLock()) {
 // Double-click (file association), "Open With", dropping on the Dock icon and
 // File ▸ Open Recent all arrive here. Files wait until the renderer is ready.
 const pendingOpenPaths: string[] = [];
-let rendererReadyForFiles = false;
+const rendererReadyForFiles = () => !!mainWindow && windowStates.get(mainWindow)?.readyForFiles === true;
 
 function queueOpenPaths(paths: readonly string[]): void {
   if (paths.length === 0) return;
@@ -89,7 +103,7 @@ function queueOpenPaths(paths: readonly string[]): void {
 }
 
 async function flushOpenPaths(): Promise<void> {
-  if (!mainWindow || !rendererReadyForFiles || pendingOpenPaths.length === 0) return;
+  if (!mainWindow || !rendererReadyForFiles() || pendingOpenPaths.length === 0) return;
   const paths = pendingOpenPaths.splice(0);
   const files: { filePath: string; name: string; data: ArrayBuffer }[] = [];
   const failed: string[] = [];
@@ -127,8 +141,16 @@ app.on('open-file', (event, filePath) => {
 });
 if (!isDev) queueOpenPaths(pdfPathsFromArgv(process.argv.slice(1), process.cwd()));
 
-onTrusted('app:readyForFiles', isDev, () => {
-  rendererReadyForFiles = true;
+onTrusted('app:readyForFiles', isDev, (event) => {
+  const window = BrowserWindow.fromWebContents?.(event.sender);
+  const state = window ? windowStates.get(window) : undefined;
+  if (!window || !state) return;
+  state.readyForFiles = true;
+  if (state.restoreId) {
+    // A tab that was moved here: the renderer restores it from its snapshot.
+    window.webContents.send(COMMAND_EXECUTE_CHANNEL, 'window.restoreMovedTab', state.restoreId);
+    state.restoreId = null;
+  }
   void flushOpenPaths();
 });
 
@@ -143,52 +165,77 @@ process.title = APP_NAME;
 // always be quit again afterwards (previously a stale "authorized" request
 // blocked every later quit, including SIGTERM from `npm run dev`).
 type LifecycleRequestType = 'window-close' | 'quit';
-let pendingLifecycleRequest: { id: string; type: LifecycleRequestType } | null = null;
-let allowWindowClose = false;
+/** Open questions to renderers, by request id. */
+const pendingRequests = new Map<string, { type: LifecycleRequestType; window: BrowserWindow }>();
 let allowQuit = false;
+/** Windows still to be asked during a quit, in order. */
+let quitQueue: BrowserWindow[] | null = null;
 
-function rendererCanAnswer(): boolean {
-  return !!mainWindow
-    && !mainWindow.isDestroyed()
-    && !mainWindow.webContents.isDestroyed()
-    && !mainWindow.webContents.isCrashed();
+function rendererCanAnswer(window: BrowserWindow | null | undefined): window is BrowserWindow {
+  return !!window
+    && !window.isDestroyed()
+    && !window.webContents.isDestroyed()
+    && !window.webContents.isCrashed();
 }
 
-function startLifecycleRequest(type: LifecycleRequestType): void {
-  if (pendingLifecycleRequest) {
-    // A quit supersedes a pending window close; the renderer's answer applies.
-    if (type === 'quit') pendingLifecycleRequest.type = 'quit';
-    return;
+function askWindow(window: BrowserWindow, type: LifecycleRequestType): void {
+  for (const request of pendingRequests.values()) {
+    if (request.window === window) {
+      // A quit supersedes a pending window close; the renderer's answer applies.
+      if (type === 'quit') request.type = 'quit';
+      return;
+    }
   }
   const id = crypto.randomUUID();
-  pendingLifecycleRequest = { id, type };
-  sendCommand(type === 'quit' ? 'app.requestQuit' : 'app.requestCloseWindow', id);
+  pendingRequests.set(id, { type, window });
+  window.webContents.send(COMMAND_EXECUTE_CHANNEL, type === 'quit' ? 'app.requestQuit' : 'app.requestCloseWindow', id);
 }
 
-/** Carry out a close/quit the renderer approved (or can no longer answer). */
-function forceLifecycle(type: LifecycleRequestType): void {
-  pendingLifecycleRequest = null;
+/** Ask the next window during a quit; quit when every window agreed. */
+function continueQuit(): void {
+  if (!quitQueue) return;
+  while (quitQueue.length > 0 && !rendererCanAnswer(quitQueue[0])) quitQueue.shift();
+  const next = quitQueue.shift();
+  if (next) {
+    askWindow(next, 'quit');
+    return;
+  }
+  quitQueue = null;
+  allowQuit = true;
+  app.quit();
+}
+
+/** Carry out a close/quit a renderer approved (or can no longer answer). */
+function approve(type: LifecycleRequestType, window: BrowserWindow): void {
   if (type === 'quit') {
-    allowQuit = true;
-    app.quit();
-  } else if (mainWindow && !mainWindow.isDestroyed()) {
-    allowWindowClose = true;
-    mainWindow.close();
+    if (!quitQueue) quitQueue = [];
+    continueQuit();
+    return;
+  }
+  const state = windowStates.get(window);
+  if (state && !window.isDestroyed()) {
+    state.allowClose = true;
+    window.close();
   }
 }
 
 function sendCommand(commandId: string, payload?: unknown) {
-  mainWindow?.webContents.send(COMMAND_EXECUTE_CHANNEL, commandId, payload);
+  const target = BrowserWindow.getFocusedWindow?.() ?? mainWindow;
+  if (target && windowStates.has(target)) target.webContents.send(COMMAND_EXECUTE_CHANNEL, commandId, payload);
 }
 
-function createWindow() {
+function createWindow(options: { restoreId?: string } = {}): BrowserWindow {
   // A new window means the app keeps running; any earlier quit permission is void.
   allowQuit = false;
-  allowWindowClose = false;
-  pendingLifecycleRequest = null;
-  mainWindow = new BrowserWindow({
+  quitQueue = null;
+  const offset = liveWindows().length * 28;
+  const window = new BrowserWindow({
     width: 1400,
     height: 900,
+    ...(() => {
+      const bounds = offset && mainWindow && !mainWindow.isDestroyed() ? mainWindow.getBounds?.() : undefined;
+      return bounds ? { x: bounds.x + offset, y: bounds.y + offset } : {};
+    })(),
     minWidth: 900,
     minHeight: 600,
     title: 'MaliPDF',
@@ -207,46 +254,60 @@ function createWindow() {
     },
   });
 
-  // Load the app
+  const state: WindowState = { readyForFiles: false, allowClose: false, restoreId: options.restoreId ?? null };
+  windowStates.set(window, state);
+  mainWindow = window;
+  const secondary = liveWindows().length > 1;
+
+  // Load the app. Extra windows skip the startup recovery prompt: the
+  // snapshots belong to documents open in the other windows.
+  const query = secondary ? { secondary: '1' } : undefined;
   if (isDev) {
-    mainWindow.loadURL('http://localhost:5173');
-    mainWindow.webContents.openDevTools({ mode: 'detach' });
+    window.loadURL(`http://localhost:5173${query ? '?secondary=1' : ''}`);
+    if (!secondary) window.webContents.openDevTools({ mode: 'detach' });
   } else {
-    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+    window.loadFile(path.join(__dirname, '../dist/index.html'), query ? { query } : undefined);
   }
 
-  mainWindow.once('ready-to-show', () => {
-    mainWindow?.show();
+  window.once('ready-to-show', () => {
+    window.show();
   });
 
-  mainWindow.on('close', (event) => {
-    if (allowQuit || allowWindowClose || !rendererCanAnswer()) return;
+  window.on('focus', () => {
+    mainWindow = window;
+    // The menu shows the focused window's state.
+    window.webContents.send(COMMAND_EXECUTE_CHANNEL, 'window.syncMenu');
+  });
+
+  window.on('close', (event) => {
+    if (allowQuit || state.allowClose || !rendererCanAnswer(window)) return;
     event.preventDefault();
-    startLifecycleRequest('window-close');
+    askWindow(window, 'window-close');
   });
 
   // A reload means a new renderer that has to announce itself again.
-  mainWindow.webContents.on('did-start-loading', () => {
-    rendererReadyForFiles = false;
+  window.webContents.on('did-start-loading', () => {
+    state.readyForFiles = false;
   });
 
-  mainWindow.on('closed', () => {
-    mainWindow = null;
-    rendererReadyForFiles = false;
-    allowWindowClose = false;
-    pendingLifecycleRequest = null;
+  window.on('closed', () => {
+    windowStates.delete(window);
+    for (const [id, request] of pendingRequests) if (request.window === window) pendingRequests.delete(id);
+    if (mainWindow === window) mainWindow = BrowserWindow.getFocusedWindow?.() ?? liveWindows()[0] ?? null;
+    if (quitQueue) continueQuit();
   });
 
   // A crashed renderer can never answer; do not trap the user.
-  mainWindow.webContents.on('render-process-gone', (_event, details) => {
-    if (pendingLifecycleRequest) {
-      forceLifecycle(pendingLifecycleRequest.type);
+  window.webContents.on('render-process-gone', (_event, details) => {
+    for (const [id, request] of pendingRequests) {
+      if (request.window !== window) continue;
+      pendingRequests.delete(id);
+      approve(request.type, window);
       return;
     }
     if (details.reason === 'clean-exit') return;
     logCrash('renderer-gone', { reason: details.reason, exitCode: details.exitCode });
-    const window = mainWindow;
-    if (!window || window.isDestroyed()) return;
+    if (window.isDestroyed()) return;
     // Unsaved work is in the auto-save recovery folder; reloading offers it back.
     void dialog.showMessageBox(window, {
       type: 'error',
@@ -259,7 +320,7 @@ function createWindow() {
     }).then(({ response }) => {
       if (window.isDestroyed()) return;
       if (response === 0) window.webContents.reload();
-      else forceLifecycle('quit');
+      else { allowQuit = true; app.quit(); }
     });
   });
 
@@ -267,6 +328,7 @@ function createWindow() {
   // every web contents in installWebContentsPolicy (electron/security.ts).
 
   buildMenu();
+  return window;
 }
 
 function buildMenu() {
@@ -306,7 +368,9 @@ function buildNativeMenuItem(node: NativeMenuNode): MenuItemConstructorOptions {
 
 // ─── IPC Handlers ────────────────────────────────────────────────────────────
 
-onTrusted(COMMAND_STATE_CHANNEL, isDev, (_event, states: NativeCommandState[]) => {
+onTrusted(COMMAND_STATE_CHANNEL, isDev, (event, states: NativeCommandState[]) => {
+  // Only the window in front decides what the menu shows.
+  if (mainWindow && BrowserWindow.fromWebContents?.(event.sender) !== mainWindow) return;
   const menu = Menu.getApplicationMenu();
   if (!menu || !Array.isArray(states)) return;
   for (const state of states) {
@@ -888,12 +952,16 @@ app.on('before-quit', (event) => {
   if (allowQuit) return;
   // No window (e.g. macOS after closing it) or no live renderer: nothing
   // unsaved can be protected, so quit normally.
-  if (!rendererCanAnswer()) {
+  const windows = liveWindows().filter(rendererCanAnswer);
+  if (windows.length === 0) {
     allowQuit = true;
     return;
   }
   event.preventDefault();
-  startLifecycleRequest('quit');
+  if (quitQueue) return; // already asking
+  // Ask the focused window first, then the others, one at a time.
+  quitQueue = [...windows].sort((a, b) => (a === mainWindow ? -1 : b === mainWindow ? 1 : 0));
+  continueQuit();
 });
 
 // Terminal signals (Ctrl+C, `concurrently -k`, kill). In development exit
@@ -917,11 +985,22 @@ app.on('window-all-closed', () => {
 onTrusted('app:confirmLifecycle', isDev, (_event, requestId: unknown, allow: unknown) => {
   // No timeout: the renderer may be showing Save / Don't Save dialogs for as
   // long as the user needs. Stale or duplicate answers are ignored.
-  if (!pendingLifecycleRequest || pendingLifecycleRequest.id !== requestId) return;
+  if (typeof requestId !== 'string') return;
+  const request = pendingRequests.get(requestId);
+  if (!request) return;
+  pendingRequests.delete(requestId);
+  if (allow !== true) {
+    // User cancelled: a quit stops here, the other windows stay as they are.
+    if (request.type === 'quit') quitQueue = null;
+    return;
+  }
+  approve(request.type, request.window);
+});
 
-  const { type } = pendingLifecycleRequest;
-  pendingLifecycleRequest = null;
-  if (allow !== true) return; // user cancelled
-
-  forceLifecycle(type);
+// Move a tab to a new window: the renderer has written a recovery snapshot;
+// the new window restores it and the old one then closes the tab.
+handleTrusted('window:moveTabToNewWindow', isDev, async (_event, rawId: unknown) => {
+  if (typeof rawId !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(rawId)) throw new TypeError('Invalid document.');
+  createWindow({ restoreId: rawId });
+  return true;
 });

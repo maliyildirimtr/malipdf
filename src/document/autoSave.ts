@@ -24,6 +24,10 @@ export interface RecoverySnapshotMeta {
   bookmarks?: Bookmark[];
   annotations: Annotation[];
   assets: { id: string; mimeType: ImageAsset['mimeType']; width: number; height: number }[];
+  /** Moved to another window: the document had no unsaved changes. */
+  wasSaved?: boolean;
+  /** Moved to another window: values typed into form fields. */
+  formValues?: [string, string | boolean][];
 }
 
 interface Tracked {
@@ -99,6 +103,33 @@ async function snapshotDocument(doc: DocumentState): Promise<void> {
     source: doc.sourceData,
     assetIds: new Set([...knownAssets, ...newAssets.map((asset) => asset.id)]),
   });
+}
+
+/**
+ * Write a complete snapshot of `doc` for another window to open (Move Tab to
+ * New Window). It is not tracked here, so closing the tab keeps it; the new
+ * window removes it once the document is restored.
+ */
+export async function writeTransferSnapshot(doc: DocumentState, formValues: ReadonlyMap<string, string | boolean>): Promise<void> {
+  const electronAPI = api();
+  if (!electronAPI) throw new Error('Moving tabs needs the MaliPDF desktop app.');
+  const meta: RecoverySnapshotMeta = {
+    ...buildSnapshotMeta(doc),
+    wasSaved: !isDirty(doc),
+    formValues: [...formValues],
+  };
+  const assetStore = useAssetStore.getState().getAssetsForDocument({ docId: doc.id, instanceId: doc.instanceId });
+  const assets = meta.assets.flatMap((asset) => {
+    const full = assetStore?.get(asset.id);
+    return full ? [{ ...asset, data: full.data }] : [];
+  });
+  tracked.delete(doc.id);
+  await electronAPI.recoveryWrite(doc.id, JSON.stringify(meta), doc.sourceData, assets);
+}
+
+/** Forget a document without deleting its snapshot (it moved to another window). */
+export function untrackRecoverySnapshot(docId: string): void {
+  tracked.delete(docId);
 }
 
 /** Delete a document's snapshot (after save, close or discard). */

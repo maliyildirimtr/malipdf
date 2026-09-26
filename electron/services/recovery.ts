@@ -7,7 +7,7 @@
  * document is saved or closed normally — so whatever is left at startup is
  * from a crash or a forced quit and is offered as "Recovered Documents".
  */
-import { app } from 'electron';
+import { app, webContents } from 'electron';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
@@ -66,9 +66,19 @@ async function writeAtomic(filePath: string, data: string | Uint8Array): Promise
   }
 }
 
+/** Which window (web contents id) keeps each snapshot up to date. */
+const owners = new Map<string, number>();
+
+function ownedByAnotherLiveWindow(docId: string, requester: number): boolean {
+  const owner = owners.get(docId);
+  if (owner === undefined || owner === requester) return false;
+  const contents = webContents.fromId(owner);
+  return !!contents && !contents.isDestroyed();
+}
+
 export function setupRecoveryIpc(isDev: boolean): void {
   handleTrusted('recovery:write', isDev, async (
-    _event,
+    event,
     rawDocId: unknown,
     rawMeta: unknown,
     rawSource: unknown,
@@ -94,21 +104,25 @@ export function setupRecoveryIpc(isDev: boolean): void {
     }
     // Written last: a snapshot only counts once its metadata is complete.
     await writeAtomic(path.join(dir, META_FILE), rawMeta);
+    if (event?.sender) owners.set(docId, event.sender.id);
     return true;
   });
 
   handleTrusted('recovery:remove', isDev, async (_event, rawDocId: unknown) => {
     const docId = requireDocId(rawDocId);
+    owners.delete(docId);
     await fs.promises.rm(path.join(recoveryRoot(), docId), { recursive: true, force: true });
     return true;
   });
 
-  handleTrusted('recovery:list', isDev, async (): Promise<RecoveryEntry[]> => {
+  handleTrusted('recovery:list', isDev, async (event): Promise<RecoveryEntry[]> => {
     const root = recoveryRoot();
     const entries = await fs.promises.readdir(root, { withFileTypes: true }).catch(() => []);
     const result: RecoveryEntry[] = [];
     for (const entry of entries) {
       if (!entry.isDirectory() || !/^[A-Za-z0-9_-]{1,64}$/.test(entry.name)) continue;
+      // Open in another window right now: not lost.
+      if (event?.sender && ownedByAnotherLiveWindow(entry.name, event.sender.id)) continue;
       try {
         const meta = JSON.parse(await fs.promises.readFile(path.join(root, entry.name, META_FILE), 'utf8'));
         await fs.promises.access(path.join(root, entry.name, SOURCE_FILE));

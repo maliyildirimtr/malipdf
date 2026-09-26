@@ -59,6 +59,7 @@ export interface ElectronAPI {
   readClipboardImage: () => Promise<{ data: ArrayBuffer; mimeType: string } | null>;
   writeClipboardImage: (png: ArrayBuffer) => Promise<boolean>;
   chooseFolder: (title?: string) => Promise<string | null>;
+  moveTabToNewWindow: (docId: string) => Promise<boolean>;
   writeFilesToFolder: (folder: string, files: { name: string; data: ArrayBuffer }[]) => Promise<string[]>;
 
   // Crash recovery (Auto Save)
@@ -109,6 +110,7 @@ const electronAPI: ElectronAPI = {
   readClipboardImage: () => ipcRenderer.invoke('clipboard:readImage'),
   writeClipboardImage: (png) => ipcRenderer.invoke('clipboard:writeImage', png),
   chooseFolder: (title) => ipcRenderer.invoke('dialog:chooseFolder', title),
+  moveTabToNewWindow: (docId) => ipcRenderer.invoke('window:moveTabToNewWindow', docId),
   writeFilesToFolder: (folder, files) => ipcRenderer.invoke('fs:writeFilesToFolder', folder, files),
 
   recoveryWrite: (docId, meta, source, assets) => ipcRenderer.invoke('recovery:write', docId, meta, source, assets),

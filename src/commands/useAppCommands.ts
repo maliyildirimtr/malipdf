@@ -1,3 +1,4 @@
+import { errorMessage, notifyUser } from '../utils/notify';
 import { useCallback, useEffect } from 'react';
 import { useDocumentStore } from '../store/documentStore';
 import { useHistoryStore, makeRemoveAction, makeBatchAction } from '../store/historyStore';
@@ -34,6 +35,9 @@ import {
 } from './clipboardCommands';
 import { SHOW_RECOVERY_EVENT } from '../components/RecoveryDialog/recoveryEvents';
 import { OPEN_SIGN_MENU_EVENT } from '../components/SignStamp/signStampEvents';
+
+/** Main process asks the focused window to resend its menu state. */
+const SYNC_MENU_EVENT = 'malipdf:sync-menu';
 
 /** Custom clipboard type that carries the annotation marker next to plain text. */
 const ANNOTATION_CLIPBOARD_TYPE = 'application/x-malipdf-annotations';
@@ -186,6 +190,9 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
         if (other) ui.setSplitView({ docId: other });
         return;
       }
+      case 'view.moveTabToNewWindow':
+        if (docId) void import('./documentCommands').then((m) => m.moveTabToNewWindow(docId)).catch((error) => notifyUser('error', `The tab could not be moved: ${errorMessage(error)}`));
+        return;
       case 'app.settings':
         ui.setSettingsOpen(true);
         return;
@@ -423,6 +430,16 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
   useEffect(() => {
     if (!window.electronAPI?.onCommand) return;
     return window.electronAPI.onCommand((commandId: unknown, payload?: unknown) => {
+      // Window plumbing (not user commands).
+      if (commandId === 'window.syncMenu') {
+        window.dispatchEvent(new Event(SYNC_MENU_EVENT));
+        return;
+      }
+      if (commandId === 'window.restoreMovedTab' && typeof payload === 'string') {
+        void import('../document/recoverDocument').then((m) => m.restoreRecoveredDocument(payload))
+          .catch((error) => notifyUser('error', `The moved tab could not be opened: ${errorMessage(error)}`));
+        return;
+      }
       if (isAppCommandId(commandId)) executeCommand(commandId, payload);
     });
   }, [executeCommand]);
@@ -453,7 +470,10 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
       window.electronAPI.updateCommandStates(states);
     };
 
+    const resync = () => { lastSent = ''; syncMenuState(); };
+    window.addEventListener(SYNC_MENU_EVENT, resync);
     const unsubscribers = [
+      () => window.removeEventListener(SYNC_MENU_EVENT, resync),
       useDocumentStore.subscribe(syncMenuState),
       useHistoryStore.subscribe(syncMenuState),
       useUIStore.subscribe(syncMenuState),
