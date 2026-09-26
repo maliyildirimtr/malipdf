@@ -3,7 +3,7 @@ import type { WorkspaceMode } from '../store/uiStore';
 
 export type CanonicalTool = Extract<ToolType,
   'select' | 'hand' | 'pen' | 'highlighter' | 'eraser' | 'text' |
-  'line' | 'arrow' | 'rectangle' | 'ellipse' | 'freeform' | 'lasso' | 'textMarkup' | 'laserPointer' | 'note' | 'snapshot'>;
+  'line' | 'arrow' | 'rectangle' | 'ellipse' | 'freeform' | 'lasso' | 'textMarkup' | 'laserPointer' | 'note' | 'snapshot' | 'measure'>;
 
 export type ToolCommandId = `tool.${CanonicalTool}`;
 
@@ -109,7 +109,7 @@ export const APP_COMMANDS = {
   'tool.textMarkup': toolCommand('textMarkup', 'Text Highlight', 'U', 'highlighter'),
   'tool.snapshot': toolCommand('snapshot', 'Snapshot', undefined, 'snapshot'),
   'tool.crop': unavailableTool('tool.crop', 'Crop', 'crop'),
-  'tool.measure': unavailableTool('tool.measure', 'Measure', 'measure'),
+  'tool.measure': toolCommand('measure', 'Measure', undefined, 'measure'),
   'tool.formula': unavailableTool('tool.formula', 'Formula', 'formula'),
   'tool.laserPointer': toolCommand('laserPointer', 'Laser Pointer', undefined, 'laserPointer'),
   'tool.note': toolCommand('note', 'Sticky Note', 'N', 'note'),

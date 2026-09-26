@@ -32,6 +32,7 @@ export const DEFAULT_TEXT_MARKUP_OPTIONS = { markup: 'highlight', color: '#FFEB3
 const defaultToolOptions: ToolOptions = {
   textMarkup: { ...DEFAULT_TEXT_MARKUP_OPTIONS },
   note: { color: '#F5C400' },
+  measure: { mode: 'distance', scale: 1, unit: 'cm', color: '#d9480f' },
   pen: {
     color: '#1a1a2e',
     width: 3,
@@ -90,6 +91,7 @@ interface UIStore {
   updateHighlighterOptions: (patch: Partial<ToolOptions['highlighter']>) => void;
   updateTextMarkupOptions: (patch: Partial<ToolOptions['textMarkup']>) => void;
   updateNoteOptions: (patch: Partial<ToolOptions['note']>) => void;
+  updateMeasureOptions: (patch: Partial<ToolOptions['measure']>) => void;
   updateEraserOptions: (patch: Partial<ToolOptions['eraser']>) => void;
   updateTextOptions: (patch: Partial<ToolOptions['text']>) => void;
   updateShapeOptions: (patch: Partial<ToolOptions['shape']>) => void;
@@ -282,6 +284,8 @@ export const useUIStore = create<UIStore>()(
           set((s) => ({
             toolOptions: { ...s.toolOptions, textMarkup: { ...s.toolOptions.textMarkup, ...patch } },
           })),
+        updateMeasureOptions: (patch) =>
+          set((s) => ({ toolOptions: { ...s.toolOptions, measure: { ...s.toolOptions.measure, ...patch } } })),
         updateNoteOptions: (patch) =>
           set((s) => ({ toolOptions: { ...s.toolOptions, note: { ...s.toolOptions.note, ...patch } } })),
         updateEraserOptions: (patch) =>

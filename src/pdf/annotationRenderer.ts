@@ -26,7 +26,9 @@ import type {
   InputPoint,
   TextMarkupAnnotation,
   NoteAnnotation,
+  MeasureAnnotation,
 } from '../types/annotations';
+import { labelAnchor, measureLabel, measureTicks, MEASURE_FONT } from './measure';
 import { NOTE_ICON_SIZE } from '../types/annotations';
 import { NOTE_ICON_PATHS, NOTE_ICON_STROKE, noteShade } from './noteIcon';
 import { markupShape } from './textSelection';
@@ -85,6 +87,9 @@ export function renderAnnotations(
         break;
       case 'note':
         renderNote(ctx, ann, transform);
+        break;
+      case 'measure':
+        renderMeasure(ctx, ann, transform);
         break;
       default:
         console.warn(`Unsupported annotation type: ${(ann as any).type}`);
@@ -256,6 +261,65 @@ export function renderMarkup(
     ctx.lineCap = 'butt';
     ctx.stroke(path);
   }
+  ctx.restore();
+}
+
+// ─── Measurement ─────────────────────────────────────────────────────────────
+
+export function renderMeasure(
+  ctx: CanvasRenderingContext2D,
+  annotation: MeasureAnnotation,
+  transform: PageTransform,
+): void {
+  const pts = annotation.points.map((p) => pdfToScreen(p.x, p.y, transform));
+  if (pts.length < 2) return;
+  const s = transform.scale;
+  ctx.save();
+  ctx.globalAlpha = annotation.opacity;
+  ctx.strokeStyle = annotation.color;
+  ctx.lineWidth = annotation.strokeWidth * s;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  pts.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+  if (annotation.kind === 'area') {
+    ctx.closePath();
+    ctx.save();
+    ctx.globalAlpha = annotation.opacity * 0.14;
+    ctx.fillStyle = annotation.color;
+    ctx.fill();
+    ctx.restore();
+  }
+  ctx.stroke();
+  if (annotation.kind === 'distance') {
+    ctx.beginPath();
+    for (const [a, b] of measureTicks(annotation.points[0], annotation.points[1])) {
+      const p = pdfToScreen(a.x, a.y, transform);
+      const q = pdfToScreen(b.x, b.y, transform);
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(q.x, q.y);
+    }
+    ctx.stroke();
+  }
+  // Label in a white pill, always upright.
+  const label = measureLabel(annotation);
+  const anchor = labelAnchor(annotation);
+  const c = pdfToScreen(anchor.x, anchor.y, transform);
+  const fontPx = MEASURE_FONT * s;
+  ctx.font = `600 ${fontPx}px -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Helvetica, Arial, sans-serif`;
+  const w = ctx.measureText(label).width + fontPx * 0.9;
+  const h = fontPx * 1.5;
+  ctx.globalAlpha = annotation.opacity;
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
+  ctx.beginPath();
+  ctx.roundRect(c.x - w / 2, c.y - h / 2, w, h, h / 2);
+  ctx.fill();
+  ctx.lineWidth = Math.max(1, s * 0.75);
+  ctx.stroke();
+  ctx.fillStyle = annotation.color;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, c.x, c.y + fontPx * 0.04);
   ctx.restore();
 }
 

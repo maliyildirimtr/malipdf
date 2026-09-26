@@ -51,6 +51,7 @@ export type AnnotationType =
   | 'freeform'
   | 'markup'
   | 'note'
+  | 'measure'
   | 'image'   // future
   | 'stamp';  // future
 
@@ -180,6 +181,25 @@ export interface NoteAnnotation extends BaseAnnotation {
   content: string;
 }
 
+// ─── Measurement ─────────────────────────────────────────────────────────────
+
+export type MeasureUnit = 'mm' | 'cm' | 'm' | 'in' | 'ft' | 'pt';
+
+/** How paper maps to the real world: `scale` real units per paper unit (1:100 → 100). */
+export interface MeasureCalibration {
+  scale: number;
+  unit: MeasureUnit;
+}
+
+export interface MeasureAnnotation extends BaseAnnotation {
+  type: 'measure';
+  kind: 'distance' | 'area';
+  /** Two points for a distance, three or more for an area (PDF user space). */
+  points: PdfPoint[];
+  calibration: MeasureCalibration;
+  strokeWidth: number;
+}
+
 // ─── Union type ───────────────────────────────────────────────────────────────
 
 export type Annotation =
@@ -190,7 +210,8 @@ export type Annotation =
   | FreeformAnnotation
   | ImageAnnotation
   | TextMarkupAnnotation
-  | NoteAnnotation;
+  | NoteAnnotation
+  | MeasureAnnotation;
 
 // ─── Tool types ───────────────────────────────────────────────────────────────
 
@@ -211,7 +232,8 @@ export type ToolType =
   | 'textMarkup'
   | 'laserPointer'
   | 'note'
-  | 'snapshot';
+  | 'snapshot'
+  | 'measure';
 
 // ─── Tool options (shared across all instances, not per-annotation) ───────────
 
@@ -275,6 +297,11 @@ export interface TextMarkupOptions {
   opacity: number;
 }
 
+export interface MeasureOptions extends MeasureCalibration {
+  mode: 'distance' | 'area';
+  color: string;
+}
+
 export interface NoteOptions {
   color: string;
 }
@@ -282,6 +309,7 @@ export interface NoteOptions {
 export interface ToolOptions {
   textMarkup: TextMarkupOptions;
   note: NoteOptions;
+  measure: MeasureOptions;
   pen: PenOptions;
   highlighter: HighlighterOptions;
   eraser: EraserOptions;

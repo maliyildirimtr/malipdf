@@ -1,3 +1,5 @@
+import { MEASURE_UNITS } from '../../pdf/measure';
+import type { MeasureUnit } from '../../types/annotations';
 import React from 'react';
 import {
   AlignCenter,
@@ -39,6 +41,7 @@ import {
   TextSelect,
   StickyNote,
   Scissors,
+  MoveHorizontal,
   Type,
   Undo2,
   ZoomIn,
@@ -60,6 +63,7 @@ import { WidthControl } from '../Properties/WidthControl';
 import { BorderStyleControl } from '../Properties/BorderStyleControl';
 import styles from './MainRibbon.module.css';
 
+const MEASURE_SCALES = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000] as const;
 const FONT_SIZES = [10, 12, 14, 16, 18, 24, 32] as const;
 
 interface ToolDefinition {
@@ -85,6 +89,7 @@ const TOOL_DEFINITIONS: Record<ToolType, ToolDefinition> = {
   laserPointer: { icon: LaserIcon, commandId: 'tool.laserPointer' },
   note: { icon: StickyNote, commandId: 'tool.note' },
   snapshot: { icon: Scissors, commandId: 'tool.snapshot' },
+  measure: { icon: MoveHorizontal, commandId: 'tool.measure' },
 };
 
 const DOCUMENT_COMMANDS = new Set<AppCommandId>([
@@ -127,6 +132,7 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
     updateHighlighterOptions,
     updateTextMarkupOptions,
     updateNoteOptions,
+    updateMeasureOptions,
     updateEraserOptions,
     laserOptions,
     updateLaserOptions,
@@ -230,6 +236,7 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
           <ToolButton tool="rectangle" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.rectangle')} />
           <ToolButton tool="ellipse" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.ellipse')} />
           <ToolButton tool="freeform" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.freeform')} />
+          <ToolButton tool="measure" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.measure')} />
           <CommandButton commandId="view.ruler" label="Ruler" shortcut="⌥⌘R" icon={RulerIcon} onCommand={runCommand} enabled={isEnabled('view.ruler')} pressed={rulerVisible} />
           <CommandButton commandId="view.replayInk" label="Replay Ink" icon={CirclePlay} onCommand={runCommand} enabled={isEnabled('view.replayInk')} />
           <CommandButton commandId="view.nightMode" label="Night Mode" shortcut="⌥⌘D" icon={Moon} onCommand={runCommand} enabled pressed={pageTheme === 'dark'} />
@@ -432,6 +439,32 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
               <OpacityControl value={toolOptions.textMarkup.opacity} onChange={(opacity) => updateTextMarkupOptions({ opacity })} />
               <PropertySeparator />
               <PropertyHint>Drag across the PDF's text. Works on text PDFs, not on scans.</PropertyHint>
+            </>
+          )}
+
+          {activeTool === 'measure' && (
+            <>
+              <div className={styles.propertySegment} role="group" aria-label="Measure">
+                <PropertyToggle label="Distance" pressed={toolOptions.measure.mode === 'distance'} onChange={() => updateMeasureOptions({ mode: 'distance' })} />
+                <PropertyToggle label="Area" pressed={toolOptions.measure.mode === 'area'} onChange={() => updateMeasureOptions({ mode: 'area' })} />
+              </div>
+              <PropertySeparator />
+              <label className={styles.compactControl}>
+                <span className={styles.propertyLabel}>Scale</span>
+                <select className={styles.compactSelect} value={toolOptions.measure.scale} aria-label="Drawing scale" onChange={(event) => updateMeasureOptions({ scale: Number(event.target.value) })}>
+                  {MEASURE_SCALES.map((s) => <option key={s} value={s}>1:{s}</option>)}
+                </select>
+              </label>
+              <label className={styles.compactControl}>
+                <span className={styles.propertyLabel}>Unit</span>
+                <select className={styles.compactSelect} value={toolOptions.measure.unit} aria-label="Measurement unit" onChange={(event) => updateMeasureOptions({ unit: event.target.value as MeasureUnit })}>
+                  {MEASURE_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+                </select>
+              </label>
+              <PropertySeparator />
+              <ColorWell label="Color" value={toolOptions.measure.color} onChange={(color) => updateMeasureOptions({ color })} />
+              <PropertySeparator />
+              <PropertyHint>{toolOptions.measure.mode === 'distance' ? 'Drag to measure. Shift keeps the line straight.' : 'Click the corners; double-click or click the first corner to finish.'}</PropertyHint>
             </>
           )}
 

@@ -108,7 +108,7 @@ import { loadPageTextLayout, peekPageTextLayout } from '../../pdf/pageTextLayout
 import { addLaserPoint, endLaserTrail, startLaserTrail } from '../Laser/laserTrail';
 import { ERASER_CURSOR, HIGHLIGHTER_CURSOR, LASER_CURSOR, PEN_CURSOR } from './toolCursors';
 import { selectText, type TextSelection } from '../../pdf/textSelection';
-import type { TextMarkupAnnotation, NoteAnnotation } from '../../types/annotations';
+import type { TextMarkupAnnotation, NoteAnnotation, MeasureAnnotation } from '../../types/annotations';
 import { NOTE_ICON_SIZE } from '../../types/annotations';
 import { NotePopup } from './NotePopup';
 import { autoSizeTextBox, canvasMeasure, cssFont, LINE_HEIGHT, MAX_AUTO_TEXT_WIDTH, TEXT_PADDING } from '../../pdf/textLayout';
@@ -133,6 +133,7 @@ type InteractionMode =
   | 'lassoDrag'     // free-form lasso selection
   | 'markupDrag'    // text highlight / underline / strikethrough selection
   | 'snapshotDrag'  // Snapshot tool: region to copy as an image
+  | 'measureDrag'   // Measure tool: distance line
   | 'laser'         // laser pointer (not saved)
   | 'shapeHold'     // pen held still: the stroke became a shape that follows the pen
   | 'moving'        // moving selected annotations
@@ -171,6 +172,7 @@ function getCursor(tool: ToolType, mode: InteractionMode): string {
     case 'textMarkup':  return 'text';
     case 'note':        return 'copy';
     case 'snapshot':    return 'crosshair';
+    case 'measure':     return 'crosshair';
     case 'laserPointer': return LASER_CURSOR;
     case 'freeform':    return 'crosshair';
     case 'line':
@@ -703,6 +705,9 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
       const pts = [...activePoints.current, ...predictedPoints.current];
       const preview = buildInkAnnotation(pts, gestureToolRef.current ?? interactionTool);
       if (preview) renderAnnotations(ctx, [preview], transform, dpr);
+    } else if (m === 'freeformDrawing' && interactionTool === 'measure') {
+      const pts = [...activePoints.current, { x: currentEnd.current.screenX, y: currentEnd.current.screenY }];
+      if (pts.length >= 2) renderAnnotations(ctx, [measureFromScreen(pts, pts.length >= 3 ? 'area' : 'distance', 'preview')], transform, dpr);
     } else if (m === 'freeformDrawing') {
       const screenPts = activePoints.current;
       if (screenPts.length < 1) return;
@@ -745,6 +750,12 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     } else if (m === 'markupDrag') {
       const selection = markupDrag.current?.selection;
       if (selection) renderAnnotations(ctx, [markupFromSelection(selection, 'preview')], transform, dpr);
+    } else if (m === 'measureDrag' && shapeStart.current) {
+      const ann = measureFromScreen([
+        { x: shapeStart.current.screenX, y: shapeStart.current.screenY },
+        { x: currentEnd.current.screenX, y: currentEnd.current.screenY },
+      ], 'distance', 'preview');
+      renderAnnotations(ctx, [ann], transform, dpr);
     } else if (m === 'snapshotDrag' && selectionStart.current) {
       const { screenX: sx, screenY: sy } = selectionStart.current;
       const { screenX: ex, screenY: ey } = currentEnd.current;
@@ -1072,6 +1083,28 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     pushHistory(makeAddAction(docId, ann));
   }
 
+  function measureFromScreen(screenPts: { x: number; y: number }[], kind: MeasureAnnotation['kind'], id: string): MeasureAnnotation {
+    const options = toolOptions.measure;
+    const now = Date.now();
+    return {
+      id, pageIndex, type: 'measure', kind,
+      points: screenPts.map((p) => screenToPdfPoint(p.x, p.y)),
+      calibration: { scale: options.scale, unit: options.unit },
+      strokeWidth: 1.25, color: options.color, opacity: 1,
+      locked: false, createdAt: now, updatedAt: now,
+    };
+  }
+
+  function commitMeasureDistance() {
+    const start = shapeStart.current;
+    if (!start) return;
+    const end = currentEnd.current;
+    if (Math.hypot(end.screenX - start.screenX, end.screenY - start.screenY) < 4) return;
+    const ann = measureFromScreen([{ x: start.screenX, y: start.screenY }, { x: end.screenX, y: end.screenY }], 'distance', nanoid());
+    addAnnotation(docId, ann);
+    pushHistory(makeAddAction(docId, ann));
+  }
+
   function commitSnapshot() {
     const start = selectionStart.current;
     if (!start) return;
@@ -1176,7 +1209,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     }
 
     // ── Freeform ──
-    if (interactionTool === 'freeform') {
+    if (interactionTool === 'freeform' || (interactionTool === 'measure' && toolOptions.measure.mode === 'area')) {
       if (mode.current === 'idle') {
         mode.current = 'freeformDrawing';
         activePoints.current = [{ x: screenX, y: screenY, pressure: e.pressure > 0 ? e.pressure : 0.5, timestamp: e.timeStamp }];
@@ -1188,8 +1221,12 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
         const startPtScreen = activePoints.current[0];
         const distToStart = Math.hypot(screenX - startPtScreen.x, screenY - startPtScreen.y);
         
-        // Complete if double-clicked or clicking near the start vertex
-        if (e.nativeEvent.detail >= 2 || (activePoints.current.length >= 2 && distToStart < 12)) {
+        // Complete on a double-click (pointer events carry no click count, so
+        // a second press on the last corner counts) or near the start vertex.
+        const last = activePoints.current[activePoints.current.length - 1];
+        const doubleClick = e.nativeEvent.detail >= 2
+          || (e.timeStamp - last.timestamp < 450 && Math.hypot(screenX - last.x, screenY - last.y) < 8);
+        if (doubleClick || (activePoints.current.length >= 2 && distToStart < 12)) {
           commitFreeform();
         } else {
           activePoints.current.push({ x: screenX, y: screenY, pressure: e.pressure > 0 ? e.pressure : 0.5, timestamp: e.timeStamp });
@@ -1224,6 +1261,15 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     if (interactionTool === 'laserPointer') {
       mode.current = 'laser';
       startLaserTrail(e.clientX, e.clientY, e.timeStamp);
+      return;
+    }
+
+    // ── Measure: distance ──
+    if (interactionTool === 'measure' && toolOptions.measure.mode === 'distance') {
+      mode.current = 'measureDrag';
+      shapeStart.current = { screenX, screenY, pdfX: pdfPt.x, pdfY: pdfPt.y };
+      currentEnd.current = { screenX, screenY };
+      schedulePreviewRender();
       return;
     }
 
@@ -1487,7 +1533,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     }
 
     if (m === 'freeformDrawing') {
-      if (e.buttons === 1) { // Left mouse button is down, draw freehand
+      if (e.buttons === 1 && interactionTool !== 'measure') { // Left mouse button is down, draw freehand
         const events = e.nativeEvent.getCoalescedEvents?.() ?? [e.nativeEvent];
         const rect = interactionRef.current!.getBoundingClientRect();
         for (const ev of events) {
@@ -1518,6 +1564,22 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
         const intermediatePdfPt = screenToPdfPoint(ev.clientX - rect.left, ev.clientY - rect.top);
         doEraseSweptPath(intermediatePdfPt);
       }
+      return;
+    }
+
+    if (m === 'measureDrag' && shapeStart.current) {
+      let endX = screenX;
+      let endY = screenY;
+      if (e.shiftKey) {
+        const dx = screenX - shapeStart.current.screenX;
+        const dy = screenY - shapeStart.current.screenY;
+        const snapped = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * (Math.PI / 4);
+        const dist = Math.hypot(dx, dy);
+        endX = shapeStart.current.screenX + Math.cos(snapped) * dist;
+        endY = shapeStart.current.screenY + Math.sin(snapped) * dist;
+      }
+      currentEnd.current = { screenX: endX, screenY: endY };
+      schedulePreviewRender();
       return;
     }
 
@@ -1614,6 +1676,8 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
       commitMarkup();
     } else if (m === 'snapshotDrag') {
       commitSnapshot();
+    } else if (m === 'measureDrag') {
+      commitMeasureDistance();
     } else if (m === 'laser') {
       endLaserTrail(e.timeStamp);
     } else if (m === 'moving') {
@@ -1729,6 +1793,20 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     const screenPts = activePoints.current;
     if (screenPts.length < 3) {
       cancelActiveInteraction();
+      return;
+    }
+
+    if (interactionTool === 'measure') {
+      const ann = measureFromScreen(screenPts, 'area', nanoid());
+      addAnnotation(docId, ann);
+      pushHistory(makeAddAction(docId, ann));
+      mode.current = 'idle';
+      activePoints.current = [];
+      currentEnd.current = { screenX: 0, screenY: 0 };
+      setIsDrawing(false);
+      onInteractionPinChange?.(false);
+      clearDrawingCanvas();
+      redrawAnnotationLayer();
       return;
     }
 

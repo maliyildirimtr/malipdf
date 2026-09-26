@@ -1,5 +1,6 @@
 /** Actions behind the Annotations panel: reveal, hide/show, lock/unlock, delete. */
 import type { Annotation } from '../types/annotations';
+import { measureLabel } from '../pdf/measure';
 import { useAnnotationStore } from '../store/annotationStore';
 import { useDocumentStore } from '../store/documentStore';
 import { useHistoryStore, makeRemoveAction, makeUpdateAction } from '../store/historyStore';
@@ -23,7 +24,7 @@ export function matchesFilter(annotation: Annotation, filter: AnnotationFilter):
     case 'pen': return annotation.type === 'stroke';
     case 'highlight': return annotation.type === 'highlight' || annotation.type === 'markup';
     case 'text': return annotation.type === 'text' || annotation.type === 'note';
-    case 'shape': return annotation.type === 'shape' || annotation.type === 'freeform';
+    case 'shape': return annotation.type === 'shape' || annotation.type === 'freeform' || annotation.type === 'measure';
     case 'image': return annotation.type === 'image';
   }
 }
@@ -44,6 +45,8 @@ export function describeAnnotation(annotation: Annotation): string {
       const text = annotation.text.replace(/\s+/g, ' ').trim();
       return text ? `${kind}: ${text.length > 22 ? `${text.slice(0, 22)}…` : text}` : kind;
     }
+    case 'measure':
+      return `${annotation.kind === 'area' ? 'Area' : 'Distance'}: ${measureLabel(annotation)}`;
     case 'note': {
       const text = annotation.content.replace(/\s+/g, ' ').trim();
       return text ? `Note: ${text.length > 24 ? `${text.slice(0, 24)}…` : text}` : 'Note';

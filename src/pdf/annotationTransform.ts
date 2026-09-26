@@ -7,7 +7,8 @@ export function translateAnnotation(annotation: Annotation, dx: number, dy: numb
   switch (annotation.type) {
     case 'stroke':
     case 'highlight':
-    case 'freeform': {
+    case 'freeform':
+    case 'measure': {
       return {
         ...annotation,
         points: annotation.points.map(p => ({ ...p, x: p.x + dx, y: p.y + dy })) as any,
@@ -71,7 +72,8 @@ export function scaleAnnotationFromBounds(
   switch (annotation.type) {
     case 'stroke':
     case 'highlight':
-    case 'freeform': {
+    case 'freeform':
+    case 'measure': {
       return {
         ...annotation,
         points: annotation.points.map(transformPoint) as any,

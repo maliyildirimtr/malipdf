@@ -60,6 +60,7 @@ import type {
   ShapeAnnotation,
   ImageAnnotation,
   FreeformAnnotation,
+  MeasureAnnotation,
   TextMarkupAnnotation,
   InputPoint,
   DocumentAnnotationState,
@@ -74,6 +75,7 @@ import { appendBookmarksToOutline } from './outlineWriter';
 import { highlightShape, penShape, type InkShape, type PathCommand } from './inkGeometry';
 import { markupShape } from './textSelection';
 import { addNoteAnnotation } from './noteExport';
+import { labelAnchor, measureLabel, measureTicks, MEASURE_FONT } from './measure';
 
 export type ImageAssetResolver =
   | Map<string, ImageAsset>
@@ -679,6 +681,42 @@ function exportFreeform(
   });
 }
 
+// ─── Measurement export ───────────────────────────────────────────────────────
+
+function exportMeasure(page: PDFPage, annotation: MeasureAnnotation, font: PDFFont): void {
+  const { points, strokeWidth, opacity } = annotation;
+  const color = parseCssColor(annotation.color);
+  const path = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${-p.y}`).join(' ') + (annotation.kind === 'area' ? ' Z' : '');
+  if (annotation.kind === 'area') {
+    page.drawSvgPath(path, { x: 0, y: 0, color, opacity: opacity * 0.14 });
+  }
+  page.drawSvgPath(path, {
+    x: 0, y: 0, borderColor: color, borderWidth: strokeWidth, borderLineCap: LineCapStyle.Round, borderOpacity: opacity,
+  });
+  if (annotation.kind === 'distance') {
+    for (const [a, b] of measureTicks(points[0], points[1])) {
+      page.drawLine({ start: a, end: b, thickness: strokeWidth, color, opacity, lineCap: LineCapStyle.Round });
+    }
+  }
+  // WinAnsi has ² but not every character: fall back to a plain label.
+  let label = measureLabel(annotation);
+  let width: number;
+  try {
+    width = font.widthOfTextAtSize(label, MEASURE_FONT);
+  } catch {
+    label = label.replace('²', '2');
+    width = font.widthOfTextAtSize(label, MEASURE_FONT);
+  }
+  const anchor = labelAnchor(annotation);
+  const padX = MEASURE_FONT * 0.45;
+  const h = MEASURE_FONT * 1.5;
+  page.drawRectangle({
+    x: anchor.x - width / 2 - padX, y: anchor.y - h / 2, width: width + padX * 2, height: h,
+    color: rgb(1, 1, 1), opacity: 0.92 * opacity, borderColor: color, borderWidth: 0.75, borderOpacity: opacity,
+  });
+  page.drawText(label, { x: anchor.x - width / 2, y: anchor.y - MEASURE_FONT * 0.35, size: MEASURE_FONT, font, color, opacity });
+}
+
 // ─── Image annotation export ──────────────────────────────────────────────────
 
 function exportImage(
@@ -783,6 +821,14 @@ function validateAnnotation(annotation: Annotation, pageIndex: number): void {
       });
       if (typeof annotation.text !== 'string') throw new Error('Text markup text must be a string.');
       return;
+    case 'measure':
+      if (annotation.kind !== 'distance' && annotation.kind !== 'area') throw new Error('Unknown measurement kind.');
+      if (annotation.points.length < (annotation.kind === 'area' ? 3 : 2)) throw new Error('Measurement needs more points.');
+      annotation.points.forEach((value, index) => validatePoint(value, `measure point ${index}`));
+      assertPositive(annotation.strokeWidth, 'measure stroke width');
+      assertPositive(annotation.calibration?.scale, 'measure scale');
+      parseCssColor(annotation.color);
+      return;
     case 'note':
       assertFinite(annotation.x, 'note x');
       assertFinite(annotation.y, 'note y');
@@ -811,6 +857,7 @@ function cloneAnnotation(annotation: Annotation): Annotation {
         endPoint: Object.freeze({ ...annotation.endPoint }),
       }) as Annotation;
     case 'freeform':
+    case 'measure':
       return Object.freeze({
         ...annotation,
         points: Object.freeze(annotation.points.map((value) => Object.freeze({ ...value }))),
@@ -901,6 +948,7 @@ export async function exportAnnotatedPdf(
   let totalAnnotationCount = 0;
   // Deduplicate embedded images across all annotations
   const embeddedImages = new Map<string, PDFImage>();
+  let measureFont: PDFFont | undefined;
 
   for (let pageIndex = 0; pageIndex < pages.length; pageIndex++) {
     const page = pages[pageIndex];
@@ -939,6 +987,10 @@ export async function exportAnnotatedPdf(
             break;
           case 'note':
             addNoteAnnotation(pdfDoc, page, annotation);
+            break;
+          case 'measure':
+            measureFont ??= await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+            exportMeasure(page, annotation, measureFont);
             break;
           case 'image': {
             let pdfImg = embeddedImages.get(annotation.assetId);

@@ -16,6 +16,7 @@
 
 import { hasRealPressure } from './inkGeometry';
 import { NOTE_ICON_SIZE } from '../types/annotations';
+import { MEASURE_TICK } from './measure';
 import type {
   Annotation,
   StrokeAnnotation,
@@ -133,6 +134,12 @@ export function hitTestAnnotation(
       return hitTestFreeform(pdfPoint, annotation, tolerance);
     case 'image':
       return hitTestImage(pdfPoint, annotation, tolerance);
+    case 'measure':
+      if (annotation.kind === 'area') {
+        return hitTestFreeform(pdfPoint, { type: 'freeform', points: annotation.points, strokeWidth: annotation.strokeWidth, fillColor: annotation.color }, tolerance);
+      }
+      return annotation.points.length === 2
+        && distanceToSegment(pdfPoint, annotation.points[0], annotation.points[1]) <= annotation.strokeWidth / 2 + tolerance + MEASURE_TICK;
     case 'note':
       return pdfPoint.x >= annotation.x - tolerance && pdfPoint.x <= annotation.x + NOTE_ICON_SIZE + tolerance
         && pdfPoint.y >= annotation.y - tolerance && pdfPoint.y <= annotation.y + NOTE_ICON_SIZE + tolerance;
