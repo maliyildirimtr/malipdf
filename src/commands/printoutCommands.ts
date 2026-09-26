@@ -2,7 +2,7 @@ import { useDocumentStore } from '../store/documentStore';
 import { notifyUser } from '../utils/notify';
 import { useAnnotationStore } from '../store/annotationStore';
 import { useHistoryStore, makeMutateDocumentBytesAction } from '../store/historyStore';
-import { displayedPageSize, fitPrintoutToWidth, insertBlankPagesAfter } from '../document/documentMutator';
+import { displayedPageSize, fitPrintoutToPage, insertBlankPagesAfter, type PrintoutPlacement } from '../document/documentMutator';
 import type { Annotation, DocumentAnnotationState, ImageAnnotation } from '../types/annotations';
 import { remapDocumentStateForInsertion, remapAnnotationsForInsertion } from '../pdf/pageRemap';
 import { nanoid } from '../utils/nanoid';
@@ -86,14 +86,14 @@ async function runPrintoutPipeline(
   const insertAfter = Math.min(targetPageIndex, initialDoc.pageCount - 1);
 
   let mutatedBytes: Uint8Array;
-  let pageSizes: { width: number; height: number }[];
+  let placements: PrintoutPlacement[];
   try {
     const target = await displayedPageSize(baseSourceData, insertAfter);
-    pageSizes = fitPrintoutToWidth(
+    placements = fitPrintoutToPage(
       generatedPages.map(p => ({ width: p.widthPdfPoints, height: p.heightPdfPoints })),
-      target?.width ?? null,
+      target,
     );
-    mutatedBytes = await insertBlankPagesAfter(baseSourceData, insertAfter, pageSizes);
+    mutatedBytes = await insertBlankPagesAfter(baseSourceData, insertAfter, placements.map(p => p.page));
   } catch (error) {
     console.error('Printout page insertion failed:', error);
     useImportJobStore.getState().updateStatus('failed', error instanceof Error ? error.message : String(error));
@@ -131,10 +131,10 @@ async function runPrintoutPipeline(
     locked: false,
     createdAt: now,
     updatedAt: now,
-    x: 0,
-    y: 0,
-    width: pageSizes[i].width,
-    height: pageSizes[i].height,
+    x: placements[i].image.x,
+    y: placements[i].image.y,
+    width: placements[i].image.width,
+    height: placements[i].image.height,
     assetId: p.asset.id,
   }));
   const afterAnnotations: Annotation[] = [

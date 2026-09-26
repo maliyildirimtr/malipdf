@@ -57,18 +57,33 @@ export async function displayedPageSize(sourceBytes: Uint8Array, pageIndex: numb
   return page.getRotation().angle % 180 === 0 ? { width, height } : { width: height, height: width };
 }
 
+export interface PrintoutPlacement {
+  /** Size of the inserted page. */
+  page: { width: number; height: number };
+  /** Where the printout image sits on that page (centered, aspect kept). */
+  image: { x: number; y: number; width: number; height: number };
+}
+
 /**
- * Printout pages are scaled to the width of the page they follow, so a
- * 16:9 slide does not come out much bigger than the document's own pages.
+ * Printout pages get the size of the page they follow, turned to match the
+ * printout's orientation: a landscape slide after portrait A4 becomes a
+ * landscape A4 page. The printout is scaled to fit and centered.
  */
-export function fitPrintoutToWidth(
+export function fitPrintoutToPage(
   pages: readonly { width: number; height: number }[],
-  targetWidth: number | null,
-): { width: number; height: number }[] {
+  target: { width: number; height: number } | null,
+): PrintoutPlacement[] {
   return pages.map((p) => {
-    if (!targetWidth || !(targetWidth > 0) || !(p.width > 0)) return { width: p.width, height: p.height };
-    const scale = targetWidth / p.width;
-    return { width: p.width * scale, height: p.height * scale };
+    if (!target || !(target.width > 0) || !(target.height > 0) || !(p.width > 0) || !(p.height > 0)) {
+      return { page: { width: p.width, height: p.height }, image: { x: 0, y: 0, width: p.width, height: p.height } };
+    }
+    const long = Math.max(target.width, target.height);
+    const short = Math.min(target.width, target.height);
+    const page = p.width > p.height ? { width: long, height: short } : { width: short, height: long };
+    const scale = Math.min(page.width / p.width, page.height / p.height);
+    const width = p.width * scale;
+    const height = p.height * scale;
+    return { page, image: { x: (page.width - width) / 2, y: (page.height - height) / 2, width, height } };
   });
 }
 
