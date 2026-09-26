@@ -60,14 +60,14 @@ export async function displayedPageSize(sourceBytes: Uint8Array, pageIndex: numb
 export interface PrintoutPlacement {
   /** Size of the inserted page. */
   page: { width: number; height: number };
-  /** Where the printout image sits on that page (centered, aspect kept). */
+  /** Where the printout image sits on that page (it fills the page). */
   image: { x: number; y: number; width: number; height: number };
 }
 
 /**
- * Printout pages get the size of the page they follow, turned to match the
- * printout's orientation: a landscape slide after portrait A4 becomes a
- * landscape A4 page. The printout is scaled to fit and centered.
+ * Printout pages keep their own shape but are scaled to fit the paper size of
+ * the page they follow, turned to match: a 16:9 slide after portrait A4
+ * becomes a page as wide as landscape A4 (no white bars).
  */
 export function fitPrintoutToPage(
   pages: readonly { width: number; height: number }[],
@@ -79,11 +79,11 @@ export function fitPrintoutToPage(
     }
     const long = Math.max(target.width, target.height);
     const short = Math.min(target.width, target.height);
-    const page = p.width > p.height ? { width: long, height: short } : { width: short, height: long };
-    const scale = Math.min(page.width / p.width, page.height / p.height);
+    const box = p.width > p.height ? { width: long, height: short } : { width: short, height: long };
+    const scale = Math.min(box.width / p.width, box.height / p.height);
     const width = p.width * scale;
     const height = p.height * scale;
-    return { page, image: { x: (page.width - width) / 2, y: (page.height - height) / 2, width, height } };
+    return { page: { width, height }, image: { x: 0, y: 0, width, height } };
   });
 }
 

@@ -3,20 +3,17 @@ import { PDFDocument, degrees } from 'pdf-lib';
 import { displayedPageSize, fitPrintoutToPage } from '../documentMutator';
 
 describe('printout page size', () => {
-  it('puts a landscape slide on a landscape page of the same paper size', () => {
+  it('gives a 16:9 slide a page as wide as landscape A4, in the slide shape', () => {
     const [slide] = fitPrintoutToPage([{ width: 960, height: 540 }], { width: 595, height: 842 });
-    expect(slide.page).toEqual({ width: 842, height: 595 });
-    expect(slide.image.width).toBeCloseTo(842);
-    expect(slide.image.height).toBeCloseTo(473.625);
-    expect(slide.image.x).toBeCloseTo(0);
-    expect(slide.image.y).toBeCloseTo((595 - 473.625) / 2);
+    expect(slide.page.width).toBeCloseTo(842);
+    expect(slide.page.height).toBeCloseTo(473.625);
+    expect(slide.image).toEqual({ x: 0, y: 0, ...slide.page });
   });
 
-  it('keeps portrait printouts portrait and centers them', () => {
+  it('keeps portrait printouts portrait', () => {
     const [page] = fitPrintoutToPage([{ width: 612, height: 792 }], { width: 842, height: 595 });
-    expect(page.page).toEqual({ width: 595, height: 842 });
-    expect(page.image.width).toBeCloseTo(595);
-    expect(page.image.y).toBeCloseTo((842 - 792 * (595 / 612)) / 2);
+    expect(page.page.width).toBeCloseTo(595);
+    expect(page.page.height).toBeCloseTo(792 * (595 / 612));
   });
 
   it('keeps the original size when there is no page to match', () => {
