@@ -66,3 +66,12 @@ describe('page stamps', () => {
     }
   });
 });
+
+describe('crop', () => {
+  it('intersects the crop with the page', async () => {
+    const { intersectRect } = await import('../../commands/cropCommands');
+    expect(intersectRect({ x: -10, y: 50, width: 200, height: 100 }, { x: 0, y: 0, width: 100, height: 100 }))
+      .toEqual({ x: 0, y: 50, width: 100, height: 50 });
+    expect(intersectRect({ x: 200, y: 0, width: 5, height: 5 }, { x: 0, y: 0, width: 100, height: 100 })).toBeNull();
+  });
+});

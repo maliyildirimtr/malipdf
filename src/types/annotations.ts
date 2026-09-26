@@ -233,7 +233,8 @@ export type ToolType =
   | 'laserPointer'
   | 'note'
   | 'snapshot'
-  | 'measure';
+  | 'measure'
+  | 'crop';
 
 // ─── Tool options (shared across all instances, not per-annotation) ───────────
 

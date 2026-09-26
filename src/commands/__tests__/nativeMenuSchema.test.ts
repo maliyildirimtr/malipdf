@@ -36,13 +36,13 @@ describe('native macOS menu schema', () => {
     for (const id of [
       'tool.select', 'tool.hand', 'tool.pen', 'tool.highlighter', 'tool.eraser',
       'tool.text', 'tool.line', 'tool.arrow', 'tool.rectangle', 'tool.ellipse', 'tool.lasso',
-      'tool.note', 'tool.snapshot', 'tool.measure',
+      'tool.note', 'tool.snapshot', 'tool.measure', 'tool.crop',
     ]) {
       expect(findCommand(tools.items, id)?.enabled).not.toBe(false);
     }
     for (const id of [
       'tool.extractText', 'tool.zoom', 'tool.stamp', 'tool.polygon', 'tool.dimension',
-      'tool.crop', 'tool.formula',
+      'tool.formula',
       'tool.pointer',
     ]) {
       expect(findCommand(tools.items, id)?.enabled, id).toBe(false);

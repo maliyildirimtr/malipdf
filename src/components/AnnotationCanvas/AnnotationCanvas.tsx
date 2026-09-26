@@ -172,6 +172,7 @@ function getCursor(tool: ToolType, mode: InteractionMode): string {
     case 'textMarkup':  return 'text';
     case 'note':        return 'copy';
     case 'snapshot':    return 'crosshair';
+    case 'crop':        return 'crosshair';
     case 'measure':     return 'crosshair';
     case 'laserPointer': return LASER_CURSOR;
     case 'freeform':    return 'crosshair';
@@ -351,6 +352,9 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
 
   // React state only for text overlay (needs DOM update)
   const [textOverlay, setTextOverlay] = useState<TextOverlay | null>(null);
+  // Crop tool: the region waiting for "Crop" / "Cancel".
+  const [cropPending, setCropPending] = useState<{ rect: PdfRect; box: { x: number; y: number; width: number; height: number } } | null>(null);
+
 
   // Narrow selectors: whole-store subscriptions re-rendered every mounted page
   // on any unrelated UI / annotation / history change.
@@ -359,6 +363,9 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
   const temporaryTool = useUIStore(state => state.temporaryTool);
   const setIsDrawing = useUIStore(state => state.setIsDrawing);
   const openNote = useUIStore(state => state.openNote);
+  useEffect(() => {
+    if (activeTool !== 'crop') setCropPending(null);
+  }, [activeTool]);
   const interactionTool = temporaryTool ?? activeTool;
   const selectedTool = interactionTool; // before per-gesture pen-button overrides
   const addAnnotation = useAnnotationStore(state => state.addAnnotation);
@@ -1115,6 +1122,10 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     const h = Math.min(transform.cssHeight, Math.max(start.screenY, end.screenY)) - y;
     if (w < 6 || h < 6) return;
     const rect = screenRectToPdfBounds({ x, y, width: w, height: h }, transform);
+    if (selectedTool === 'crop') {
+      setCropPending({ rect, box: { x, y, width: w, height: h } });
+      return;
+    }
     void import('../../commands/snapshotCommands').then((m) => m.copySnapshot(identity, pageIndex, rect, transform.displayRotation));
   }
 
@@ -1273,8 +1284,9 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
       return;
     }
 
-    // ── Snapshot ──
-    if (interactionTool === 'snapshot') {
+    // ── Snapshot / Crop: drag a region ──
+    if (interactionTool === 'snapshot' || interactionTool === 'crop') {
+      setCropPending(null);
       mode.current = 'snapshotDrag';
       selectionStart.current = { screenX, screenY };
       currentEnd.current = { screenX, screenY };
@@ -2591,6 +2603,47 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
         }
         return null;
       })()}
+
+      {cropPending && (
+        <div className="crop-pending" style={{ position: 'absolute', inset: 0, zIndex: 35, pointerEvents: 'none' }}>
+          <svg width="100%" height="100%" style={{ position: 'absolute', inset: 0 }}>
+            <defs>
+              <mask id={`crop-mask-${pageIndex}`}>
+                <rect width="100%" height="100%" fill="white" />
+                <rect x={cropPending.box.x} y={cropPending.box.y} width={cropPending.box.width} height={cropPending.box.height} fill="black" />
+              </mask>
+            </defs>
+            <rect width="100%" height="100%" fill="rgba(0,0,0,0.35)" mask={`url(#crop-mask-${pageIndex})`} />
+            <rect x={cropPending.box.x} y={cropPending.box.y} width={cropPending.box.width} height={cropPending.box.height} fill="none" stroke="#0a84ff" strokeWidth={1.5} strokeDasharray="6 4" />
+          </svg>
+          <div
+            role="group"
+            aria-label="Crop"
+            style={{
+              position: 'absolute', pointerEvents: 'auto', display: 'flex', gap: 6, padding: 6, borderRadius: 8,
+              background: 'var(--color-surface, #fff)', boxShadow: '0 6px 20px rgba(0,0,0,0.2)', fontSize: 12,
+              left: Math.max(4, Math.min(cropPending.box.x, transform.cssWidth - 300)),
+              top: Math.min(cropPending.box.y + cropPending.box.height + 8, transform.cssHeight - 44),
+            }}
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            {([
+              ['Crop This Page', () => [pageIndex]],
+              ['Crop All Pages', () => Array.from({ length: useDocumentStore.getState().documents.get(docId)?.pageCount ?? 0 }, (_, i) => i)],
+            ] as const).map(([label, pages]) => (
+              <button key={label} type="button" className="crop-button"
+                style={{ height: 28, padding: '0 10px', borderRadius: 6, border: 0, background: '#0a84ff', color: '#fff', cursor: 'pointer' }}
+                onClick={() => {
+                  const target = cropPending.rect;
+                  setCropPending(null);
+                  void import('../../commands/cropCommands').then((m) => m.cropPages(pages(), target));
+                }}>{label}</button>
+            ))}
+            <button type="button" style={{ height: 28, padding: '0 10px', borderRadius: 6, border: '1px solid #ccc', background: 'transparent', cursor: 'pointer' }}
+              onClick={() => setCropPending(null)}>Cancel</button>
+          </div>
+        </div>
+      )}
 
       {openNote && openNote.docId === docId && openNote.pageIndex === pageIndex && (() => {
         const note = annotations.find((a) => a.id === openNote.annotationId);

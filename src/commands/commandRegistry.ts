@@ -3,7 +3,7 @@ import type { WorkspaceMode } from '../store/uiStore';
 
 export type CanonicalTool = Extract<ToolType,
   'select' | 'hand' | 'pen' | 'highlighter' | 'eraser' | 'text' |
-  'line' | 'arrow' | 'rectangle' | 'ellipse' | 'freeform' | 'lasso' | 'textMarkup' | 'laserPointer' | 'note' | 'snapshot' | 'measure'>;
+  'line' | 'arrow' | 'rectangle' | 'ellipse' | 'freeform' | 'lasso' | 'textMarkup' | 'laserPointer' | 'note' | 'snapshot' | 'measure' | 'crop'>;
 
 export type ToolCommandId = `tool.${CanonicalTool}`;
 
@@ -23,7 +23,7 @@ export type AppCommandId =
   | 'view.rotateCW' | 'view.annotations' | 'view.primaryToolbar'
   | 'view.propertyShelf' | 'view.statusBar' | 'view.nativeFullscreen'
   | 'view.focusMode' | 'extras.favorites' | 'extras.toolStyles' | 'help.open'
-  | 'app.requestQuit' | 'app.requestCloseWindow' | 'app.settings' | 'view.splitView' | 'view.moveTabToNewWindow' | 'insert.headerFooter'
+  | 'app.requestQuit' | 'app.requestCloseWindow' | 'app.settings' | 'view.splitView' | 'view.moveTabToNewWindow' | 'insert.headerFooter' | 'page.removeCrop'
   | 'file.recoveredDocuments' | 'help.checkForUpdates' | 'help.about' | 'help.crashReports'
   | 'page.insertBlank' | 'page.insertNotePage' | 'page.duplicate' | 'page.delete' | 'page.rotateLeft' | 'page.rotateRight'
   | 'page.insertFromPdf' | 'page.exportSelected' | 'page.addBookmark'
@@ -108,7 +108,7 @@ export const APP_COMMANDS = {
   'tool.lasso': toolCommand('lasso', 'Lasso Select', 'S', 'lasso'),
   'tool.textMarkup': toolCommand('textMarkup', 'Text Highlight', 'U', 'highlighter'),
   'tool.snapshot': toolCommand('snapshot', 'Snapshot', undefined, 'snapshot'),
-  'tool.crop': unavailableTool('tool.crop', 'Crop', 'crop'),
+  'tool.crop': toolCommand('crop', 'Crop Pages', undefined, 'crop'),
   'tool.measure': toolCommand('measure', 'Measure', undefined, 'measure'),
   'tool.formula': unavailableTool('tool.formula', 'Formula', 'formula'),
   'tool.laserPointer': toolCommand('laserPointer', 'Laser Pointer', undefined, 'laserPointer'),
@@ -164,6 +164,7 @@ export const APP_COMMANDS = {
   'view.splitView': command('view.splitView', 'Side by Side', 'view', 'toggle', 'document', { icon: 'layout', shortcut: '⌥⌘\\', menuPlacements: ['view'] }),
   'view.moveTabToNewWindow': command('view.moveTabToNewWindow', 'Move Tab to New Window', 'view', 'action', 'document', { icon: 'layout', menuPlacements: ['view'] }),
   'insert.headerFooter': command('insert.headerFooter', 'Header, Footer & Page Numbers…', 'insert', 'action', 'document', { icon: 'text', menuPlacements: ['edit'], toolbarPlacements: ['primary.insert'] }),
+  'page.removeCrop': command('page.removeCrop', 'Remove Crop from This Page', 'page', 'action', 'document', { icon: 'crop', menuPlacements: ['page'] }),
   'app.settings': command('app.settings', 'Settings…', 'extras', 'action', 'always', { icon: 'toolStyles', shortcut: '⌘,', menuPlacements: ['app'] }),
   'page.split': command('page.split', 'Split Document…', 'page', 'action', 'document', { icon: 'export', menuPlacements: ['page'] }),
   'page.exportSelected': command('page.exportSelected', 'Export Selected Pages…', 'page', 'action', 'document', { icon: 'export', menuPlacements: ['page'] }),

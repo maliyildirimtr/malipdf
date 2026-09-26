@@ -94,6 +94,7 @@ const TOOL_DEFINITIONS: Record<ToolType, ToolDefinition> = {
   note: { icon: StickyNote, commandId: 'tool.note' },
   snapshot: { icon: Scissors, commandId: 'tool.snapshot' },
   measure: { icon: MoveHorizontal, commandId: 'tool.measure' },
+  crop: { icon: Crop, commandId: 'tool.crop' },
 };
 
 const DOCUMENT_COMMANDS = new Set<AppCommandId>([
@@ -304,6 +305,8 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
             onCommand={runCommand}
             items={[
               { commandId: 'insert.headerFooter', label: 'Header, Footer & Page Numbers…', enabled: isEnabled('insert.headerFooter'), icon: Hash },
+              { commandId: 'tool.crop', label: 'Crop Pages', enabled: isEnabled('tool.crop'), icon: Crop },
+              { commandId: 'page.removeCrop', label: 'Remove Crop from This Page', enabled: isEnabled('page.removeCrop'), icon: Crop },
             ]}
           />
         </ToolbarGroup>
@@ -481,6 +484,10 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
               <PropertySeparator />
               <PropertyHint>{toolOptions.measure.mode === 'distance' ? 'Drag to measure. Shift keeps the line straight.' : 'Click the corners; double-click or click the first corner to finish.'}</PropertyHint>
             </>
+          )}
+
+          {activeTool === 'crop' && (
+            <PropertyHint>Drag around the part of the page to keep, then choose Crop This Page or Crop All Pages.</PropertyHint>
           )}
 
           {activeTool === 'snapshot' && (

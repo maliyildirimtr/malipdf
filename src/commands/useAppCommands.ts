@@ -193,6 +193,9 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
       case 'view.moveTabToNewWindow':
         if (docId) void import('./documentCommands').then((m) => m.moveTabToNewWindow(docId)).catch((error) => notifyUser('error', `The tab could not be moved: ${errorMessage(error)}`));
         return;
+      case 'page.removeCrop':
+        if (docId) void import('./cropCommands').then((m) => m.cropPages([documents.documents.get(docId)?.activePageIndex ?? 0], null));
+        return;
       case 'insert.headerFooter':
         ui.setHeaderFooterOpen(true);
         return;
