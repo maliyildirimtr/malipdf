@@ -6,7 +6,7 @@
 import React, { memo, useEffect, useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import katex from 'katex';
-import { STRUCTURES, SYMBOL_GROUPS, type FormulaItem, type Structure } from '../../pdf/formulaCatalog';
+import { STRUCTURES, SYMBOL_GROUPS, toEditorTemplate, type FormulaItem, type Structure } from '../../pdf/formulaCatalog';
 import styles from './FormulaDialog.module.css';
 
 /** Inline KaTeX rendering of a catalog entry (cached). */
@@ -22,8 +22,11 @@ export const Tex = memo(function Tex({ latex, display = false }: { latex: string
 });
 
 export interface EquationRibbonProps {
-  /** Insert `latex` at the cursor of the formula field. */
-  onInsert: (latex: string) => void;
+  /**
+   * Insert at the cursor: `latex` for the LaTeX field, `template` (with empty
+   * boxes) for the visual editor.
+   */
+  onInsert: (latex: string, template: string) => void;
   /** Tells the dialog a menu is open (so Escape closes the menu first). */
   onMenuChange?: (open: boolean) => void;
 }
@@ -65,8 +68,8 @@ export function EquationRibbon({ onInsert, onMenuChange }: EquationRibbonProps) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  const pick = (item: FormulaItem) => {
-    onInsert(item.latex);
+  const pick = (item: FormulaItem, template = item.latex) => {
+    onInsert(item.latex, template);
     setOpen(null);
   };
 
@@ -79,7 +82,7 @@ export function EquationRibbon({ onInsert, onMenuChange }: EquationRibbonProps) 
   return (
     <div className={styles.ribbon} ref={rootRef} onMouseDown={keepFocus}>
       <div className={styles.ribbonGroup}>
-        <button type="button" className={styles.textButton} title="Normal text inside the formula" onClick={() => onInsert('\\text{text}')}>
+        <button type="button" className={styles.textButton} title="Normal text inside the formula" onClick={() => onInsert('\\text{text}', '\\text{#@}')}>
           <span className={styles.textButtonIcon}>ab</span>
           <span>Text</span>
         </button>
@@ -145,7 +148,7 @@ function StructureButton({ structure, open, onToggle, onPick }: {
   structure: Structure;
   open: boolean;
   onToggle: () => void;
-  onPick: (item: FormulaItem) => void;
+  onPick: (item: FormulaItem, template?: string) => void;
 }) {
   return (
     <div className={styles.structureWrap}>
@@ -168,7 +171,15 @@ function StructureButton({ structure, open, onToggle, onPick }: {
               <h3 className={styles.menuHeading}>{section.label}</h3>
               <div className={styles.templateGrid}>
                 {section.items.map((item) => (
-                  <button key={item.title + item.latex} type="button" role="menuitem" className={styles.template} title={item.title} aria-label={item.title} onClick={() => onPick(item)}>
+                  <button
+                    key={item.title + item.latex}
+                    type="button"
+                    role="menuitem"
+                    className={styles.template}
+                    title={item.title}
+                    aria-label={item.title}
+                    onClick={() => onPick(item, section.label.startsWith('Common') ? item.latex : toEditorTemplate(item.latex))}
+                  >
                     <Tex latex={item.latex} display />
                   </button>
                 ))}

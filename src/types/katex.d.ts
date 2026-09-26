@@ -8,6 +8,7 @@ declare module 'katex' {
     trust?: boolean;
     maxSize?: number;
     maxExpand?: number;
+    macros?: Record<string, string>;
   }
   const katex: {
     renderToString(tex: string, options?: KatexOptions): string;

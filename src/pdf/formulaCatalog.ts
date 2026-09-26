@@ -389,3 +389,33 @@ export function insertStructure(text: string, selStart: number, selEnd: number, 
   const caret = selStart + joined.length;
   return { text: next, selStart: caret, selEnd: caret };
 }
+
+/**
+ * A structure template for the visual editor (MathLive): the letters that
+ * stand for parts to fill in become empty boxes. The first box takes the
+ * selected formula part (`#@`), the others are empty (`#?`). Symbols and
+ * the "Common …" examples are inserted exactly as they are.
+ */
+export function toEditorTemplate(latex: string): string {
+  let first = true;
+  const slot = () => {
+    const token = first ? '#@' : '#?';
+    first = false;
+    return token;
+  };
+  // Leave \text{…} and environment names alone.
+  const parts = latex.split(/(\\text\{[^}]*\}|\\(?:begin|end)\{[^}]*\})/);
+  return parts
+    .map((part, i) => (i % 2 === 1
+      ? part
+      : part.replace(/(^|[\s{&])([a-zA-Z])(?=$|[\s}&\\])/g, (_m, before: string) => `${before}${slot()}`)))
+    .join('');
+}
+
+/** LaTeX from the visual editor, made ready for KaTeX (empty boxes removed). */
+export function cleanEditorLatex(latex: string): string {
+  return latex
+    .replace(/\\placeholder(\[[^\]]*\])?\{[^}]*\}/g, '')
+    .replace(/\{\s*\}/g, '{}')
+    .trim();
+}

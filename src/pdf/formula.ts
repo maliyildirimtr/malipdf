@@ -68,12 +68,25 @@ export async function ensureFormulaStyles(): Promise<void> {
   await document.fonts?.ready;
 }
 
+/** Commands the visual editor (MathLive) may write that KaTeX does not know. */
+const EDITOR_MACROS: Record<string, string> = {
+  '\\differentialD': '\\mathrm{d}',
+  '\\capitalDifferentialD': '\\mathrm{D}',
+  '\\exponentialE': '\\mathrm{e}',
+  '\\imaginaryI': '\\mathrm{i}',
+  '\\imaginaryJ': '\\mathrm{j}',
+  '\\placeholder': '',
+};
+
 /** KaTeX HTML for `latex`; throws a readable error when it does not parse. */
 export function formulaHtml(latex: string): string {
   const source = latex.trim();
   if (!source) throw new Error('Type a formula first.');
   try {
-    return katex.renderToString(source, { displayMode: true, throwOnError: true, output: 'html', strict: 'ignore', trust: false, maxSize: 50, maxExpand: 500 });
+    return katex.renderToString(source, {
+      displayMode: true, throwOnError: true, output: 'html', strict: 'ignore', trust: false, maxSize: 50, maxExpand: 500,
+      macros: EDITOR_MACROS,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message.replace(/^KaTeX parse error:\s*/, '') : String(error);
     throw new Error(message);
