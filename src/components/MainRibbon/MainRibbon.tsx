@@ -40,6 +40,7 @@ import {
   Square,
   TextSelect,
   StickyNote,
+  TextCursorInput,
   Minimize2,
   Wrench,
   Hash,
@@ -96,6 +97,7 @@ const TOOL_DEFINITIONS: Record<ToolType, ToolDefinition> = {
   snapshot: { icon: Scissors, commandId: 'tool.snapshot' },
   measure: { icon: MoveHorizontal, commandId: 'tool.measure' },
   crop: { icon: Crop, commandId: 'tool.crop' },
+  editText: { icon: TextCursorInput, commandId: 'tool.editText' },
 };
 
 const DOCUMENT_COMMANDS = new Set<AppCommandId>([
@@ -305,6 +307,7 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
             icon={Wrench}
             onCommand={runCommand}
             items={[
+              { commandId: 'tool.editText', label: 'Edit PDF Text', enabled: isEnabled('tool.editText'), icon: TextCursorInput },
               { commandId: 'insert.headerFooter', label: 'Header, Footer & Page Numbers…', enabled: isEnabled('insert.headerFooter'), icon: Hash },
               { commandId: 'tool.crop', label: 'Crop Pages', enabled: isEnabled('tool.crop'), icon: Crop },
               { commandId: 'page.removeCrop', label: 'Remove Crop from This Page', enabled: isEnabled('page.removeCrop'), icon: Crop },
@@ -490,6 +493,10 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
               <PropertySeparator />
               <PropertyHint>{toolOptions.measure.mode === 'distance' ? 'Drag to measure. Shift keeps the line straight.' : 'Click the corners; double-click or click the first corner to finish.'}</PropertyHint>
             </>
+          )}
+
+          {activeTool === 'editText' && (
+            <PropertyHint>Click a line of the PDF's text to change it. Enter saves, Esc cancels. Empty the line to delete it.</PropertyHint>
           )}
 
           {activeTool === 'crop' && (

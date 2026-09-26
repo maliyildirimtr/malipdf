@@ -17,6 +17,7 @@
 import { hasRealPressure } from './inkGeometry';
 import { NOTE_ICON_SIZE } from '../types/annotations';
 import { MEASURE_TICK } from './measure';
+import { coverQuad, coverWidth } from './textEdit';
 import type {
   Annotation,
   StrokeAnnotation,
@@ -140,6 +141,10 @@ export function hitTestAnnotation(
       }
       return annotation.points.length === 2
         && distanceToSegment(pdfPoint, annotation.points[0], annotation.points[1]) <= annotation.strokeWidth / 2 + tolerance + MEASURE_TICK;
+    case 'textEdit': {
+      const quad = coverQuad(annotation, coverWidth(annotation));
+      return pointNearQuad(pdfPoint, quad as [PdfPoint, PdfPoint, PdfPoint, PdfPoint], tolerance);
+    }
     case 'note':
       return pdfPoint.x >= annotation.x - tolerance && pdfPoint.x <= annotation.x + NOTE_ICON_SIZE + tolerance
         && pdfPoint.y >= annotation.y - tolerance && pdfPoint.y <= annotation.y + NOTE_ICON_SIZE + tolerance;

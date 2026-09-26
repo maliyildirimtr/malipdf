@@ -52,6 +52,7 @@ export type AnnotationType =
   | 'markup'
   | 'note'
   | 'measure'
+  | 'textEdit'
   | 'image'   // future
   | 'stamp';  // future
 
@@ -200,6 +201,35 @@ export interface MeasureAnnotation extends BaseAnnotation {
   strokeWidth: number;
 }
 
+// ─── Edited PDF text ─────────────────────────────────────────────────────────
+
+/**
+ * A line of the PDF's own text, replaced: the old line is covered with the
+ * background colour and the new text is drawn on the same baseline.
+ */
+export interface TextEditAnnotation extends BaseAnnotation {
+  type: 'textEdit';
+  /** Baseline start of the original line (PDF space). */
+  origin: PdfPoint;
+  /** Baseline direction, radians. */
+  angle: number;
+  /** Width of the original line along the baseline. */
+  originalWidth: number;
+  /** Cover above / below the baseline. */
+  ascent: number;
+  descent: number;
+  original: string;
+  text: string;
+  /** Width of the new text along the baseline (measured when edited). */
+  textWidth: number;
+  fontSize: number;
+  fontFamily: string;
+  bold: boolean;
+  italic: boolean;
+  /** Colour of the page behind the line. */
+  background: string;
+}
+
 // ─── Union type ───────────────────────────────────────────────────────────────
 
 export type Annotation =
@@ -211,7 +241,8 @@ export type Annotation =
   | ImageAnnotation
   | TextMarkupAnnotation
   | NoteAnnotation
-  | MeasureAnnotation;
+  | MeasureAnnotation
+  | TextEditAnnotation;
 
 // ─── Tool types ───────────────────────────────────────────────────────────────
 
@@ -234,7 +265,8 @@ export type ToolType =
   | 'note'
   | 'snapshot'
   | 'measure'
-  | 'crop';
+  | 'crop'
+  | 'editText';
 
 // ─── Tool options (shared across all instances, not per-annotation) ───────────
 

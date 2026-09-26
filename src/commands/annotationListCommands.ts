@@ -23,7 +23,7 @@ export function matchesFilter(annotation: Annotation, filter: AnnotationFilter):
     case 'all': return true;
     case 'pen': return annotation.type === 'stroke';
     case 'highlight': return annotation.type === 'highlight' || annotation.type === 'markup';
-    case 'text': return annotation.type === 'text' || annotation.type === 'note';
+    case 'text': return annotation.type === 'text' || annotation.type === 'note' || annotation.type === 'textEdit';
     case 'shape': return annotation.type === 'shape' || annotation.type === 'freeform' || annotation.type === 'measure';
     case 'image': return annotation.type === 'image';
   }
@@ -44,6 +44,10 @@ export function describeAnnotation(annotation: Annotation): string {
       const kind = ({ highlight: 'Highlight', underline: 'Underline', strikeout: 'Strikethrough' })[annotation.markup];
       const text = annotation.text.replace(/\s+/g, ' ').trim();
       return text ? `${kind}: ${text.length > 22 ? `${text.slice(0, 22)}…` : text}` : kind;
+    }
+    case 'textEdit': {
+      const text = annotation.text.replace(/\s+/g, ' ').trim();
+      return text ? `Edited text: ${text.length > 22 ? `${text.slice(0, 22)}…` : text}` : 'Deleted text';
     }
     case 'measure':
       return `${annotation.kind === 'area' ? 'Area' : 'Distance'}: ${measureLabel(annotation)}`;

@@ -1,6 +1,7 @@
 import type { Annotation, PdfRect, PdfPoint } from '../types/annotations';
 import { NOTE_ICON_SIZE } from '../types/annotations';
 import { MEASURE_TICK } from './measure';
+import { coverQuad, coverWidth } from './textEdit';
 import { pointsBoundingBox } from './coordinateTransform';
 import { hasRealPressure } from './inkGeometry';
 
@@ -50,6 +51,10 @@ export function getAnnotationBounds(annotation: Annotation): PdfRect {
       const { minX, minY, maxX, maxY } = pointsBoundingBox(annotation.points);
       const pad = MEASURE_TICK + annotation.strokeWidth;
       return { x: minX - pad, y: minY - pad, width: (maxX - minX) + pad * 2, height: (maxY - minY) + pad * 2 };
+    }
+    case 'textEdit': {
+      const { minX, minY, maxX, maxY } = pointsBoundingBox(coverQuad(annotation, coverWidth(annotation)));
+      return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
     }
     case 'note':
       return { x: annotation.x, y: annotation.y, width: NOTE_ICON_SIZE, height: NOTE_ICON_SIZE };

@@ -36,7 +36,7 @@ describe('native macOS menu schema', () => {
     for (const id of [
       'tool.select', 'tool.hand', 'tool.pen', 'tool.highlighter', 'tool.eraser',
       'tool.text', 'tool.line', 'tool.arrow', 'tool.rectangle', 'tool.ellipse', 'tool.lasso',
-      'tool.note', 'tool.snapshot', 'tool.measure', 'tool.crop',
+      'tool.note', 'tool.snapshot', 'tool.measure', 'tool.crop', 'tool.editText',
     ]) {
       expect(findCommand(tools.items, id)?.enabled).not.toBe(false);
     }

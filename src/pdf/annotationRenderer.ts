@@ -27,7 +27,9 @@ import type {
   TextMarkupAnnotation,
   NoteAnnotation,
   MeasureAnnotation,
+  TextEditAnnotation,
 } from '../types/annotations';
+import { coverQuad, coverWidth } from './textEdit';
 import { labelAnchor, measureLabel, measureTicks, MEASURE_FONT } from './measure';
 import { NOTE_ICON_SIZE } from '../types/annotations';
 import { NOTE_ICON_PATHS, NOTE_ICON_STROKE, noteShade } from './noteIcon';
@@ -90,6 +92,9 @@ export function renderAnnotations(
         break;
       case 'measure':
         renderMeasure(ctx, ann, transform);
+        break;
+      case 'textEdit':
+        renderTextEdit(ctx, ann, transform);
         break;
       default:
         console.warn(`Unsupported annotation type: ${(ann as any).type}`);
@@ -260,6 +265,38 @@ export function renderMarkup(
     ctx.lineWidth = width * transform.scale;
     ctx.lineCap = 'butt';
     ctx.stroke(path);
+  }
+  ctx.restore();
+}
+
+// ─── Edited PDF text ─────────────────────────────────────────────────────────
+
+export function renderTextEdit(
+  ctx: CanvasRenderingContext2D,
+  annotation: TextEditAnnotation,
+  transform: PageTransform,
+): void {
+  const quad = coverQuad(annotation, coverWidth(annotation)).map((p) => pdfToScreen(p.x, p.y, transform));
+  ctx.save();
+  ctx.globalAlpha = annotation.opacity;
+  ctx.fillStyle = annotation.background;
+  ctx.beginPath();
+  quad.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+  ctx.closePath();
+  ctx.fill();
+  if (annotation.text) {
+    // Local axes: +x along the baseline, +y down (screen-like), in PDF points.
+    const o = annotation.origin;
+    const dx = Math.cos(annotation.angle);
+    const dy = Math.sin(annotation.angle);
+    const origin = pdfToScreen(o.x, o.y, transform);
+    const alongPt = pdfToScreen(o.x + dx, o.y + dy, transform);
+    const downPt = pdfToScreen(o.x + dy, o.y - dx, transform);
+    ctx.transform(alongPt.x - origin.x, alongPt.y - origin.y, downPt.x - origin.x, downPt.y - origin.y, origin.x, origin.y);
+    ctx.font = cssFont(annotation);
+    ctx.fillStyle = annotation.color;
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText(annotation.text, 0, 0);
   }
   ctx.restore();
 }

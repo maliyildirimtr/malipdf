@@ -39,7 +39,8 @@ export function translateAnnotation(annotation: Annotation, dx: number, dy: numb
       };
     }
     case 'markup':
-      // Text markup belongs to the text under it and does not move.
+    case 'textEdit':
+      // Text markup / edits belong to the text under them and do not move.
       return annotation;
     case 'note':
       return { ...annotation, x: annotation.x + dx, y: annotation.y + dy };
@@ -103,6 +104,7 @@ export function scaleAnnotationFromBounds(
       };
     }
     case 'markup':
+    case 'textEdit':
       return annotation;
     case 'note': {
       // The icon keeps its size; its top-left corner follows the group.

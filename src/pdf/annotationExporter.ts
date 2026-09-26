@@ -33,6 +33,7 @@ import {
   LineCapStyle,
   PDFName,
   PDFNumber,
+  degrees,
 } from 'pdf-lib';
 import {
   appendBezierCurve,
@@ -61,6 +62,7 @@ import type {
   ImageAnnotation,
   FreeformAnnotation,
   MeasureAnnotation,
+  TextEditAnnotation,
   TextMarkupAnnotation,
   InputPoint,
   DocumentAnnotationState,
@@ -75,6 +77,7 @@ import { appendBookmarksToOutline } from './outlineWriter';
 import { highlightShape, penShape, type InkShape, type PathCommand } from './inkGeometry';
 import { markupShape } from './textSelection';
 import { addNoteAnnotation } from './noteExport';
+import { coverQuad, coverWidth } from './textEdit';
 import { applyFormValues, type FormValue } from './formFields';
 import { labelAnchor, measureLabel, measureTicks, MEASURE_FONT } from './measure';
 
@@ -684,6 +687,26 @@ function exportFreeform(
   });
 }
 
+// ─── Edited PDF text export ───────────────────────────────────────────────────
+
+async function exportTextEdit(page: PDFPage, resolveFont: TextFontResolver, annotation: TextEditAnnotation, info: PdfPageExportContext): Promise<void> {
+  const quad = coverQuad(annotation, coverWidth(annotation)).map((p) => toLib(p.x, p.y, info));
+  const path = quad.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${-p.y}`).join(' ') + ' Z';
+  page.drawSvgPath(path, { x: 0, y: 0, color: parseCssColor(annotation.background), opacity: annotation.opacity });
+  if (!annotation.text) return;
+  const font = await resolveFont(annotation.fontFamily, annotation.bold, annotation.italic);
+  const origin = toLib(annotation.origin.x, annotation.origin.y, info);
+  page.drawText(annotation.text, {
+    x: origin.x,
+    y: origin.y,
+    size: annotation.fontSize,
+    font,
+    color: parseCssColor(annotation.color),
+    opacity: annotation.opacity,
+    rotate: degrees((annotation.angle * 180) / Math.PI),
+  });
+}
+
 // ─── Measurement export ───────────────────────────────────────────────────────
 
 function exportMeasure(page: PDFPage, annotation: MeasureAnnotation, font: PDFFont): void {
@@ -832,6 +855,13 @@ function validateAnnotation(annotation: Annotation, pageIndex: number): void {
       assertPositive(annotation.calibration?.scale, 'measure scale');
       parseCssColor(annotation.color);
       return;
+    case 'textEdit':
+      validatePoint(annotation.origin, 'text edit origin');
+      assertFinite(annotation.angle, 'text edit angle');
+      assertPositive(annotation.fontSize, 'text edit font size');
+      if (typeof annotation.text !== 'string') throw new Error('Edited text must be a string.');
+      parseCssColor(annotation.background);
+      return;
     case 'note':
       assertFinite(annotation.x, 'note x');
       assertFinite(annotation.y, 'note y');
@@ -868,6 +898,8 @@ function cloneAnnotation(annotation: Annotation): Annotation {
     case 'image':
     case 'note':
       return Object.freeze({ ...annotation }) as Annotation;
+    case 'textEdit':
+      return Object.freeze({ ...annotation, origin: Object.freeze({ ...annotation.origin }) }) as Annotation;
     case 'markup':
       return Object.freeze({
         ...annotation,
@@ -1000,6 +1032,9 @@ export async function exportAnnotatedPdf(
             break;
           case 'note':
             addNoteAnnotation(pdfDoc, page, annotation);
+            break;
+          case 'textEdit':
+            await exportTextEdit(page, resolveTextFont, annotation, info);
             break;
           case 'measure':
             measureFont ??= await pdfDoc.embedFont(StandardFonts.HelveticaBold);

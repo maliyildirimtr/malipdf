@@ -111,6 +111,9 @@ import { selectText, type TextSelection } from '../../pdf/textSelection';
 import type { TextMarkupAnnotation, NoteAnnotation, MeasureAnnotation } from '../../types/annotations';
 import { NOTE_ICON_SIZE } from '../../types/annotations';
 import { NotePopup } from './NotePopup';
+import type { TextEditAnnotation } from '../../types/annotations';
+import type { EditableLine } from '../../commands/textEditCommands';
+import { coverQuad, coverWidth } from '../../pdf/textEdit';
 import { autoSizeTextBox, canvasMeasure, cssFont, LINE_HEIGHT, MAX_AUTO_TEXT_WIDTH, TEXT_PADDING } from '../../pdf/textLayout';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -173,6 +176,7 @@ function getCursor(tool: ToolType, mode: InteractionMode): string {
     case 'note':        return 'copy';
     case 'snapshot':    return 'crosshair';
     case 'crop':        return 'crosshair';
+    case 'editText':    return 'text';
     case 'measure':     return 'crosshair';
     case 'laserPointer': return LASER_CURSOR;
     case 'freeform':    return 'crosshair';
@@ -352,6 +356,8 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
 
   // React state only for text overlay (needs DOM update)
   const [textOverlay, setTextOverlay] = useState<TextOverlay | null>(null);
+  // Edit PDF Text: the line being edited.
+  const [pdfTextEditor, setPdfTextEditor] = useState<{ found: EditableLine | null; existing: TextEditAnnotation | null; draft: string } | null>(null);
   // Crop tool: the region waiting for "Crop" / "Cancel".
   const [cropPending, setCropPending] = useState<{ rect: PdfRect; box: { x: number; y: number; width: number; height: number } } | null>(null);
 
@@ -1281,6 +1287,26 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
       shapeStart.current = { screenX, screenY, pdfX: pdfPt.x, pdfY: pdfPt.y };
       currentEnd.current = { screenX, screenY };
       schedulePreviewRender();
+      return;
+    }
+
+    // ── Edit PDF Text ──
+    if (interactionTool === 'editText') {
+      const existing = getPageAnnotations(docId, pageIndex).find((a): a is TextEditAnnotation =>
+        a.type === 'textEdit' && !a.locked && hitTestAnnotations(pdfPt, [a], transform) !== null);
+      if (existing) {
+        setPdfTextEditor({ found: null, existing, draft: existing.text });
+        return;
+      }
+      const point = { x: pdfPt.x, y: pdfPt.y };
+      void import('../../commands/textEditCommands').then(async (m) => {
+        const found = await m.findEditableLine(identity, pageIndex, point, transform.displayRotation);
+        if (!found) {
+          notifyUser('info', 'No PDF text here. On a scanned page, run Page ▸ Recognize Text first — or use the Text tool (T) to add new text.');
+          return;
+        }
+        setPdfTextEditor({ found, existing: null, draft: found.line.text });
+      });
       return;
     }
 
@@ -2602,6 +2628,52 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
           );
         }
         return null;
+      })()}
+
+      {pdfTextEditor && (() => {
+        const ed = pdfTextEditor;
+        const geometry = ed.existing ?? {
+          origin: ed.found!.line.origin, angle: ed.found!.line.angle, ascent: ed.found!.line.ascent, descent: ed.found!.line.descent,
+          originalWidth: ed.found!.line.width, textWidth: 0,
+        };
+        const look = ed.existing ?? { fontSize: ed.found!.line.fontSize, fontFamily: ed.found!.fontFamily, bold: ed.found!.bold, italic: ed.found!.italic, color: ed.found!.color, background: ed.found!.background };
+        const quad = coverQuad(geometry, coverWidth(geometry));
+        const xs = quad.map((q) => q.x), ys = quad.map((q) => q.y);
+        const box = pdfRectToScreenBounds({ x: Math.min(...xs), y: Math.min(...ys), width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys) }, transform);
+        const finish = (save: boolean) => {
+          setPdfTextEditor(null);
+          if (!save) return;
+          void import('../../commands/textEditCommands').then((m) => {
+            if (ed.existing) m.commitTextEdit(docId, ed.existing, { ...ed.existing, text: ed.draft });
+            else if (ed.found) m.commitTextEdit(docId, null, m.makeTextEdit(pageIndex, ed.found, ed.draft));
+          });
+        };
+        return (
+          <input
+            data-pdf-text-editor
+            autoFocus
+            value={ed.draft}
+            spellCheck={false}
+            aria-label="Edit PDF text"
+            onChange={(e) => setPdfTextEditor({ ...ed, draft: e.target.value })}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+              if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+            }}
+            onBlur={() => finish(true)}
+            onPointerDown={(e) => e.stopPropagation()}
+            style={{
+              position: 'absolute', zIndex: 36, left: box.x - 2, top: box.y,
+              minWidth: box.width + 4, width: `${Math.max(box.width + 4, (ed.draft.length + 2) * look.fontSize * transform.scale * 0.55)}px`,
+              height: box.height, padding: '0 2px', margin: 0, boxSizing: 'border-box',
+              border: '1.5px solid #0a84ff', borderRadius: 2, outline: 'none',
+              background: look.background, color: look.color,
+              font: `${look.italic ? 'italic ' : ''}${look.bold ? 'bold ' : ''}${look.fontSize * transform.scale}px ${look.fontFamily}`,
+              lineHeight: `${box.height - 3}px`,
+            }}
+          />
+        );
       })()}
 
       {cropPending && (

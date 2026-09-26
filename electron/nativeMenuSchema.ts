@@ -115,7 +115,7 @@ export function createNativeMenuSchema(isMac: boolean, isDev: boolean): readonly
         tool('tool.rectangle', 'Rectangle', 'R'), tool('tool.ellipse', 'Ellipse', 'C'),
         tool('tool.polygon', 'Polygon', undefined, false), tool('tool.dimension', 'Dimension', undefined, false), separator(),
         tool('tool.eraser', 'Eraser', 'E'), tool('tool.lasso', 'Lasso Select', 'S'), separator(),
-        tool('tool.snapshot', 'Snapshot'), tool('tool.crop', 'Crop Pages'),
+        tool('tool.snapshot', 'Snapshot'), tool('tool.crop', 'Crop Pages'), tool('tool.editText', 'Edit PDF Text'),
         tool('tool.measure', 'Measure'), tool('tool.formula', 'Formula', undefined, false), separator(),
         tool('tool.laserPointer', 'Laser Pointer'), tool('tool.pointer', 'Pointer', undefined, false), separator(),
         submenu('Favorites', [command('extras.favorites', 'No Favorites Yet', { enabled: false })], false),
