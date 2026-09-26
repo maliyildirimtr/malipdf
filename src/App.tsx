@@ -35,6 +35,7 @@ import { NewDocumentDialog } from './components/NewDocumentDialog/NewDocumentDia
 import { NotePageDialog } from './components/NewDocumentDialog/NotePageDialog';
 import { SplitDialog } from './components/NewDocumentDialog/SplitDialog';
 import { SettingsDialog } from './components/Settings/SettingsDialog';
+import { SplitView } from './components/SplitView/SplitView';
 import { PresentationView } from './components/Presentation/PresentationView';
 import { FormulaDialog } from './components/Formula/FormulaDialog';
 import { TaskProgressPanel } from './components/TaskProgress/TaskProgress';
@@ -245,6 +246,7 @@ export default function App() {
           <PageSidebar />
         </div>
         <DocumentArea />
+        <SplitView />
       </div>
       <div className="app-status-chrome">
         <StatusBar />

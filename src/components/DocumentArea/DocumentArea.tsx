@@ -415,6 +415,20 @@ export function DocumentArea() {
 
   // ── Fit modes ─────────────────────────────────────────────────────────────
 
+  // Refit when the area changes size (window resize, side-by-side pane, sidebar).
+  const [containerWidth, setContainerWidth] = useState(0);
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    let raf = 0;
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => setContainerWidth(el.clientWidth));
+    });
+    observer.observe(el);
+    return () => { observer.disconnect(); cancelAnimationFrame(raf); };
+  }, [activeIdentityKey]);
+
   useEffect(() => {
     if (!activeDoc || !activeSession || activeDoc.zoomMode !== 'fitWidth') return;
     const pageIndex = activeDoc.activePageIndex;
@@ -426,7 +440,7 @@ export function DocumentArea() {
       activeDoc.pageRotations[pageIndex] || 0,
     );
     if (Math.abs(newScale - activeDoc.zoom) > 0.001) setZoom(activeDoc.id, newScale);
-  }, [activeDoc, activeSession, setZoom]);
+  }, [activeDoc, activeSession, setZoom, containerWidth]);
 
   // ── Zoom and pan ──────────────────────────────────────────────────────────
 

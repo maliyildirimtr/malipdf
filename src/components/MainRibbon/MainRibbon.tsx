@@ -40,6 +40,7 @@ import {
   Square,
   TextSelect,
   StickyNote,
+  Columns2,
   Settings,
   Scissors,
   MoveHorizontal,
@@ -124,6 +125,7 @@ export interface MainRibbonProps {
  */
 export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
   const ribbonRef = React.useRef<HTMLElement>(null);
+  const splitOpen = useUIStore((s) => s.splitView !== null);
   const [density, setDensity] = React.useState<'full' | 'compact' | 'tight'>('full');
   const { activeDocId, documents } = useDocumentStore();
   const {
@@ -339,6 +341,7 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
             enabled={isEnabled('view.focusMode')}
             pressed={workspaceMode === 'focus'}
           />
+          <CommandButton commandId="view.splitView" label="Side by Side" shortcut={"⌥⌘\\"} icon={Columns2} onCommand={runCommand} enabled={isEnabled('view.splitView')} pressed={splitOpen} />
           <CommandButton commandId="app.settings" label="Settings" shortcut="⌘," icon={Settings} onCommand={runCommand} enabled />
         </ToolbarGroup>
       </div>

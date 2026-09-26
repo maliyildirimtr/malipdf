@@ -178,6 +178,14 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
       case 'page.split':
         ui.setSplitDialogOpen(true);
         return;
+      case 'view.splitView': {
+        if (ui.splitView) { ui.setSplitView(null); return; }
+        const store = useDocumentStore.getState();
+        // Another open document if there is one, otherwise the same document.
+        const other = store.tabOrder.find((id) => id !== store.activeDocId) ?? store.activeDocId;
+        if (other) ui.setSplitView({ docId: other });
+        return;
+      }
       case 'app.settings':
         ui.setSettingsOpen(true);
         return;
@@ -472,6 +480,11 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
         return;
       }
 
+      if ((event.metaKey || event.ctrlKey) && event.altKey && event.code === 'Backslash') {
+        executeCommand('view.splitView');
+        event.preventDefault();
+        return;
+      }
       if ((event.metaKey || event.ctrlKey) && event.key === ',' && !event.altKey && !event.shiftKey) {
         executeCommand('app.settings');
         event.preventDefault();

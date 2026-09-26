@@ -23,7 +23,7 @@ export type AppCommandId =
   | 'view.rotateCW' | 'view.annotations' | 'view.primaryToolbar'
   | 'view.propertyShelf' | 'view.statusBar' | 'view.nativeFullscreen'
   | 'view.focusMode' | 'extras.favorites' | 'extras.toolStyles' | 'help.open'
-  | 'app.requestQuit' | 'app.requestCloseWindow' | 'app.settings'
+  | 'app.requestQuit' | 'app.requestCloseWindow' | 'app.settings' | 'view.splitView'
   | 'file.recoveredDocuments' | 'help.checkForUpdates' | 'help.about' | 'help.crashReports'
   | 'page.insertBlank' | 'page.insertNotePage' | 'page.duplicate' | 'page.delete' | 'page.rotateLeft' | 'page.rotateRight'
   | 'page.insertFromPdf' | 'page.exportSelected' | 'page.addBookmark'
@@ -161,6 +161,7 @@ export const APP_COMMANDS = {
   'view.presentation': command('view.presentation', 'Present', 'view', 'action', 'document', { icon: 'fullscreen', shortcut: '⌥⌘P', menuPlacements: ['view'] }),
   'view.replayInk': command('view.replayInk', 'Replay Ink on This Page', 'view', 'action', 'document', { icon: 'annotations', menuPlacements: ['view'] }),
   'page.addBookmark': command('page.addBookmark', 'Add Bookmark', 'page', 'action', 'document', { icon: 'favorites', shortcut: '⌥⌘B', menuPlacements: ['page'] }),
+  'view.splitView': command('view.splitView', 'Side by Side', 'view', 'toggle', 'document', { icon: 'layout', shortcut: '⌥⌘\\', menuPlacements: ['view'] }),
   'app.settings': command('app.settings', 'Settings…', 'extras', 'action', 'always', { icon: 'toolStyles', shortcut: '⌘,', menuPlacements: ['app'] }),
   'page.split': command('page.split', 'Split Document…', 'page', 'action', 'document', { icon: 'export', menuPlacements: ['page'] }),
   'page.exportSelected': command('page.exportSelected', 'Export Selected Pages…', 'page', 'action', 'document', { icon: 'export', menuPlacements: ['page'] }),
