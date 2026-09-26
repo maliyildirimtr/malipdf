@@ -1,14 +1,15 @@
 /**
- * Formula tool: LaTeX → typeset math (KaTeX, bundled, offline) → PNG image
+ * Formula tool: LaTeX → typeset math (KaTeX, works offline) → PNG image
  * annotation. The LaTeX source is kept on the annotation, so a double-click
  * opens it again for editing.
  *
- * KaTeX lays out HTML. To turn it into an image the HTML is put inside an
+ * KaTeX (npm package `katex`, MIT) lays out HTML. To turn it into an image
+ * the HTML is put inside an
  * SVG <foreignObject> together with KaTeX's CSS and fonts (as data URLs),
  * drawn onto a canvas at high resolution and saved as PNG.
  */
-import katex from '../vendor/katex/katex.mjs';
-import katexCss from '../vendor/katex/katex.min.css?raw';
+import katex from 'katex';
+import katexCss from 'katex/dist/katex.min.css?raw';
 
 export interface FormulaStyle {
   /** Text size in PDF points. */
@@ -29,7 +30,7 @@ const PADDING_PT = 4;
 
 // In a build these are data: URLs already (vite.config.ts inlines .woff2);
 // in development they are URLs and get fetched once.
-const fontLoaders = import.meta.glob('../vendor/katex/fonts/*.woff2', { query: '?url', import: 'default' }) as Record<string, () => Promise<string>>;
+const fontLoaders = import.meta.glob('../../node_modules/katex/dist/fonts/*.woff2', { query: '?url', import: 'default' }) as Record<string, () => Promise<string>>;
 
 async function asDataUrl(url: string): Promise<string> {
   if (url.startsWith('data:')) return url;
