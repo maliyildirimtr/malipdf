@@ -96,6 +96,8 @@ interface UIStore {
   resetToolDefaults: () => void;
   settingsOpen: boolean;
   headerFooterOpen: boolean;
+  compressOpen: boolean;
+  setCompressOpen: (open: boolean) => void;
   setHeaderFooterOpen: (open: boolean) => void;
   /** Side-by-side view: the document shown in the right pane. */
   splitView: { docId: string } | null;
@@ -424,6 +426,8 @@ export const useUIStore = create<UIStore>()(
 
         splitView: null,
         setSplitView: (splitView) => set({ splitView }),
+        compressOpen: false,
+        setCompressOpen: (compressOpen) => set({ compressOpen }),
         headerFooterOpen: false,
         setHeaderFooterOpen: (headerFooterOpen) => set({ headerFooterOpen }),
         settingsOpen: false,

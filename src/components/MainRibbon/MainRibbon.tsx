@@ -40,6 +40,7 @@ import {
   Square,
   TextSelect,
   StickyNote,
+  Minimize2,
   Wrench,
   Hash,
   Columns2,
@@ -307,6 +308,7 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
               { commandId: 'insert.headerFooter', label: 'Header, Footer & Page Numbers…', enabled: isEnabled('insert.headerFooter'), icon: Hash },
               { commandId: 'tool.crop', label: 'Crop Pages', enabled: isEnabled('tool.crop'), icon: Crop },
               { commandId: 'page.removeCrop', label: 'Remove Crop from This Page', enabled: isEnabled('page.removeCrop'), icon: Crop },
+              { commandId: 'file.reduceSize', label: 'Reduce File Size…', enabled: isEnabled('file.reduceSize'), icon: Minimize2 },
             ]}
           />
         </ToolbarGroup>
