@@ -15,9 +15,20 @@
   cursor: none;
 }
 
+.stage {
+  position: relative;
+  line-height: 0;
+}
+
 .page {
   display: block;
   box-shadow: 0 0 40px rgba(0, 0, 0, 0.6);
+}
+
+.inkLayer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
 }
 
 .controls {
@@ -71,8 +82,82 @@
   font-variant-numeric: tabular-nums;
 }
 
-.hint {
-  color: rgba(242, 242, 242, 0.6);
-  font-weight: 400;
-  padding: 0 6px;
+.controls button[data-active] {
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
+
+.divider {
+  width: 1px;
+  height: 20px;
+  margin: 0 2px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.controls .swatch {
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  padding: 0;
+}
+
+.controls .swatchActive {
+  border-color: #fff;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.35);
+}
+
+.promptBackdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.prompt {
+  width: min(380px, calc(100vw - 32px));
+  padding: 20px 22px 16px;
+  border-radius: 12px;
+  background: #26262b;
+  color: #f2f2f2;
+  font: 14px/1.45 system-ui, -apple-system, sans-serif;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.promptTitle {
+  margin: 0 0 6px;
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.promptText {
+  margin: 0 0 16px;
+  color: rgba(242, 242, 242, 0.7);
+}
+
+.promptButtons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.promptButtons button {
+  height: 30px;
+  padding: 0 14px;
+  border-radius: 7px;
+  border: 0;
+  font: 500 13px system-ui, -apple-system, sans-serif;
+  cursor: pointer;
+}
+
+.promptSecondary {
+  background: rgba(255, 255, 255, 0.12);
+  color: #f2f2f2;
+}
+
+.promptPrimary {
+  background: #0a84ff;
+  color: #fff;
 }
