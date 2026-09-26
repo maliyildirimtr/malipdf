@@ -33,6 +33,7 @@ import {
   pasteAnnotations,
 } from './clipboardCommands';
 import { SHOW_RECOVERY_EVENT } from '../components/RecoveryDialog/recoveryEvents';
+import { OPEN_SIGN_MENU_EVENT } from '../components/SignStamp/signStampEvents';
 import {
   insertImageFromFile,
   captureScreenToImage,
@@ -180,8 +181,10 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
       case 'file.saveAll':
         void saveAllDocuments();
         return;
-      case 'file.documentProperties':
       case 'file.print':
+        void import('./printCommands').then(({ printDocument }) => printDocument());
+        return;
+      case 'file.documentProperties':
       case 'edit.selectAll':
         return;
       case 'edit.deleteSelected': {
@@ -269,6 +272,9 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
       case 'insert.printoutPptx':
         import('./printoutCommands').then(m => m.insertPptxPrintoutFromFile());
         return;
+      case 'insert.signature':
+        window.dispatchEvent(new CustomEvent(OPEN_SIGN_MENU_EVENT));
+        return;
       case 'insert.screenshot':
         void captureScreenToImage();
         return;
@@ -277,6 +283,18 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
         return;
       case 'view.sidebarBookmarks':
       case 'view.sidebarOutline':
+        ui.setActiveSidebarPanel(commandId === 'view.sidebarBookmarks' ? 'bookmarks' : 'outline');
+        ui.setSidebarOpen(true);
+        return;
+      case 'page.addBookmark':
+        if (docId) {
+          void import('./bookmarkCommands').then(({ addBookmark }) => {
+            addBookmark(docId);
+            ui.setActiveSidebarPanel('bookmarks');
+            ui.setSidebarOpen(true);
+          });
+        }
+        return;
       case 'view.layoutSingle':
       case 'view.layoutTwoPage':
       case 'view.annotations':

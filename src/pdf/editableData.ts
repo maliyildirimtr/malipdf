@@ -27,7 +27,8 @@ import {
   type PDFObject,
   type PDFPage,
 } from 'pdf-lib';
-import type { Annotation } from '../types/annotations';
+import type { Annotation, Bookmark } from '../types/annotations';
+import { removeAppendedBookmarks, type OutlineChange } from './outlineWriter';
 
 export const EDITABLE_KEY = 'MaliPDFEditable';
 export const EDITABLE_VERSION = 1;
@@ -105,6 +106,8 @@ export function writeEditableData(
   before: EditableCapture,
   annotations: readonly Annotation[],
   assets: readonly EditableAsset[],
+  bookmarks: readonly Bookmark[] = [],
+  outline: OutlineChange | null = null,
 ): void {
   const context = pdfDoc.context;
   const pages = pdfDoc.getPages();
@@ -130,6 +133,7 @@ export function writeEditableData(
 
   const json = JSON.stringify({
     annotations,
+    bookmarks,
     assets: assets.map(({ id, mimeType, width, height }) => ({ id, mimeType, width, height })),
   });
   const data = context.register(context.flateStream(new TextEncoder().encode(json)));
@@ -142,7 +146,15 @@ export function writeEditableData(
     Data: data,
     Assets: context.obj(assetStreams),
     Generator: PDFString.of('MaliPDF'),
-  });
+  }) as PDFDict;
+  if (outline) {
+    entry.set(N('Outline'), context.obj({
+      Had: outline.hadOutlines,
+      Ref: outline.outlinesRef,
+      Last: outline.oldLast ?? N('None'),
+      Count: outline.oldCount ?? N('None'),
+    }));
+  }
   pdfDoc.catalog.set(N(EDITABLE_KEY), context.register(entry));
 }
 
@@ -213,7 +225,7 @@ export function collectGarbage(context: PDFContext): number {
 export type EditableOpenResult =
   | { kind: 'none' }
   | { kind: 'changedElsewhere' }
-  | { kind: 'restored'; bytes: Uint8Array; annotations: Annotation[]; assets: EditableAsset[] };
+  | { kind: 'restored'; bytes: Uint8Array; annotations: Annotation[]; assets: EditableAsset[]; bookmarks: Bookmark[] };
 
 /**
  * Turn a file saved by MaliPDF back into (original pages + live annotations).
@@ -248,6 +260,7 @@ export async function extractEditableData(bytes: Uint8Array): Promise<EditableOp
     const parsed = JSON.parse(new TextDecoder().decode(streamBytes(context, entry.get(N('Data'))))) as {
       annotations: Annotation[];
       assets: Omit<EditableAsset, 'data'>[];
+      bookmarks?: Bookmark[];
     };
     if (!Array.isArray(parsed.annotations) || !Array.isArray(parsed.assets)) return { kind: 'changedElsewhere' };
     const assetRefs = entry.lookupMaybe(N('Assets'), PDFArray)?.asArray() ?? [];
@@ -283,11 +296,30 @@ export async function extractEditableData(bytes: Uint8Array): Promise<EditableOp
       }
     });
 
+    // 4. Take MaliPDF's bookmarks out of the table of contents again.
+    const outline = entry.lookupMaybe(N('Outline'), PDFDict);
+    if (outline) {
+      const ref = outline.get(N('Ref'));
+      const last = outline.get(N('Last'));
+      const count = outline.get(N('Count'));
+      if (ref instanceof PDFRef) {
+        removeAppendedBookmarks(pdfDoc, {
+          hadOutlines: outline.get(N('Had'))?.toString() === 'true',
+          outlinesRef: ref,
+          oldLast: last instanceof PDFRef ? last : null,
+          oldCount: count instanceof PDFNumber ? count.asNumber() : null,
+        });
+      }
+    }
+
     pdfDoc.catalog.delete(N(EDITABLE_KEY));
     pdfDoc.catalog.delete(N(EXPORT_MARKER_KEY));
     collectGarbage(context);
     const clean = await pdfDoc.save({ updateFieldAppearances: false });
-    return { kind: 'restored', bytes: clean, annotations: parsed.annotations, assets };
+    const bookmarks = Array.isArray(parsed.bookmarks)
+      ? parsed.bookmarks.filter((b) => typeof b?.title === 'string' && Number.isInteger(b?.pageIndex) && b.pageIndex >= 0 && b.pageIndex < pages.length)
+      : [];
+    return { kind: 'restored', bytes: clean, annotations: parsed.annotations, assets, bookmarks };
   } catch (error) {
     console.warn('MaliPDF data could not be read; opening the PDF as-is.', error);
     return { kind: 'changedElsewhere' };

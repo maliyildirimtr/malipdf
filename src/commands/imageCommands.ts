@@ -27,6 +27,8 @@ import {
 export async function insertImageFromBytes(
   rawBytes: ArrayBuffer,
   mimeType: string,
+  /** Fixed size in PDF points (signatures, stamps); default = natural size. */
+  size?: { width: number; height: number },
 ): Promise<boolean> {
   const target = createInsertTargetSnapshot();
   if (!target) return false;
@@ -49,7 +51,9 @@ export async function insertImageFromBytes(
       height: pageHeight,
     };
 
-    const bounds = calculateDefaultImageBounds(asset.width, asset.height, pageBox);
+    const bounds = size
+      ? calculateDefaultImageBounds(size.width, size.height, pageBox)
+      : calculateDefaultImageBounds(asset.width, asset.height, pageBox);
 
     useAssetStore.getState().addAsset(target.identity, asset);
 

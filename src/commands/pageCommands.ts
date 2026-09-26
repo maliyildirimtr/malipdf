@@ -27,6 +27,7 @@ import {
   planRotate,
   remapAnnotationsForPlan,
   remapViewRotationsForPlan,
+  remapBookmarksForPlan,
   type PagePlan,
 } from '../document/pagePlan';
 import { exportAnnotatedPdf, loadDefaultExportFonts } from '../pdf/annotationExporter';
@@ -100,6 +101,8 @@ export async function applyPagePlan(
     const beforeAnnotations = allAnnotations(doc.id);
     const afterAnnotations = remapAnnotationsForPlan(beforeAnnotations, plan);
     const afterRotations = remapViewRotationsForPlan(current.pageRotations, plan);
+    const beforeBookmarks = current.bookmarks ?? [];
+    const afterBookmarks = remapBookmarksForPlan(beforeBookmarks, plan);
     const afterPageCount = plan.length;
     const activePage = Math.max(0, Math.min(afterPageCount - 1, options.activePageAfter ?? current.activePageIndex));
 
@@ -109,23 +112,28 @@ export async function applyPagePlan(
       pageCount: afterPageCount,
       pageRotations: afterRotations,
       activePageIndex: activePage,
+      bookmarks: afterBookmarks,
     });
     useAnnotationStore.setState((state) => {
       const docs = new Map(state.docAnnotations);
       docs.set(doc.id, groupByPage(afterAnnotations));
       return { docAnnotations: docs };
     });
-    useHistoryStore.getState().push(makeMutateDocumentBytesAction(
-      doc.id,
-      baseBytes,
-      newBytes,
-      beforeAnnotations,
-      afterAnnotations,
-      current.pageRotations,
-      afterRotations,
-      current.pageCount,
-      afterPageCount,
-    ));
+    useHistoryStore.getState().push({
+      ...makeMutateDocumentBytesAction(
+        doc.id,
+        baseBytes,
+        newBytes,
+        beforeAnnotations,
+        afterAnnotations,
+        current.pageRotations,
+        afterRotations,
+        current.pageCount,
+        afterPageCount,
+      ),
+      beforeBookmarks,
+      afterBookmarks,
+    });
 
     const identity = identityOf(current);
     useSelectionStore.getState().clearSelection(identity);

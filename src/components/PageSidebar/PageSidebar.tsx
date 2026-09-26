@@ -18,6 +18,8 @@ import {
 import { usePageSelectionStore } from '../../store/pageSelectionStore';
 import { AnnotationsPanel } from './AnnotationsPanel';
 import { SearchPanel } from './SearchPanel';
+import { BookmarksPanel } from './BookmarksPanel';
+import { OutlinePanel } from './OutlinePanel';
 import {
   deletePages,
   duplicatePages,
@@ -158,11 +160,16 @@ export function PageSidebar() {
           <SearchPanel identity={identity} />
         )}
 
-        {activeSidebarPanel !== 'pages' && activeSidebarPanel !== 'annotations' && activeSidebarPanel !== 'search' && (
-          <div className={styles.emptyPanel}>
-            <span>{PANELS.find((panel) => panel.id === activeSidebarPanel)?.label}</span>
-            <span style={{ fontSize: 11, opacity: 0.5 }}>Coming soon</span>
-          </div>
+        {activeSidebarPanel === 'bookmarks' && activeDoc && (
+          <BookmarksPanel docId={activeDoc.id} />
+        )}
+
+        {activeSidebarPanel === 'outline' && identity && (
+          <OutlinePanel identity={identity} revision={bytesRevision} />
+        )}
+
+        {activeSidebarPanel !== 'pages' && !activeDoc && (
+          <div className={styles.emptyPanel}><span>No document open</span></div>
         )}
       </div>}
     </div>

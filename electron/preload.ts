@@ -63,6 +63,10 @@ export interface ElectronAPI {
   recoveryList: () => Promise<RecoveryEntry[]>;
   recoveryLoad: (docId: string) => Promise<{ meta: string; source: ArrayBuffer; assets: { id: string; data: ArrayBuffer }[] }>;
 
+  // Files opened from Finder / Explorer / Dock / Open Recent
+  onOpenFiles: (callback: (files: Array<{ filePath: string; name: string; data: ArrayBuffer }>) => void) => () => void;
+  readyForFiles: () => void;
+
   // App info / updates
   checkForUpdates: () => Promise<boolean>;
   showAbout: () => Promise<boolean>;
@@ -101,6 +105,12 @@ const electronAPI: ElectronAPI = {
   recoveryList: () => ipcRenderer.invoke('recovery:list'),
   recoveryLoad: (docId) => ipcRenderer.invoke('recovery:load', docId),
 
+  onOpenFiles: (callback) => {
+    const listener = (_event: unknown, files: Array<{ filePath: string; name: string; data: ArrayBuffer }>) => callback(files);
+    ipcRenderer.on('app:openFiles', listener);
+    return () => ipcRenderer.removeListener('app:openFiles', listener);
+  },
+  readyForFiles: () => ipcRenderer.send('app:readyForFiles'),
   checkForUpdates: () => ipcRenderer.invoke('updates:check'),
   showAbout: () => ipcRenderer.invoke('app:showAbout'),
   openCrashReports: () => ipcRenderer.invoke('app:openCrashReports'),

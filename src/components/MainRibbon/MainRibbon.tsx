@@ -42,6 +42,7 @@ import type { TextAlign, TextListStyle, ToolType } from '../../types/annotations
 import { TEXT_FONT_FAMILIES, cssForFamily, fontFamilyKey } from '../../pdf/fontFamilies';
 import { ColorWell } from './ColorWell';
 import { PenPresetBar, QuickColors, ToolbarCustomizeMenu } from './ToolbarExtras';
+import { SignStampMenu } from '../SignStamp/SignStampMenu';
 import { OpacityControl } from './PropertyControls';
 import { TOOL_WIDTH_CONSTRAINTS } from '../../constants/toolConstraints';
 import { WidthControl } from '../Properties/WidthControl';
@@ -75,6 +76,7 @@ const DOCUMENT_COMMANDS = new Set<AppCommandId>([
   'history.undo',
   'history.redo',
   'insert.image',
+  'insert.signature',
   'insert.screenshot',
   'insert.regionScreenshot',
   'view.zoomIn',
@@ -215,6 +217,7 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
             onCommand={runCommand}
             enabled={isEnabled('insert.image')}
           />
+          <SignStampMenu enabled={isEnabled('insert.signature')} />
           <CommandButton
             commandId="insert.printoutPdf"
             label="Insert PDF…"

@@ -107,6 +107,11 @@ interface UIStore {
   removePenPreset: (id: string) => void;
   applyPenPreset: (id: string) => void;
 
+  /** Saved signatures (trimmed transparent PNG data URLs), newest first. */
+  signatures: SavedSignature[];
+  addSignature: (dataUrl: string) => string | null;
+  removeSignature: (id: string) => void;
+
   /** Tool buttons the user removed from the ribbon (Customize Toolbar). */
   hiddenToolbarTools: ToolType[];
   toggleToolbarTool: (tool: ToolType) => void;
@@ -159,6 +164,15 @@ export const DEFAULT_PEN_PRESETS: PenPreset[] = [
   { id: 'default-yellow-hl', tool: 'highlighter', color: '#ffe066', width: 16, opacity: 0.5 },
   { id: 'default-green-hl', tool: 'highlighter', color: '#7bed9f', width: 16, opacity: 0.5 },
 ];
+
+export interface SavedSignature {
+  id: string;
+  dataUrl: string;
+  createdAt: number;
+}
+export const SIGNATURES_MAX = 6;
+/** ~750 KB per signature is far more than a trimmed signature ever needs. */
+export const SIGNATURE_MAX_CHARS = 1_000_000;
 
 export const useUIStore = create<UIStore>()(
   subscribeWithSelector(
@@ -230,6 +244,15 @@ export const useUIStore = create<UIStore>()(
           if (state.recentColors[0] === norm) return state;
           return { recentColors: [norm, ...state.recentColors.filter((c) => c !== norm)].slice(0, RECENT_COLORS_MAX) };
         }),
+
+        signatures: [],
+        addSignature: (dataUrl) => {
+          if (!/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(dataUrl) || dataUrl.length > SIGNATURE_MAX_CHARS) return null;
+          const id = `sig-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+          set((state) => ({ signatures: [{ id, dataUrl, createdAt: Date.now() }, ...state.signatures].slice(0, SIGNATURES_MAX) }));
+          return id;
+        },
+        removeSignature: (id) => set((state) => ({ signatures: state.signatures.filter((s) => s.id !== id) })),
 
         penPresets: DEFAULT_PEN_PRESETS,
         savePenPreset: (tool) => set((state) => {
@@ -316,6 +339,7 @@ export const useUIStore = create<UIStore>()(
           favoriteColors: state.favoriteColors,
           recentColors: state.recentColors,
           penPresets: state.penPresets,
+          signatures: state.signatures,
           hiddenToolbarTools: state.hiddenToolbarTools,
         }),
       },

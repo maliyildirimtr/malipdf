@@ -8,7 +8,7 @@
  * pages. Undo/redo is the existing MUTATE_DOCUMENT_BYTES history action.
  */
 import { PDFDocument, degrees, type PDFPage } from 'pdf-lib';
-import type { Annotation } from '../types/annotations';
+import type { Annotation, Bookmark } from '../types/annotations';
 import { nanoid } from '../utils/nanoid';
 
 export type PagePlanEntry =
@@ -121,6 +121,20 @@ export function remapAnnotationsForPlan(annotations: readonly Annotation[], plan
     }
   });
   return result;
+}
+
+/** Bookmarks follow their page (first copy); bookmarks of deleted pages go. */
+export function remapBookmarksForPlan(bookmarks: readonly Bookmark[], plan: PagePlan): Bookmark[] {
+  const firstIndex = new Map<number, number>();
+  plan.forEach((entry, newIndex) => {
+    if (entry.kind === 'existing' && !firstIndex.has(entry.from)) firstIndex.set(entry.from, newIndex);
+  });
+  return bookmarks
+    .flatMap((bookmark) => {
+      const pageIndex = firstIndex.get(bookmark.pageIndex);
+      return pageIndex === undefined ? [] : [pageIndex === bookmark.pageIndex ? bookmark : { ...bookmark, pageIndex }];
+    })
+    .sort((a, b) => a.pageIndex - b.pageIndex);
 }
 
 /** View-only rotations (DocumentState.pageRotations) follow their pages. */

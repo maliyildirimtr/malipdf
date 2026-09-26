@@ -62,6 +62,9 @@ export async function openDocumentBytes(
   useHistoryStore.getState().initDocument(docId);
 
   if (editable.kind === 'restored') {
+    if (editable.bookmarks.length > 0) {
+      useDocumentStore.getState().updateDocument(docId, { bookmarks: editable.bookmarks });
+    }
     const assetIds = new Set<string>();
     for (const asset of editable.assets) {
       useAssetStore.getState().addAsset(identity, asset);

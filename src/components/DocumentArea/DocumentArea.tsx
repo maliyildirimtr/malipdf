@@ -46,6 +46,7 @@ import {
 } from '../../commands';
 import { nanoid } from '../../utils/nanoid';
 import { openDocumentBytes } from '../../document/openDocumentBytes';
+import { notifyUser } from '../../utils/notify';
 import styles from './DocumentArea.module.css';
 
 export function DocumentArea() {
@@ -56,7 +57,8 @@ export function DocumentArea() {
   const scrollRafRef = useRef<number | null>(null);
   const visiblePagesRef = useRef<Set<number>>(new Set());
   const [isDragOver, setIsDragOver] = useState(false);
-  const isLoadingRef = useRef(false);
+  // Opens run one after another (several files from Finder, Open Recent…).
+  const loadQueueRef = useRef<Promise<void>>(Promise.resolve());
 
   const {
     documents,
@@ -89,17 +91,25 @@ export function DocumentArea() {
 
   const loadFile = useCallback(
     async (name: string, filePath: string | null, data: ArrayBuffer) => {
-      if (isLoadingRef.current) return;
-      isLoadingRef.current = true;
-
-      try {
-        await openDocumentBytes(name, filePath, data);
-      } catch (error) {
-        console.error('Failed to load PDF:', error);
-        alert(`Failed to open PDF: ${error instanceof Error ? error.message : String(error)}`);
-      } finally {
-        isLoadingRef.current = false;
-      }
+      const run = async () => {
+        // The same file is already open: just show its tab.
+        const existing = filePath
+          ? [...useDocumentStore.getState().documents.values()].find((doc) => doc.filePath === filePath)
+          : undefined;
+        if (existing) {
+          useDocumentStore.getState().setActiveDocument(existing.id);
+          return;
+        }
+        try {
+          await openDocumentBytes(name, filePath, data);
+        } catch (error) {
+          console.error('Failed to load PDF:', error);
+          notifyUser('error', `Failed to open ${name}: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      };
+      const next = loadQueueRef.current.then(run);
+      loadQueueRef.current = next;
+      await next;
     },
     [],
   );
@@ -165,7 +175,15 @@ export function DocumentArea() {
   useEffect(() => {
     const handleOpenRequest = () => void openFileDialog();
     document.addEventListener('app:openFile', handleOpenRequest);
-    return () => document.removeEventListener('app:openFile', handleOpenRequest);
+    // Files opened from Finder / Explorer / Dock / Open Recent (main process).
+    const stopOpenFiles = window.electronAPI?.onOpenFiles?.((files) => {
+      for (const file of files) void loadFile(file.name, file.filePath, file.data);
+    });
+    window.electronAPI?.readyForFiles?.();
+    return () => {
+      document.removeEventListener('app:openFile', handleOpenRequest);
+      stopOpenFiles?.();
+    };
   }, [openFileDialog]);
 
   // ── Reload source when changed ────────────────────────────────────────────

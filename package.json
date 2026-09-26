@@ -112,6 +112,16 @@
       "createStartMenuShortcut": true,
       "shortcutName": "MaliPDF",
       "deleteAppDataOnUninstall": false
-    }
+    },
+    "fileAssociations": [
+      {
+        "ext": "pdf",
+        "name": "PDF Document",
+        "description": "PDF Document",
+        "mimeType": "application/pdf",
+        "role": "Viewer",
+        "rank": "Alternate"
+      }
+    ]
   }
 }

@@ -28,6 +28,7 @@ import { setupPptxIpc } from './services/pptx/pptxIpc';
 import { setupRecoveryIpc } from './services/recovery';
 import { setupUpdates } from './services/updates';
 import { logCrash, setupAppInfo } from './services/appInfo';
+import { pdfPathsFromArgv } from './services/openPaths';
 import {
   FileAccessGrants,
   handleTrusted,
@@ -47,6 +48,8 @@ const MAX_WRITE_BYTES = 2 * 1024 * 1024 * 1024 - 1;
 const MAX_IMAGE_FILE_BYTES = 50 * 1024 * 1024;
 const fileGrants = new FileAccessGrants();
 
+let mainWindow: BrowserWindow | null = null;
+
 installWebContentsPolicy(isDev);
 setupPptxIpc(isDev);
 setupRecoveryIpc(isDev);
@@ -58,7 +61,8 @@ setupUpdates(isDev);
 if (!app.requestSingleInstanceLock()) {
   app.exit(0);
 } else {
-  app.on('second-instance', () => {
+  app.on('second-instance', (_event, argv, workingDirectory) => {
+    queueOpenPaths(pdfPathsFromArgv(argv.slice(1), workingDirectory));
     if (!mainWindow) return;
     if (mainWindow.isMinimized()) mainWindow.restore();
     mainWindow.show();
@@ -66,10 +70,66 @@ if (!app.requestSingleInstanceLock()) {
   });
 }
 
+// ─── Opening PDFs from Finder / Explorer / Dock ──────────────────────────────
+// Double-click (file association), "Open With", dropping on the Dock icon and
+// File ▸ Open Recent all arrive here. Files wait until the renderer is ready.
+const pendingOpenPaths: string[] = [];
+let rendererReadyForFiles = false;
+
+function queueOpenPaths(paths: readonly string[]): void {
+  if (paths.length === 0) return;
+  pendingOpenPaths.push(...paths);
+  if (app.isReady() && !mainWindow) createWindow();
+  void flushOpenPaths();
+}
+
+async function flushOpenPaths(): Promise<void> {
+  if (!mainWindow || !rendererReadyForFiles || pendingOpenPaths.length === 0) return;
+  const paths = pendingOpenPaths.splice(0);
+  const files: { filePath: string; name: string; data: ArrayBuffer }[] = [];
+  const failed: string[] = [];
+  for (const filePath of paths) {
+    try {
+      const stat = await fs.promises.stat(filePath);
+      if (!stat.isFile() || stat.size > MAX_WRITE_BYTES) throw new Error('Not a readable PDF file.');
+      const buffer = await fs.promises.readFile(filePath);
+      fileGrants.grantWrite(filePath);
+      app.addRecentDocument(filePath);
+      files.push({
+        filePath,
+        name: path.basename(filePath),
+        data: buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer,
+      });
+    } catch (error) {
+      console.warn(`Could not open ${filePath}:`, error);
+      failed.push(path.basename(filePath));
+    }
+  }
+  if (files.length > 0) mainWindow?.webContents.send('app:openFiles', files);
+  if (failed.length > 0 && mainWindow) {
+    void dialog.showMessageBox(mainWindow, {
+      type: 'warning',
+      message: 'Some files could not be opened.',
+      detail: failed.join('\n'),
+      buttons: ['OK'],
+    });
+  }
+}
+
+app.on('open-file', (event, filePath) => {
+  event.preventDefault();
+  queueOpenPaths([filePath]);
+});
+if (!isDev) queueOpenPaths(pdfPathsFromArgv(process.argv.slice(1), process.cwd()));
+
+onTrusted('app:readyForFiles', isDev, () => {
+  rendererReadyForFiles = true;
+  void flushOpenPaths();
+});
+
 app.setName(APP_NAME);
 process.title = APP_NAME;
 
-let mainWindow: BrowserWindow | null = null;
 
 // ─── Close / quit handshake ──────────────────────────────────────────────────
 // The renderer owns dirty-document prompts. Closing the window or quitting
@@ -160,8 +220,14 @@ function createWindow() {
     startLifecycleRequest('window-close');
   });
 
+  // A reload means a new renderer that has to announce itself again.
+  mainWindow.webContents.on('did-start-loading', () => {
+    rendererReadyForFiles = false;
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = null;
+    rendererReadyForFiles = false;
     allowWindowClose = false;
     pendingLifecycleRequest = null;
   });
@@ -219,7 +285,7 @@ function buildNativeMenuItem(node: NativeMenuNode): MenuItemConstructorOptions {
     case 'label':
       return { label: node.label, enabled: false };
     case 'submenu':
-      return { label: node.label, enabled: node.enabled, submenu: node.items.map(buildNativeMenuItem) };
+      return { label: node.label, role: node.role, enabled: node.enabled, submenu: node.items.map(buildNativeMenuItem) };
     case 'command':
       return {
         id: node.commandId,
@@ -272,6 +338,7 @@ handleTrusted('dialog:openFile', isDev, async () => {
       const buffer = await fs.promises.readFile(filePath);
       // The user chose this file: Save may write back to it.
       fileGrants.grantWrite(filePath);
+      app.addRecentDocument(filePath);
       return {
         filePath,
         name: path.basename(filePath),

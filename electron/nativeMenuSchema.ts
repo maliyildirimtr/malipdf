@@ -15,7 +15,7 @@ export type NativeMenuNode =
   | { readonly kind: 'role'; readonly role: NativeMenuRole }
   | { readonly kind: 'label'; readonly label: string; readonly enabled: false }
   | { readonly kind: 'separator' }
-  | { readonly kind: 'submenu'; readonly label: string; readonly enabled?: boolean; readonly items: readonly NativeMenuNode[] };
+  | { readonly kind: 'submenu'; readonly label: string; readonly role?: NativeMenuRole; readonly enabled?: boolean; readonly items: readonly NativeMenuNode[] };
 
 export interface NativeTopLevelMenu {
   readonly label: string;
@@ -59,6 +59,7 @@ export function createNativeMenuSchema(isMac: boolean, isDev: boolean): readonly
         command('file.new', 'New Document…', { accelerator: 'CmdOrCtrl+N', enabled: true }),
         command('file.combine', 'Combine Files…', { enabled: false }),
         command('file.open', 'Open…', { accelerator: 'CmdOrCtrl+O' }),
+        ...(isMac ? [{ kind: 'submenu', label: 'Open Recent', role: 'recentDocuments', items: [role('clearRecentDocuments')] } as NativeMenuNode] : []),
         command('file.recoveredDocuments', 'Recovered Documents…'),
         separator(),
         command('file.save', 'Save', { accelerator: 'CmdOrCtrl+S', enabled: false }),
@@ -88,6 +89,7 @@ export function createNativeMenuSchema(isMac: boolean, isDev: boolean): readonly
         command('edit.deleteSelected', 'Delete Selected', { accelerator: 'Delete', enabled: false }),
         separator(),
         command('insert.image', 'Insert Image…', { accelerator: 'CmdOrCtrl+I', enabled: false }),
+        command('insert.signature', 'Signature & Stamps…', { accelerator: 'Alt+CmdOrCtrl+S', enabled: false }),
         command('insert.screenshot', 'Capture Screen', { enabled: false }),
         command('insert.regionScreenshot', 'Capture Region', { enabled: false }),
         separator(),
@@ -149,6 +151,8 @@ export function createNativeMenuSchema(isMac: boolean, isDev: boolean): readonly
         separator(),
         command('page.rotateLeft', 'Rotate Page Left', { accelerator: 'CmdOrCtrl+Shift+[', enabled: false }),
         command('page.rotateRight', 'Rotate Page Right', { accelerator: 'CmdOrCtrl+Shift+]', enabled: false }),
+        separator(),
+        command('page.addBookmark', 'Add Bookmark', { accelerator: 'Alt+CmdOrCtrl+B', enabled: false }),
         separator(),
         command('page.exportSelected', 'Export Selected Pages…', { enabled: false }),
         separator(),

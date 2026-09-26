@@ -78,6 +78,7 @@ function applyUndoAction(
       if (action.before && action.pageIndex !== undefined) replace(annotations, action.docId, action.pageIndex, action.before);
       return;
     case 'MUTATE_DOCUMENT_BYTES':
+      if (action.beforeBookmarks) document.updateDocument(action.docId, { bookmarks: action.beforeBookmarks });
       if (action.beforeSourceData && action.beforePageRotations && action.beforePageCount !== undefined) {
         // Restore document bytes and rotations
         const currentDoc = useDocumentStore.getState().documents.get(action.docId);
@@ -111,6 +112,9 @@ function applyUndoAction(
         }
       }
       return;
+    case 'SET_BOOKMARKS':
+      if (action.beforeBookmarks) document.updateDocument(action.docId, { bookmarks: action.beforeBookmarks });
+      return;
     case 'BATCH_ACTION':
       if (action.actions) {
         // Undo batch actions in reverse order
@@ -142,6 +146,7 @@ function applyRedoAction(
       if (action.after && action.pageIndex !== undefined) replace(annotations, action.docId, action.pageIndex, action.after);
       return;
     case 'MUTATE_DOCUMENT_BYTES':
+      if (action.afterBookmarks) document.updateDocument(action.docId, { bookmarks: action.afterBookmarks });
       if (action.afterSourceData && action.afterPageRotations && action.afterPageCount !== undefined) {
         // Restore document bytes and rotations
         const currentDoc = useDocumentStore.getState().documents.get(action.docId);
@@ -174,6 +179,9 @@ function applyRedoAction(
           });
         }
       }
+      return;
+    case 'SET_BOOKMARKS':
+      if (action.afterBookmarks) document.updateDocument(action.docId, { bookmarks: action.afterBookmarks });
       return;
     case 'BATCH_ACTION':
       if (action.actions) {

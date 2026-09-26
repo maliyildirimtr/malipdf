@@ -15,7 +15,7 @@ export type AppCommandId =
   | ToolCommandId | 'tool.polygon' | 'tool.extractText' | 'tool.zoom' | 'tool.stamp'
   | 'tool.dimension' | 'tool.lasso' | 'tool.snapshot'
   | 'tool.crop' | 'tool.measure' | 'tool.formula' | 'tool.laserPointer'
-  | 'tool.pointer' | 'insert.image' | 'insert.screenshot' | 'insert.regionScreenshot' | 'insert.printoutPdf' | 'insert.printoutPptx' | 'view.sidebar' | 'view.sidebarPages'
+  | 'tool.pointer' | 'insert.image' | 'insert.screenshot' | 'insert.regionScreenshot' | 'insert.printoutPdf' | 'insert.printoutPptx' | 'insert.signature' | 'view.sidebar' | 'view.sidebarPages'
   | 'view.sidebarBookmarks' | 'view.sidebarOutline' | 'view.sidebarAnnotations'
   | 'view.sidebarSearch' | 'view.zoomIn' | 'view.zoomOut' | 'view.actualSize'
   | 'view.fitWidth' | 'view.fitPage' | 'view.layoutContinuous'
@@ -26,7 +26,7 @@ export type AppCommandId =
   | 'app.requestQuit' | 'app.requestCloseWindow'
   | 'file.recoveredDocuments' | 'help.checkForUpdates' | 'help.about' | 'help.crashReports'
   | 'page.insertBlank' | 'page.duplicate' | 'page.delete' | 'page.rotateLeft' | 'page.rotateRight'
-  | 'page.insertFromPdf' | 'page.exportSelected';
+  | 'page.insertFromPdf' | 'page.exportSelected' | 'page.addBookmark';
 
 export type CommandGroup = 'file' | 'history' | 'edit' | 'tool' | 'view' | 'insert' | 'page' | 'extras' | 'help';
 export type CommandKind = 'action' | 'tool' | 'toggle' | 'radio';
@@ -80,7 +80,7 @@ export const APP_COMMANDS = {
   'file.close': command('file.close', 'Close', 'file', 'action', 'document', { icon: 'close', shortcut: '⌘W', menuPlacements: ['file'] }),
   'file.closeAll': command('file.closeAll', 'Close All', 'file', 'action', 'document', { icon: 'closeAll', shortcut: '⌥⌘W', menuPlacements: ['file'] }),
   'file.documentProperties': command('file.documentProperties', 'Document Properties…', 'file', 'action', 'unavailable', { icon: 'properties', menuPlacements: ['file'] }),
-  'file.print': command('file.print', 'Print…', 'file', 'action', 'unavailable', { icon: 'print', shortcut: '⌘P', menuPlacements: ['file'] }),
+  'file.print': command('file.print', 'Print…', 'file', 'action', 'document', { icon: 'print', shortcut: '⌘P', menuPlacements: ['file'] }),
   'history.undo': command('history.undo', 'Undo', 'history', 'action', 'undo', { icon: 'undo', shortcut: '⌘Z', menuPlacements: ['edit'], toolbarPlacements: ['primary.history'] }),
   'history.redo': command('history.redo', 'Redo', 'history', 'action', 'redo', { icon: 'redo', shortcut: '⇧⌘Z', menuPlacements: ['edit'], toolbarPlacements: ['primary.history'] }),
   'edit.selectAll': command('edit.selectAll', 'Select All Annotations', 'edit', 'action', 'unavailable', { icon: 'selectAll', shortcut: '⌘A', menuPlacements: ['edit'] }),
@@ -111,14 +111,15 @@ export const APP_COMMANDS = {
   'tool.laserPointer': unavailableTool('tool.laserPointer', 'Laser Pointer', 'laserPointer'),
   'tool.pointer': unavailableTool('tool.pointer', 'Pointer', 'pointer'),
   'insert.image': command('insert.image', 'Insert Image…', 'insert', 'action', 'document', { icon: 'image', menuPlacements: ['edit'], toolbarPlacements: ['primary.insert'] }),
+  'insert.signature': command('insert.signature', 'Signature & Stamps…', 'insert', 'action', 'document', { icon: 'pen', shortcut: '⌥⌘S', menuPlacements: ['edit'], toolbarPlacements: ['primary.insert'] }),
   'insert.screenshot': command('insert.screenshot', 'Capture Screen', 'insert', 'action', 'document', { icon: 'screenshot', menuPlacements: ['edit'], toolbarPlacements: ['primary.insert'] }),
   'insert.regionScreenshot': command('insert.regionScreenshot', 'Capture Region', 'insert', 'action', 'document', { icon: 'regionScreenshot', menuPlacements: ['edit'], toolbarPlacements: ['primary.insert'] }),
   'insert.printoutPdf': command('insert.printoutPdf', 'Insert PDF Printout…', 'insert', 'action', 'document', { icon: 'newDocument', menuPlacements: ['edit'], toolbarPlacements: ['primary.insert'] }),
   'insert.printoutPptx': command('insert.printoutPptx', 'Insert PowerPoint Printout…', 'insert', 'action', 'document', { icon: 'newDocument', menuPlacements: ['edit'], toolbarPlacements: ['primary.insert'] }),
   'view.sidebar': command('view.sidebar', 'Show Sidebar', 'view', 'toggle', 'document', { icon: 'sidebar', shortcut: '⌘B', checkedState: 'sidebarOpen', menuPlacements: ['view.sidebar'], toolbarPlacements: ['primary.view'] }),
   'view.sidebarPages': command('view.sidebarPages', 'Pages', 'view', 'radio', 'document', { icon: 'sidebar', menuPlacements: ['view.sidebar'] }),
-  'view.sidebarBookmarks': command('view.sidebarBookmarks', 'Bookmarks', 'view', 'radio', 'unavailable', { icon: 'sidebar', menuPlacements: ['view.sidebar'] }),
-  'view.sidebarOutline': command('view.sidebarOutline', 'Outline', 'view', 'radio', 'unavailable', { icon: 'sidebar', menuPlacements: ['view.sidebar'] }),
+  'view.sidebarBookmarks': command('view.sidebarBookmarks', 'Bookmarks', 'view', 'radio', 'document', { icon: 'sidebar', menuPlacements: ['view.sidebar'] }),
+  'view.sidebarOutline': command('view.sidebarOutline', 'Outline', 'view', 'radio', 'document', { icon: 'sidebar', menuPlacements: ['view.sidebar'] }),
   'view.sidebarAnnotations': command('view.sidebarAnnotations', 'Annotations', 'view', 'radio', 'document', { icon: 'annotations', menuPlacements: ['view.sidebar'] }),
   'view.sidebarSearch': command('view.sidebarSearch', 'Search', 'view', 'radio', 'document', { icon: 'zoom', menuPlacements: ['view.sidebar'] }),
   'view.zoomIn': command('view.zoomIn', 'Zoom In', 'view', 'action', 'document', { icon: 'zoomIn', shortcut: '⌘+', menuPlacements: ['view'], toolbarPlacements: ['primary.view'] }),
@@ -146,6 +147,7 @@ export const APP_COMMANDS = {
   'page.rotateLeft': command('page.rotateLeft', 'Rotate Page Left', 'page', 'action', 'document', { icon: 'rotateLeft', shortcut: '⇧⌘[', menuPlacements: ['page'] }),
   'page.rotateRight': command('page.rotateRight', 'Rotate Page Right', 'page', 'action', 'document', { icon: 'rotateRight', shortcut: '⇧⌘]', menuPlacements: ['page'] }),
   'page.insertFromPdf': command('page.insertFromPdf', 'Insert Pages from PDF…', 'page', 'action', 'document', { icon: 'open', menuPlacements: ['page'] }),
+  'page.addBookmark': command('page.addBookmark', 'Add Bookmark', 'page', 'action', 'document', { icon: 'favorites', shortcut: '⌥⌘B', menuPlacements: ['page'] }),
   'page.exportSelected': command('page.exportSelected', 'Export Selected Pages…', 'page', 'action', 'document', { icon: 'export', menuPlacements: ['page'] }),
   'file.recoveredDocuments': command('file.recoveredDocuments', 'Recovered Documents…', 'file', 'action', 'always', { icon: 'open', menuPlacements: ['file'] }),
   'help.checkForUpdates': command('help.checkForUpdates', 'Check for Updates…', 'help', 'action', 'always', { icon: 'help', menuPlacements: ['help'] }),

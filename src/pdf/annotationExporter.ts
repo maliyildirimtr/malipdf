@@ -46,12 +46,14 @@ import type {
   FreeformAnnotation,
   InputPoint,
   DocumentAnnotationState,
+  Bookmark,
 } from '../types/annotations';
 import type { ImageAsset } from '../store/assetStore';
 import type { ExportFontSet } from './exportFonts';
 import { fontFamilyKey, fontStyleKey, type FontFamilyKey, type FontStyleKey } from './fontFamilies';
 import { layoutTextLines, LINE_HEIGHT, TEXT_PADDING } from './textLayout';
 import { captureEditableState, writeEditableData, type EditableAsset } from './editableData';
+import { appendBookmarksToOutline } from './outlineWriter';
 
 export type ImageAssetResolver =
   | Map<string, ImageAsset>
@@ -69,6 +71,8 @@ export interface ExportAnnotatedPdfOptions {
    * the file with editable annotations (see editableData.ts).
    */
   editable?: boolean;
+  /** User bookmarks, written into the PDF's table of contents. */
+  bookmarks?: readonly Bookmark[];
 }
 
 function resolveAsset(resolver: ImageAssetResolver | undefined, assetId: string): ImageAsset | undefined {
@@ -922,17 +926,19 @@ export async function exportAnnotatedPdf(
   }
 
   markFlattenedExport(pdfDoc, totalAnnotationCount);
+  const bookmarks = options?.bookmarks ?? [];
+  const outlineChange = appendBookmarksToOutline(pdfDoc, bookmarks);
 
   let keepEditable = false;
   if (editableCapture) {
     const all = [...snapshot.values()].flat();
-    if (all.length > 0) {
+    if (all.length > 0 || outlineChange) {
       const assets: EditableAsset[] = [];
       for (const assetId of new Set(all.flatMap((annotation) => (annotation.type === 'image' ? [annotation.assetId] : [])))) {
         const asset = resolveAsset(options?.assets, assetId);
         if (asset) assets.push({ id: asset.id, mimeType: asset.mimeType, width: asset.width, height: asset.height, data: asset.data });
       }
-      writeEditableData(pdfDoc, editableCapture, all, assets);
+      writeEditableData(pdfDoc, editableCapture, all, assets, outlineChange ? bookmarks : [], outlineChange);
       keepEditable = true;
     }
   }

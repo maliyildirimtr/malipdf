@@ -196,7 +196,7 @@ export default function App() {
       const assets = useAssetStore.getState().getAssetsForDocument({ docId: activeDoc.id, instanceId: activeDoc.instanceId });
       const hasText = [...docAnnotState.pages.values()].some((page) => page.annotations.some((a) => a.type === 'text'));
       const fonts = hasText ? await loadDefaultExportFonts() : undefined;
-      const saved = await exportAndSave(activeDoc.sourceData, docAnnotState, baseName, { assets, fonts });
+      const saved = await exportAndSave(activeDoc.sourceData, docAnnotState, baseName, { assets, fonts, bookmarks: activeDoc.bookmarks });
       if (saved) {
         showToast('success', 'PDF exported successfully.');
       }

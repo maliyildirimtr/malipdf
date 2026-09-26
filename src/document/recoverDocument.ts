@@ -53,6 +53,11 @@ export async function restoreRecoveredDocument(recoveryId: string): Promise<stri
     if (annotation.type === 'image' && !assetData.has(annotation.assetId)) continue;
     annotationStore.addAnnotation(docId, annotation);
   }
+  if (Array.isArray(meta.bookmarks) && meta.bookmarks.length > 0) {
+    useDocumentStore.getState().updateDocument(docId, {
+      bookmarks: meta.bookmarks.filter((b) => Number.isInteger(b.pageIndex) && b.pageIndex >= 0 && b.pageIndex < doc.pageCount),
+    });
+  }
   if (meta.pageRotations && typeof meta.pageRotations === 'object') {
     useDocumentStore.getState().updateDocument(docId, { pageRotations: { ...meta.pageRotations } });
   }

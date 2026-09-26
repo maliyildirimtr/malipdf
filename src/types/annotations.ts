@@ -248,6 +248,13 @@ export interface DocumentAnnotationState {
 
 export type ZoomMode = 'custom' | 'fitWidth' | 'fitPage';
 
+/** A user bookmark (written into the PDF outline on save/export). */
+export interface Bookmark {
+  id: string;
+  title: string;
+  pageIndex: number;
+}
+
 export interface DocumentState {
   id: string;
   /** Runtime generation of the concrete pdf.js document instance. */
@@ -277,6 +284,9 @@ export interface DocumentState {
   // Normalized display rotation deltas (0, 90, 180, 270).
   // effectiveRotation = intrinsic page.rotate + this display delta.
   pageRotations: Record<number, number>;
+
+  /** User bookmarks, sorted by page. Undefined = none. */
+  bookmarks?: Bookmark[];
 }
 
 // ─── History (undo/redo) ──────────────────────────────────────────────────────
@@ -288,7 +298,8 @@ export type HistoryActionType =
   | 'MOVE_ANNOTATION'
   | 'RESIZE_ANNOTATION'
   | 'BATCH_ACTION'
-  | 'MUTATE_DOCUMENT_BYTES';
+  | 'MUTATE_DOCUMENT_BYTES'
+  | 'SET_BOOKMARKS';
 
 export interface HistoryAction {
   type: HistoryActionType;
@@ -315,6 +326,10 @@ export interface HistoryAction {
   afterPageRotations?: Record<number, number>;
   beforePageCount?: number;
   afterPageCount?: number;
+
+  // For SET_BOOKMARKS (and MUTATE_DOCUMENT_BYTES that moved pages)
+  beforeBookmarks?: Bookmark[];
+  afterBookmarks?: Bookmark[];
 
   beforeStateId: string;
   afterStateId: string;
@@ -382,6 +397,8 @@ declare global {
         assets: { id: string; mimeType: string; width: number; height: number; data: Uint8Array }[],
       ) => Promise<boolean>;
       recoveryRemove: (docId: string) => Promise<boolean>;
+      onOpenFiles?: (callback: (files: Array<{ filePath: string; name: string; data: ArrayBuffer }>) => void) => () => void;
+      readyForFiles?: () => void;
       checkForUpdates: () => Promise<boolean>;
       showAbout: () => Promise<boolean>;
       openCrashReports: () => Promise<boolean>;

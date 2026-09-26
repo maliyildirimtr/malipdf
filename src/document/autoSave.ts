@@ -9,7 +9,7 @@
 import { useDocumentStore } from '../store/documentStore';
 import { useAnnotationStore } from '../store/annotationStore';
 import { useAssetStore, type ImageAsset } from '../store/assetStore';
-import type { Annotation, DocumentState } from '../types/annotations';
+import type { Annotation, Bookmark, DocumentState } from '../types/annotations';
 
 export const AUTOSAVE_INTERVAL_MS = 30_000;
 export const RECOVERY_FORMAT = 1;
@@ -21,6 +21,7 @@ export interface RecoverySnapshotMeta {
   savedAt: number;
   pageCount: number;
   pageRotations: Record<number, number>;
+  bookmarks?: Bookmark[];
   annotations: Annotation[];
   assets: { id: string; mimeType: ImageAsset['mimeType']; width: number; height: number }[];
 }
@@ -66,6 +67,7 @@ export function buildSnapshotMeta(doc: DocumentState, now = Date.now()): Recover
     savedAt: now,
     pageCount: doc.pageCount,
     pageRotations: doc.pageRotations,
+    bookmarks: doc.bookmarks ?? [],
     annotations,
     assets: [...usedIds].flatMap((id) => {
       const asset = assets?.get(id);
