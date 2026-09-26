@@ -98,7 +98,7 @@ function AnnotationRow({ docId, annotation }: { docId: string; annotation: Annot
     >
       <span className={styles.annotationSwatch} style={{ background: swatch }} aria-hidden="true" />
       <span className={styles.annotationLabel} style={annotation.tags?.length ? { display: 'flex', flexDirection: 'column', whiteSpace: 'normal', flexBasis: 'calc(100% - 24px)' } : undefined}>
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{describeAnnotation(annotation)}</span>
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} data-no-translate={annotation.type === 'text' && annotation.content.trim() ? true : undefined}>{describeAnnotation(annotation)}</span>
         {annotation.tags?.length ? (
           <span style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 2 }}>
             {annotation.tags.map((t) => <TagPill key={t} id={t} small />)}

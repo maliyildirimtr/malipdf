@@ -59,6 +59,7 @@ export interface ElectronAPI {
   readClipboardImage: () => Promise<{ data: ArrayBuffer; mimeType: string } | null>;
   writeClipboardImage: (png: ArrayBuffer) => Promise<boolean>;
   chooseFolder: (title?: string) => Promise<string | null>;
+  setLanguage: (language: string) => void;
   moveTabToNewWindow: (docId: string) => Promise<boolean>;
   openImages: () => Promise<{ name: string; mimeType: string; data: ArrayBuffer }[] | null>;
   writeFilesToFolder: (folder: string, files: { name: string; data: ArrayBuffer; ext?: 'pdf' | 'png' | 'jpg' }[]) => Promise<string[]>;
@@ -111,6 +112,7 @@ const electronAPI: ElectronAPI = {
   readClipboardImage: () => ipcRenderer.invoke('clipboard:readImage'),
   writeClipboardImage: (png) => ipcRenderer.invoke('clipboard:writeImage', png),
   chooseFolder: (title) => ipcRenderer.invoke('dialog:chooseFolder', title),
+  setLanguage: (language) => ipcRenderer.send('app:setLanguage', language),
   moveTabToNewWindow: (docId) => ipcRenderer.invoke('window:moveTabToNewWindow', docId),
   openImages: () => ipcRenderer.invoke('dialog:openImages'),
   writeFilesToFolder: (folder, files) => ipcRenderer.invoke('fs:writeFilesToFolder', folder, files),

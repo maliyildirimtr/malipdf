@@ -113,7 +113,7 @@ function SplitPane({ docId }: { docId: string }) {
           onChange={(e) => setSplit({ docId: e.target.value })}>
           {tabOrder.map((id) => {
             const d = docs.get(id);
-            return d ? <option key={id} value={id}>{d.title}</option> : null;
+            return d ? <option key={id} value={id} data-no-translate>{d.title}</option> : null;
           })}
         </select>
         <span className={styles.pageInfo}>{currentPage} / {pageSizes.length || doc.pageCount}</span>

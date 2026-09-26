@@ -5,6 +5,7 @@
  * minidumps go to app.getPath('crashDumps') and a readable log to
  * <userData>/logs/crash.log. "Help ▸ Show Crash Reports" opens that folder.
  */
+import { showMessageBox } from '../i18n/mainLanguage';
 import { app, BrowserWindow, crashReporter, dialog, shell } from 'electron';
 import fs from 'fs';
 import path from 'path';
@@ -81,7 +82,7 @@ export async function showAbout(): Promise<void> {
     detail: aboutDetail(),
     buttons: ['OK'],
   };
-  await (window ? dialog.showMessageBox(window, options) : dialog.showMessageBox(options));
+  await showMessageBox(window, options);
 }
 
 export function setupAppInfo(isDev: boolean): void {

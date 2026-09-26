@@ -223,7 +223,7 @@ export function TopBar() {
               >
                 <FileText size={13} className={styles.tabIcon} aria-hidden="true" />
                 {isDirty && <span className={styles.dirtyIndicator} aria-hidden="true" />}
-                <span className={styles.tabTitle}>{doc.title}</span>
+                <span className={styles.tabTitle} data-no-translate>{doc.title}</span>
               </button>
               <button
                 className={styles.tabClose}
@@ -288,7 +288,7 @@ export function TopBar() {
                     </span>
                     <FileText size={14} aria-hidden="true" />
                     {isDirty && <span className={styles.dirtyIndicator} aria-hidden="true" />}
-                    <span className={styles.overflowItemTitle}>{doc.title}</span>
+                    <span className={styles.overflowItemTitle} data-no-translate>{doc.title}</span>
                   </button>
                 );
               })}

@@ -31,6 +31,7 @@ import { useAssetStore } from './store/assetStore';
 import { useImportJobStore } from './store/importJobStore';
 import { exportAndSave, loadDefaultExportFonts } from './pdf/annotationExporter';
 import { useAppCommands } from './commands';
+import { useInterfaceLanguage } from './i18n/useInterfaceLanguage';
 import { NewDocumentDialog } from './components/NewDocumentDialog/NewDocumentDialog';
 import { NotePageDialog } from './components/NewDocumentDialog/NotePageDialog';
 import { SplitDialog } from './components/NewDocumentDialog/SplitDialog';
@@ -229,6 +230,7 @@ export default function App() {
     }
   }, [activeDocId, documents, docAnnotations, showToast]);
 
+  useInterfaceLanguage();
   const { executeCommand, canExecute } = useAppCommands({ onExport: handleExportPdf });
 
   // ── Render ────────────────────────────────────────────────────────────

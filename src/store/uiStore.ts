@@ -1,5 +1,6 @@
 import type { NoteTemplateId } from '../document/noteTemplates';
 import { create } from 'zustand';
+import { isLanguage, languageFromLocale, type Language } from '../../electron/i18n';
 import { subscribeWithSelector, persist } from 'zustand/middleware';
 import type {
   ToolType,
@@ -203,6 +204,10 @@ interface UIStore {
   /** Last choice in Insert Note Page (background, line spacing, page size). */
   notePageStyle: NotePageStyle;
   setNotePageStyle: (style: Partial<NotePageStyle>) => void;
+
+  /** Interface language (Settings ▸ Appearance). */
+  language: Language;
+  setLanguage: (language: Language) => void;
 }
 
 export type PageTheme = 'normal' | 'dark' | 'sepia';
@@ -458,6 +463,9 @@ export const useUIStore = create<UIStore>()(
 
         notePageStyle: DEFAULT_NOTE_PAGE_STYLE,
         setNotePageStyle: (style) => set((state) => ({ notePageStyle: { ...state.notePageStyle, ...style } })),
+
+        language: languageFromLocale(typeof navigator === 'undefined' ? undefined : navigator.language),
+        setLanguage: (language) => set({ language: isLanguage(language) ? language : 'en' }),
       }),
       {
         name: 'malipedefe-ui',
@@ -489,7 +497,8 @@ export const useUIStore = create<UIStore>()(
             const base = toolOptions[key];
             toolOptions[key] = base && typeof base === 'object' && value && typeof value === 'object' ? { ...base, ...value } : value;
           }
-          return { ...current, ...saved, toolOptions: toolOptions as unknown as ToolOptions };
+          const language = isLanguage(saved.language) ? saved.language : current.language;
+          return { ...current, ...saved, language, toolOptions: toolOptions as unknown as ToolOptions };
         },
         // Only persist tool options, theme and favorite colors — not transient UI state
         partialize: (state) => ({
@@ -508,6 +517,7 @@ export const useUIStore = create<UIStore>()(
           laserOptions: state.laserOptions,
           pageTheme: state.pageTheme,
           formulaStyle: state.formulaStyle,
+          language: state.language,
         }),
       },
     ),

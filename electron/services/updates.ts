@@ -6,6 +6,7 @@
  * download the right installer into Downloads and open it (DMG mounts / the
  * Windows setup starts). Automatic checks run at most once a day.
  */
+import { showMessageBox } from '../i18n/mainLanguage';
 import { app, BrowserWindow, dialog, net, shell } from 'electron';
 import fs from 'fs';
 import path from 'path';
@@ -72,7 +73,7 @@ function parentWindow(): BrowserWindow | undefined {
 
 async function showMessage(options: Electron.MessageBoxOptions) {
   const window = parentWindow();
-  return window ? dialog.showMessageBox(window, options) : dialog.showMessageBox(options);
+  return showMessageBox(window, options);
 }
 
 /** manual = the user picked "Check for Updates…" (always answers). */

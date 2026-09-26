@@ -80,7 +80,7 @@ export function EquationRibbon({ onInsert, onMenuChange }: EquationRibbonProps) 
   };
 
   return (
-    <div className={styles.ribbon} ref={rootRef} onMouseDown={keepFocus}>
+    <div className={styles.ribbon} ref={rootRef} onMouseDown={keepFocus} data-i18n-scope="formula">
       <div className={styles.ribbonGroup}>
         <button type="button" className={styles.textButton} title="Normal text inside the formula" onClick={() => onInsert('\\text{text}', '\\text{#@}')}>
           <span className={styles.textButtonIcon}>ab</span>

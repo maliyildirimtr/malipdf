@@ -6,6 +6,7 @@ import React, { useEffect, useState } from 'react';
 import { useUIStore, type PageTheme } from '../../store/uiStore';
 import { APP_COMMANDS, TOOL_SHORTCUTS } from '../../commands/commandRegistry';
 import { MEASURE_UNITS } from '../../pdf/measure';
+import { LANGUAGES, type Language } from '../../../electron/i18n';
 import type { MeasureUnit, PenOptions, Theme } from '../../types/annotations';
 import styles from './SettingsDialog.module.css';
 
@@ -100,6 +101,12 @@ export function SettingsDialog() {
               <Row label="Pages" hint="How PDF pages look on screen. Printing and saving are not affected.">
                 <Segmented<PageTheme> label="Page look" value={ui.pageTheme} onChange={ui.setPageTheme}
                   options={[{ value: 'normal', label: 'Normal' }, { value: 'dark', label: 'Night' }, { value: 'sepia', label: 'Sepia' }]} />
+              </Row>
+              <Row label="Language" hint="Menus, buttons and messages.">
+                <div data-no-translate>
+                  <Segmented<Language> label="Interface language" value={ui.language} onChange={ui.setLanguage}
+                    options={LANGUAGES.map((l) => ({ value: l.value, label: l.label }))} />
+                </div>
               </Row>
               <Row label="Sidebar" hint="Show the page sidebar when a document opens.">
                 <Toggle label="Show sidebar" checked={ui.sidebarOpen} onChange={(v) => ui.setSidebarOpen(v)} />

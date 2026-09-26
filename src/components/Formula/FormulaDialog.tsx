@@ -109,7 +109,7 @@ function FormulaDialogBody() {
         <div className={styles.header}>
           <h2>{editing ? 'Edit Formula' : 'Insert Formula'}</h2>
           <span className={styles.hint}>
-            Click in the formula and type · ⌘↩ to {editing ? 'update' : 'insert'}
+            {editing ? 'Click in the formula and type · ⌘↩ to update' : 'Click in the formula and type · ⌘↩ to insert'}
             <button
               type="button"
               className={`${styles.sourceToggle} ${showSource ? styles.sourceToggleOn : ''}`}

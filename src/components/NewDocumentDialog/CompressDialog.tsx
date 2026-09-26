@@ -43,7 +43,7 @@ export function CompressDialog() {
             {(Object.keys(COMPRESS_LEVELS) as CompressLevel[]).map((id) => (
               <label key={id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '4px 0', cursor: 'pointer' }}>
                 <input type="radio" name="compress-level" checked={level === id} onChange={() => setLevel(id)} />
-                <span><b>{COMPRESS_LEVELS[id].label}</b> — images up to {COMPRESS_LEVELS[id].maxSide} px</span>
+                <span><b>{COMPRESS_LEVELS[id].label}</b> {`— images up to ${COMPRESS_LEVELS[id].maxSide} px`}</span>
               </label>
             ))}
           </div>

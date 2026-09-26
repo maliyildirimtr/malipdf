@@ -132,7 +132,7 @@ export function HeaderFooterDialog() {
               <input type="text" value={footer} placeholder="e.g. Mehmet Ali — Physics notes" onChange={(e) => setFooter(e.target.value)} />
             </label>
             {footer.trim() && <div className={local.indent}><AlignPicker label="Footer alignment" value={footerAlign} onChange={setFooterAlign} /></div>}
-            <small className={local.hint}>You can use {'{page}'}, {'{pages}'}, {'{date}'} and {'{title}'} in the text.</small>
+            <small className={local.hint}>{'You can use {page}, {pages}, {date} and {title} in the text.'}</small>
             <label className={local.field}>Watermark
               <input type="text" value={watermark} placeholder="e.g. DRAFT, CONFIDENTIAL" onChange={(e) => setWatermark(e.target.value)} />
             </label>

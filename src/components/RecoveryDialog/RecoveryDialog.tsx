@@ -91,10 +91,9 @@ export function RecoveryDialog() {
             {entries.map((entry) => (
               <li key={entry.docId} className={styles.row}>
                 <div className={styles.info}>
-                  <span className={styles.title}>{entry.title}</span>
+                  <span className={styles.title} data-no-translate>{entry.title}</span>
                   <span className={styles.meta}>
-                    Auto-saved {formatTime(entry.savedAt)} · {entry.pageCount} page{entry.pageCount === 1 ? '' : 's'}
-                    {' · '}{entry.annotationCount} annotation{entry.annotationCount === 1 ? '' : 's'}
+                    {`Auto-saved ${formatTime(entry.savedAt)} · ${entry.pageCount} page${entry.pageCount === 1 ? '' : 's'} · ${entry.annotationCount} annotation${entry.annotationCount === 1 ? '' : 's'}`}
                   </span>
                 </div>
                 <button type="button" className={styles.secondary} disabled={busyId !== null} onClick={() => void act(entry, 'discard')}>

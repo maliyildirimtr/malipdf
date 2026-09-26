@@ -22,7 +22,7 @@ export function BookmarksPanel({ docId }: { docId: string }) {
           onClick={() => setEditingId(addBookmark(docId))}
           title="Add a bookmark for the current page (⌥⌘B)"
         >
-          <BookmarkPlus size={14} /> Add Bookmark for Page {activePage + 1}
+          <BookmarkPlus size={14} /> {`Add Bookmark for Page ${activePage + 1}`}
         </button>
       </div>
       <div className={styles.annotationList}>
@@ -70,7 +70,7 @@ export function BookmarksPanel({ docId }: { docId: string }) {
                 maxLength={200}
               />
             ) : (
-              <span className={styles.annotationLabel}>{bookmark.title}</span>
+              <span className={styles.annotationLabel} data-no-translate>{bookmark.title}</span>
             )}
             <span className={styles.outlinePage}>{bookmark.pageIndex + 1}</span>
             <button

@@ -85,6 +85,7 @@ function OutlineItem({ node, depth, docId }: { node: OutlineNode; depth: number;
         ) : <span className={styles.outlineSpacer} />}
         <span
           className={styles.annotationLabel}
+          data-no-translate
           style={{ fontWeight: node.bold ? 600 : undefined, fontStyle: node.italic ? 'italic' : undefined }}
         >
           {node.title}

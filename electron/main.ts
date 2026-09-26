@@ -26,6 +26,8 @@ import {
   type NativeMenuNode,
 } from './nativeMenuSchema';
 import { setupPptxIpc } from './services/pptx/pptxIpc';
+import { getLanguage, setLanguage, showMessageBox, showOpenDialog, showSaveDialog, t } from './i18n/mainLanguage';
+import { isLanguage, languageFromLocale } from './i18n';
 import { setupOcrIpc } from './services/ocr/ocrIpc';
 import { FolderGrants, outputExtension, writeFilesToFolder } from './services/files/folderWrite';
 import { setupRecoveryIpc } from './services/recovery';
@@ -126,7 +128,7 @@ async function flushOpenPaths(): Promise<void> {
   }
   if (files.length > 0) mainWindow?.webContents.send('app:openFiles', files);
   if (failed.length > 0 && mainWindow) {
-    void dialog.showMessageBox(mainWindow, {
+    void showMessageBox(mainWindow, {
       type: 'warning',
       message: 'Some files could not be opened.',
       detail: failed.join('\n'),
@@ -309,7 +311,7 @@ function createWindow(options: { restoreId?: string } = {}): BrowserWindow {
     logCrash('renderer-gone', { reason: details.reason, exitCode: details.exitCode });
     if (window.isDestroyed()) return;
     // Unsaved work is in the auto-save recovery folder; reloading offers it back.
-    void dialog.showMessageBox(window, {
+    void showMessageBox(window, {
       type: 'error',
       title: 'MaliPDF',
       message: 'MaliPDF stopped unexpectedly.',
@@ -334,7 +336,7 @@ function createWindow(options: { restoreId?: string } = {}): BrowserWindow {
 function buildMenu() {
   const isMac = process.platform === 'darwin';
   const template: MenuItemConstructorOptions[] = createNativeMenuSchema(isMac, isDev).map((menu) => ({
-    label: menu.label,
+    label: t(menu.label),
     role: menu.role,
     submenu: menu.items.map(buildNativeMenuItem),
   }));
@@ -343,20 +345,35 @@ function buildMenu() {
   Menu.setApplicationMenu(menu);
 }
 
+/** English labels of the menu roles, so they can be translated like the rest. */
+const ROLE_LABELS: Partial<Record<string, string>> = {
+  about: 'About MaliPDF', hide: 'Hide MaliPDF', hideOthers: 'Hide Others', unhide: 'Show All',
+  quit: 'Quit MaliPDF', services: 'Services', minimize: 'Minimize', zoom: 'Zoom Window',
+  front: 'Bring All to Front', cut: 'Cut', copy: 'Copy', paste: 'Paste', selectAll: 'Select All',
+  undo: 'Undo', redo: 'Redo', clearRecentDocuments: 'Clear Menu', reload: 'Reload',
+  forceReload: 'Force Reload', toggleDevTools: 'Toggle Developer Tools', help: 'Help', window: 'Window',
+};
+
+function roleItem(role: MenuItemConstructorOptions['role']): MenuItemConstructorOptions {
+  const english = role ? ROLE_LABELS[role] : undefined;
+  // English keeps Electron's own role labels.
+  return getLanguage() !== 'en' && english ? { role, label: t(english) } : { role };
+}
+
 function buildNativeMenuItem(node: NativeMenuNode): MenuItemConstructorOptions {
   switch (node.kind) {
     case 'separator':
       return { type: 'separator' };
     case 'role':
-      return { role: node.role };
+      return roleItem(node.role);
     case 'label':
-      return { label: node.label, enabled: false };
+      return { label: t(node.label), enabled: false };
     case 'submenu':
-      return { label: node.label, role: node.role, enabled: node.enabled, submenu: node.items.map(buildNativeMenuItem) };
+      return { label: t(node.label), role: node.role, enabled: node.enabled, submenu: node.items.map(buildNativeMenuItem) };
     case 'command':
       return {
         id: node.commandId,
-        label: node.label,
+        label: t(node.label),
         accelerator: node.accelerator,
         enabled: node.enabled ?? true,
         type: node.type,
@@ -367,6 +384,15 @@ function buildNativeMenuItem(node: NativeMenuNode): MenuItemConstructorOptions {
 }
 
 // ─── IPC Handlers ────────────────────────────────────────────────────────────
+
+// Settings ▸ Language. The menu and native dialogs follow it.
+onTrusted('app:setLanguage', isDev, (_event, language: unknown) => {
+  if (!isLanguage(language)) return;
+  if (!setLanguage(language)) return;
+  buildMenu();
+  // The rebuilt menu starts from defaults; the window in front resends its state.
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(COMMAND_EXECUTE_CHANNEL, 'window.syncMenu');
+});
 
 onTrusted(COMMAND_STATE_CHANNEL, isDev, (event, states: NativeCommandState[]) => {
   // Only the window in front decides what the menu shows.
@@ -391,7 +417,7 @@ handleTrusted(FULLSCREEN_TOGGLE_CHANNEL, isDev, () => {
 // Open PDF dialog
 handleTrusted('dialog:openFile', isDev, async () => {
   if (!mainWindow) return null;
-  const result = await dialog.showOpenDialog(mainWindow, {
+  const result = await showOpenDialog(mainWindow, {
     title: 'Open PDF',
     filters: [{ name: 'PDF Documents', extensions: ['pdf'] }],
     properties: ['openFile', 'multiSelections'],
@@ -426,7 +452,7 @@ handleTrusted('dialog:openFile', isDev, async () => {
 handleTrusted('dialog:saveFile', isDev, async (_event, defaultName: unknown) => {
   if (!mainWindow) return null;
   const suggested = typeof defaultName === 'string' ? defaultName.slice(0, 1024) : 'Untitled.pdf';
-  const result = await dialog.showSaveDialog(mainWindow, {
+  const result = await showSaveDialog(mainWindow, {
     title: 'Export Annotated PDF',
     defaultPath: suggested,
     filters: [{ name: 'PDF Documents', extensions: ['pdf'] }],
@@ -440,7 +466,7 @@ handleTrusted('dialog:saveFile', isDev, async (_event, defaultName: unknown) => 
 // Split PDF: choose a folder, then write the parts into it.
 handleTrusted('dialog:chooseFolder', isDev, async (_event, rawTitle: unknown) => {
   if (!mainWindow) return null;
-  const result = await dialog.showOpenDialog(mainWindow, {
+  const result = await showOpenDialog(mainWindow, {
     title: typeof rawTitle === 'string' ? rawTitle.slice(0, 200) : 'Choose a Folder',
     properties: ['openDirectory', 'createDirectory'],
   });
@@ -467,7 +493,7 @@ handleTrusted('fs:writeFilesToFolder', isDev, async (_event, folder: unknown, ra
 handleTrusted('dialog:askCloseConfirm', isDev, async (_event, rawFileName: unknown) => {
   if (!mainWindow) return 'cancel';
   const fileName = requireString(rawFileName, 'fileName', 1024);
-  const result = await dialog.showMessageBox(mainWindow, {
+  const result = await showMessageBox(mainWindow, {
     type: 'question',
     buttons: ['Save', "Don't Save", 'Cancel'],
     defaultId: 0,
@@ -486,7 +512,7 @@ handleTrusted('dialog:askCloseConfirm', isDev, async (_event, rawFileName: unkno
 handleTrusted('dialog:askCloseAllConfirm', isDev, async (_event, rawFileNames: unknown) => {
   if (!mainWindow) return 'cancel';
   const fileNames = requireStringArray(rawFileNames, 'fileNames');
-  const result = await dialog.showMessageBox(mainWindow, {
+  const result = await showMessageBox(mainWindow, {
     type: 'question',
     buttons: ['Save All', 'Discard All', 'Cancel'],
     defaultId: 0,
@@ -544,7 +570,7 @@ function getTargetDisplay(): Electron.Display {
 // Open Image File Dialog
 handleTrusted('dialog:openImage', isDev, async () => {
   if (!mainWindow) return null;
-  const result = await dialog.showOpenDialog(mainWindow, {
+  const result = await showOpenDialog(mainWindow, {
     title: 'Insert Image',
     filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
     properties: ['openFile'],
@@ -580,7 +606,7 @@ handleTrusted('dialog:openImage', isDev, async () => {
 const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp', 'heic', 'heif', 'tif', 'tiff', 'bmp', 'gif'];
 handleTrusted('dialog:openImages', isDev, async () => {
   if (!mainWindow) return null;
-  const result = await dialog.showOpenDialog(mainWindow, {
+  const result = await showOpenDialog(mainWindow, {
     title: 'Choose Images',
     filters: [{ name: 'Images', extensions: IMAGE_EXTENSIONS }],
     properties: ['openFile', 'multiSelections'],
@@ -977,6 +1003,8 @@ handleTrusted('screenshot:captureRegion', isDev, async () => {
 // ─── App lifecycle ────────────────────────────────────────────────────────────
 
 app.whenReady().then(() => {
+  // Until the renderer reports the saved choice, follow the system language.
+  setLanguage(languageFromLocale(app.getLocale?.()));
   createWindow();
 
   app.on('activate', () => {

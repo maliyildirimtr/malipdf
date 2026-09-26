@@ -1,4 +1,5 @@
-import { dialog, BrowserWindow, app, shell } from 'electron';
+import { BrowserWindow, app, shell } from 'electron';
+import { showOpenDialog } from '../../i18n/mainLanguage';
 import fs from 'fs';
 import path from 'path';
 import { randomUUID } from 'crypto';
@@ -126,7 +127,7 @@ export function setupPptxIpc(isDev: boolean) {
     // 2. User selects PPTX file
     const window = BrowserWindow.fromWebContents(event.sender);
     if (!window) return null;
-    const result = await dialog.showOpenDialog(window, {
+    const result = await showOpenDialog(window, {
       title: 'Insert PowerPoint Printout',
       filters: [{ name: 'PowerPoint Presentations', extensions: ['pptx'] }],
       properties: ['openFile'],

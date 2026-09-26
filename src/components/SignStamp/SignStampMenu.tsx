@@ -114,7 +114,7 @@ export function SignStampMenu({ enabled }: { enabled: boolean }) {
           </div>
           <label className={ribbonStyles.customizeItem}>
             <input type="checkbox" checked={withDate} onChange={(e) => setWithDate(e.target.checked)} />
-            Add today's date ({todayLabel()})
+            {`Add today's date (${todayLabel()})`}
           </label>
           <form
             className={styles.customRow}

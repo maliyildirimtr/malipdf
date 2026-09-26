@@ -128,7 +128,7 @@ export function SearchPanel({ identity }: { identity: DocumentIdentity }) {
             onClick={() => select(index)}
           >
             <span className={styles.searchResultPage}>Page {match.pageIndex + 1}</span>
-            <span className={styles.searchResultSnippet}>{match.snippet}</span>
+            <span className={styles.searchResultSnippet} data-no-translate>{match.snippet}</span>
           </button>
         ))}
         {query.trim() && status === 'done' && count === 0 && (
