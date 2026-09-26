@@ -71,3 +71,24 @@ describe('pen buttons', () => {
     expect(penButtonTool({ pointerType: 'mouse', button: 2, buttons: 2 })).toBeNull();
   });
 });
+
+import { computeLayerRegion } from '../layerRegion';
+
+describe('ink layer region', () => {
+  const viewport = { width: 1000, height: 800 };
+  const empty = { x: 0, y: 0, w: 0, h: 0 };
+  it('covers the visible part of a big page plus a margin, not the whole page', () => {
+    const region = computeLayerRegion({ left: -500, top: -3000 }, 3000, 8000, empty, viewport);
+    expect(region.x).toBeLessThanOrEqual(500);
+    expect(region.y).toBeLessThanOrEqual(3000);
+    expect(region.x + region.w).toBeGreaterThanOrEqual(1500);
+    expect(region.y + region.h).toBeGreaterThanOrEqual(3800);
+    expect(region.w * region.h).toBeLessThan(3000 * 8000 / 4);
+  });
+  it('keeps the region while it still covers the view, and ignores off-screen pages', () => {
+    const region = computeLayerRegion({ left: 0, top: -1000 }, 1000, 5000, empty, viewport);
+    expect(computeLayerRegion({ left: 0, top: -1100 }, 1000, 5000, region, viewport)).toBe(region);
+    expect(computeLayerRegion({ left: 0, top: 5000 }, 1000, 5000, region, viewport)).toBe(region);
+    expect(computeLayerRegion({ left: 0, top: -3000 }, 1000, 5000, region, viewport)).not.toBe(region);
+  });
+});

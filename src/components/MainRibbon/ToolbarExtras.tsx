@@ -42,10 +42,13 @@ export function PenPresetBar({ tool }: { tool: PenPreset['tool'] }) {
   const { applyPenPreset, removePenPreset, savePenPreset } = useUIStore.getState();
 
   return (
-    <div className={styles.presetBar} role="group" aria-label={`${tool === 'pen' ? 'Pen' : 'Highlighter'} presets`}>
+    <div className={styles.presetBar} role="group" aria-label={`Saved ${tool === 'pen' ? 'pens' : 'highlighters'}`}>
+      <span className={styles.propertyLabel}>{tool === 'pen' ? 'Pens' : 'Markers'}</span>
       {presets.map((preset) => {
         const active = preset.color === current.color.toLowerCase() && preset.width === current.width && preset.opacity === current.opacity;
-        const dot = Math.max(4, Math.min(16, preset.width * (tool === 'pen' ? 2 : 0.7)));
+        // A small stroke sample (colour + thickness), so saved pens do not
+        // look like a second colour palette.
+        const thickness = Math.max(1.5, Math.min(7, preset.width * (tool === 'pen' ? 0.9 : 0.4)));
         return (
           <button
             key={preset.id}
@@ -59,15 +62,24 @@ export function PenPresetBar({ tool }: { tool: PenPreset['tool'] }) {
               removePenPreset(preset.id);
             }}
           >
-            <span style={{ width: dot, height: dot, borderRadius: 999, background: preset.color, opacity: preset.opacity }} />
+            <svg width="26" height="14" viewBox="0 0 26 14" aria-hidden="true">
+              <path
+                d="M3 10 C 7 2, 11 2, 13 7 S 19 12, 23 4"
+                fill="none"
+                stroke={preset.color}
+                strokeOpacity={preset.opacity}
+                strokeWidth={thickness}
+                strokeLinecap={tool === 'pen' ? 'round' : 'butt'}
+              />
+            </svg>
           </button>
         );
       })}
       <button
         type="button"
         className={styles.presetSlot}
-        title="Save current settings as a preset"
-        aria-label="Save current settings as a preset"
+        title={`Save the current ${tool === 'pen' ? 'pen' : 'highlighter'} (colour + thickness)`}
+        aria-label="Save the current settings as a saved pen"
         onClick={() => savePenPreset(tool)}
       >
         <Plus size={13} />

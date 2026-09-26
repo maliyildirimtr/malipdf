@@ -77,6 +77,7 @@ import { simplifyInkPoints } from '../../pdf/inkGeometry';
 import { annotationsInLasso } from '../../pdf/lassoSelect';
 import { recognizeShape } from '../../pdf/shapeRecognizer';
 import { penButtonTool } from '../../utils/penButtons';
+import { computeLayerRegion, regionOutputScale, type LayerRegion } from '../../pdf/layerRegion';
 import { projectOntoEdge, snapEdgeFor, useRulerStore, type EdgeLine } from '../../store/rulerStore';
 import { buildReplayPlan, replayFrame, type ReplayItem } from '../../pdf/inkReplay';
 import { REPLAY_INK_EVENT, type ReplayInkDetail } from './replayEvents';
@@ -270,6 +271,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
   const pendingRedrawRegion = useRef<PdfRect | null>(null);
   const lastLayerDraw = useRef<{
     list: Annotation[]; transform: PageTransform; dpr: number; overlay: boolean; width: number; height: number;
+    region: LayerRegion;
   } | null>(null);
 
   // Eraser gesture state
@@ -367,20 +369,67 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
   }, [identity, selectedIdsArray.length]);
 
   const { scale, cssWidth: width, cssHeight: height } = transform;
-  const dpr = computeSafeCanvasOutputScale(
-    width,
-    height,
-    window.devicePixelRatio || 1,
-  );
+
+  // ── Layer region ──────────────────────────────────────────────────────────
+  // The ink canvases cover only the visible part of the page (plus a margin),
+  // not the whole page. That keeps them at full screen sharpness (Retina) at
+  // any zoom instead of being scaled down to fit a memory budget.
+  const [layerRegion, setLayerRegion] = useState<LayerRegion>(() => ({ x: 0, y: 0, w: 0, h: 0 }));
+  const layerRegionRef = useRef(layerRegion);
+  layerRegionRef.current = layerRegion;
+  const dpr = regionOutputScale(layerRegion.w, layerRegion.h);
+  const dprRef = useRef(dpr);
+  dprRef.current = dpr;
+
+  useEffect(() => {
+    let frame: number | null = null;
+    const update = () => {
+      frame = null;
+      const element = interactionRef.current;
+      if (!element) return;
+      const next = computeLayerRegion(element.getBoundingClientRect(), width, height, layerRegionRef.current);
+      if (next !== layerRegionRef.current) setLayerRegion(next);
+    };
+    const schedule = () => {
+      if (frame === null) frame = requestAnimationFrame(update);
+    };
+    update();
+    window.addEventListener('scroll', schedule, true);
+    window.addEventListener('resize', schedule);
+    return () => {
+      if (frame !== null) cancelAnimationFrame(frame);
+      window.removeEventListener('scroll', schedule, true);
+      window.removeEventListener('resize', schedule);
+    };
+  }, [width, height]);
+
+  /** 2D context whose drawing coordinates are page-local CSS px × dpr. */
+  function layerContext(canvas: HTMLCanvasElement | null): CanvasRenderingContext2D | null {
+    const ctx = canvas?.getContext('2d') ?? null;
+    if (!ctx) return null;
+    const region = layerRegionRef.current;
+    const scaleOut = dprRef.current;
+    ctx.setTransform(1, 0, 0, 1, -region.x * scaleOut, -region.y * scaleOut);
+    return ctx;
+  }
+
+  function clearLayer(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) {
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.restore();
+  }
 
   // ── Canvas sizing ─────────────────────────────────────────────────────────
 
   function sizeCanvas(canvas: HTMLCanvasElement | null) {
     if (!canvas) return;
-    canvas.width  = Math.round(width * dpr);
-    canvas.height = Math.round(height * dpr);
-    canvas.style.width  = `${width}px`;
-    canvas.style.height = `${height}px`;
+    canvas.width  = Math.round(layerRegion.w * dpr);
+    canvas.height = Math.round(layerRegion.h * dpr);
+    canvas.style.left = `${layerRegion.x}px`;
+    canvas.style.top = `${layerRegion.y}px`;
+    canvas.style.width  = `${layerRegion.w}px`;
+    canvas.style.height = `${layerRegion.h}px`;
   }
 
   // Cancel any active drawing if the user switches tools
@@ -392,9 +441,11 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     sizeCanvas(highlightCanvasRef.current);
     sizeCanvas(annotationCanvasRef.current);
     sizeCanvas(drawingCanvasRef.current);
+    lastLayerDraw.current = null;
     redrawAnnotationLayer();
+    if (mode.current !== 'idle') renderPreview();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [width, height, dpr]);
+  }, [layerRegion, dpr]);
 
   // ── Annotation layer (completed annotations + selection overlay) ──────────
 
@@ -414,10 +465,10 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     if (!region) pendingRedrawRegion.current = null;
     const canvas = annotationCanvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
+    const ctx = layerContext(canvas);
     if (!ctx) return;
     const highlightCanvas = highlightCanvasRef.current;
-    const highlightCtx = highlightCanvas?.getContext('2d') ?? null;
+    const highlightCtx = layerContext(highlightCanvas);
 
     const isActiveGesture = mode.current === 'moving' || mode.current === 'resizing';
     const activeIds = isActiveGesture ? gestureSelectedIdsRef.current : [];
@@ -451,8 +502,9 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
 
     const showOverlay = currentSelectedIds.length > 0 && !isActiveGesture;
     const previous = lastLayerDraw.current;
+    const surfaceRegion = layerRegionRef.current;
     const sameSurface = previous !== null && previous.transform === transform && previous.dpr === dpr
-      && previous.width === canvas.width && previous.height === canvas.height;
+      && previous.width === canvas.width && previous.height === canvas.height && previous.region === surfaceRegion;
 
     const paint = (list: Annotation[]) => {
       if (highlightCtx) {
@@ -481,7 +533,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
       }
       paint(committedAnnotations.filter((a) => rectsOverlap(getCachedBounds(a), region)));
       for (const layer of layers) layer.restore();
-      lastLayerDraw.current = { list: committedAnnotations, transform, dpr, overlay: false, width: canvas.width, height: canvas.height };
+      lastLayerDraw.current = { list: committedAnnotations, transform, dpr, overlay: false, width: canvas.width, height: canvas.height, region: surfaceRegion };
       return;
     }
 
@@ -496,8 +548,8 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
 
     // ── Full repaint ──
     if (replayRef.current) replayRef.current.painted = 0; // the replay repaints what it had shown
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    if (highlightCanvas && highlightCtx) highlightCtx.clearRect(0, 0, highlightCanvas.width, highlightCanvas.height);
+    clearLayer(ctx, canvas);
+    if (highlightCanvas && highlightCtx) clearLayer(highlightCtx, highlightCanvas);
     paint(committedAnnotations);
 
     // Draw selection overlays for selected annotations (unless they are being actively moved/resized)
@@ -522,7 +574,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
       }
     }
     lastLayerDraw.current = {
-      list: committedAnnotations, transform, dpr, overlay: showOverlay, width: canvas.width, height: canvas.height,
+      list: committedAnnotations, transform, dpr, overlay: showOverlay, width: canvas.width, height: canvas.height, region: surfaceRegion,
     };
   }, [docId, pageIndex, transform, dpr, annotations, selectedIdsArray, getPageAnnotations, identity]);
 
@@ -551,8 +603,8 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
   function clearDrawingCanvas() {
     const canvas = drawingCanvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    ctx?.clearRect(0, 0, canvas.width, canvas.height);
+    const ctx = layerContext(canvas);
+    if (ctx) clearLayer(ctx, canvas);
   }
 
   function schedulePreviewRender() {
@@ -567,9 +619,9 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
   function renderPreview() {
     const canvas = drawingCanvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
+    const ctx = layerContext(canvas);
     if (!ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    clearLayer(ctx, canvas);
 
     const m = mode.current;
 
@@ -783,16 +835,16 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
       // drawn on the preview layer.
       const newlyDone = frame.done.slice(replay.painted);
       if (newlyDone.length) {
-        const ink = annotationCanvasRef.current?.getContext('2d');
-        const marker = highlightCanvasRef.current?.getContext('2d');
+        const ink = layerContext(annotationCanvasRef.current);
+        const marker = layerContext(highlightCanvasRef.current);
         if (ink) renderAnnotations(ink, newlyDone.filter((a) => a.type !== 'highlight'), transform, dpr, identity);
         if (marker) renderAnnotations(marker, newlyDone.filter((a) => a.type === 'highlight'), transform, dpr, identity);
         replay.painted = frame.done.length;
       }
       const canvas = drawingCanvasRef.current;
-      const ctx = canvas?.getContext('2d');
+      const ctx = layerContext(canvas);
       if (canvas && ctx) {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        clearLayer(ctx, canvas);
         canvas.style.mixBlendMode = frame.partial?.type === 'highlight' ? 'multiply' : 'normal';
         if (frame.partial) renderAnnotations(ctx, [frame.partial], transform, dpr, identity);
       }
@@ -2078,7 +2130,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
               transform={transform}
               identity={identity}
               pageIndex={pageIndex}
-              canvasRef={annotationCanvasRef}
+              canvasRef={interactionRef}
             />
           );
         }

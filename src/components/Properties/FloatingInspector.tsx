@@ -31,7 +31,8 @@ interface FloatingInspectorProps {
   transform: PageTransform;
   identity: DocumentIdentity;
   pageIndex: number;
-  canvasRef: React.RefObject<HTMLCanvasElement>;
+  /** The full-page element (page-local coordinates start at its top-left). */
+  canvasRef: React.RefObject<HTMLElement>;
 }
 
 // Use React.memo so FloatingInspector only re-renders when props actually change

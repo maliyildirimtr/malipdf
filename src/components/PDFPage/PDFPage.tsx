@@ -12,6 +12,7 @@ import { getPageSlotSize } from '../../pdf/pageVirtualization';
 import type { PageLayout } from '../../types/documentSession';
 import AnnotationCanvas from '../AnnotationCanvas/AnnotationCanvas';
 import { SearchHighlights } from './SearchHighlights';
+import { PdfDetailLayer } from './PdfDetailLayer';
 import styles from './PDFPage.module.css';
 
 interface PDFPageProps {
@@ -130,6 +131,7 @@ const PDFPage = React.memo<PDFPageProps>(function PDFPage({
               className={styles.pdfCanvas}
               style={{ width, height }}
             />
+            {page && !isLoading && <PdfDetailLayer page={page} transform={transform} />}
             <SearchHighlights
               identity={searchIdentity}
               pageIndex={pageIndex}
