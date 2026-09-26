@@ -149,6 +149,8 @@ export interface ImageAnnotation extends BaseAnnotation {
   height: number;                  // In PDF user space points
   assetId: string;                 // Reference to ImageAsset in AssetStore
   opacity: number;                 // 0–1
+  /** Set for formulas: the LaTeX source, so it can be edited again. */
+  formula?: { latex: string; color: string; size: number; naturalWidth?: number };
 }
 
 // ─── Text markup (highlight / underline / strikethrough on PDF text) ─────────

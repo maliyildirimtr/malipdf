@@ -11,7 +11,7 @@
 import { useDocumentStore } from '../store/documentStore';
 import { useAnnotationStore } from '../store/annotationStore';
 import { useAssetStore } from '../store/assetStore';
-import { useHistoryStore, makeAddAction } from '../store/historyStore';
+import { useHistoryStore, makeAddAction, makeUpdateAction } from '../store/historyStore';
 import { useSelectionStore } from '../store/selectionStore';
 import { documentSessionStore } from '../store/documentSessionStore';
 import { documentIdentityKey } from '../types/documentSession';
@@ -29,6 +29,8 @@ export async function insertImageFromBytes(
   mimeType: string,
   /** Fixed size in PDF points (signatures, stamps); default = natural size. */
   size?: { width: number; height: number },
+  /** Extra annotation fields (e.g. a formula's LaTeX source). */
+  extra?: Pick<ImageAnnotation, 'formula'>,
 ): Promise<boolean> {
   const target = createInsertTargetSnapshot();
   if (!target) return false;
@@ -51,9 +53,11 @@ export async function insertImageFromBytes(
       height: pageHeight,
     };
 
+    // Centre it on the part of the page that is on screen, so it appears where the user is looking.
+    const onScreen = visiblePageCenter(target.pageIndex, pageWidth, pageHeight);
     const bounds = size
-      ? calculateDefaultImageBounds(size.width, size.height, pageBox)
-      : calculateDefaultImageBounds(asset.width, asset.height, pageBox);
+      ? calculateDefaultImageBounds(size.width, size.height, pageBox, onScreen)
+      : calculateDefaultImageBounds(asset.width, asset.height, pageBox, onScreen);
 
     useAssetStore.getState().addAsset(target.identity, asset);
 
@@ -71,6 +75,7 @@ export async function insertImageFromBytes(
       width: bounds.width,
       height: bounds.height,
       assetId: asset.id,
+      ...extra,
     };
 
     useAnnotationStore.getState().addAnnotation(target.identity.docId, ann);
@@ -82,6 +87,31 @@ export async function insertImageFromBytes(
     notifyUser('error', `Image could not be inserted: ${errorMessage(err)}`);
     return false;
   }
+}
+
+/**
+ * Centre (PDF points) of the visible part of a page, or undefined when the
+ * page is not on screen or is shown rotated.
+ */
+function visiblePageCenter(pageIndex: number, pageWidth: number, pageHeight: number): { x: number; y: number } | undefined {
+  if (typeof document === 'undefined') return undefined;
+  const doc = useDocumentStore.getState().documents.get(useDocumentStore.getState().activeDocId ?? '');
+  if (!doc || (doc.pageRotations[pageIndex] ?? 0) % 360 !== 0) return undefined;
+  const el = document.querySelector(`[data-page-index="${pageIndex}"]`);
+  if (!el) return undefined;
+  const page = el.getBoundingClientRect();
+  const area = (el.closest('[data-document-scroll]') ?? document.documentElement).getBoundingClientRect();
+  const left = Math.max(page.left, area.left, 0);
+  const right = Math.min(page.right, area.right, window.innerWidth);
+  const top = Math.max(page.top, area.top, 0);
+  const bottom = Math.min(page.bottom, area.bottom, window.innerHeight);
+  if (right <= left || bottom <= top || page.width <= 0 || page.height <= 0) return undefined;
+  const cx = (left + right) / 2;
+  const cy = (top + bottom) / 2;
+  return {
+    x: ((cx - page.left) / page.width) * pageWidth,
+    y: pageHeight - ((cy - page.top) / page.height) * pageHeight,
+  };
 }
 
 export async function insertImageFromFile(): Promise<boolean> {
@@ -208,4 +238,53 @@ export async function captureRegionToImage(): Promise<boolean> {
 
   // Fallback to screen capture
   return await captureScreenToImage();
+}
+
+// ─── Formulas ────────────────────────────────────────────────────────────────
+
+export interface FormulaSource { latex: string; color: string; size: number }
+
+/** Typeset `formula` and insert it on the active page (centred, selected). */
+export async function insertFormula(formula: FormulaSource): Promise<boolean> {
+  const { renderFormula } = await import('../pdf/formula');
+  const rendered = await renderFormula(formula.latex, formula);
+  return insertImageFromBytes(
+    rendered.png.slice().buffer,
+    'image/png',
+    { width: rendered.width, height: rendered.height },
+    { formula: { ...formula, naturalWidth: rendered.width } },
+  );
+}
+
+/**
+ * Replace an existing formula with a new version. Its top-left corner stays,
+ * and a formula the user resized keeps that zoom. One undo step.
+ */
+export async function updateFormula(docId: string, annotationId: string, pageIndex: number, formula: FormulaSource): Promise<boolean> {
+  const { renderFormula } = await import('../pdf/formula');
+  const rendered = await renderFormula(formula.latex, formula);
+  const doc = useDocumentStore.getState().documents.get(docId);
+  if (!doc) return false;
+  const current = useAnnotationStore.getState().getPageAnnotations(docId, pageIndex).find((a) => a.id === annotationId);
+  if (!current || current.type !== 'image') return false;
+  const asset = await normalizeAndCreateImageAsset(rendered.png.slice().buffer, 'image/png');
+  useAssetStore.getState().addAsset({ docId, instanceId: doc.instanceId }, asset);
+  const natural = current.formula?.naturalWidth;
+  const zoom = natural && natural > 0 ? current.width / natural : 1;
+  const width = rendered.width * zoom;
+  const height = rendered.height * zoom;
+  const top = current.y + current.height;
+  const after: ImageAnnotation = {
+    ...current,
+    assetId: asset.id,
+    x: current.x,
+    y: top - height,
+    width,
+    height,
+    formula: { ...formula, naturalWidth: rendered.width },
+    updatedAt: Date.now(),
+  };
+  useAnnotationStore.getState().replaceAnnotation(docId, pageIndex, after);
+  useHistoryStore.getState().push(makeUpdateAction(docId, current, after));
+  return true;
 }

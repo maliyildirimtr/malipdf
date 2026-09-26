@@ -15,7 +15,7 @@ export type AppCommandId =
   | ToolCommandId | 'tool.polygon' | 'tool.extractText' | 'tool.zoom' | 'tool.stamp'
   | 'tool.dimension' | 'tool.lasso' | 'tool.snapshot'
   | 'tool.crop' | 'tool.measure' | 'tool.formula' | 'tool.laserPointer'
-  | 'tool.pointer' | 'insert.image' | 'insert.screenshot' | 'insert.regionScreenshot' | 'insert.printoutPdf' | 'insert.printoutPptx' | 'insert.signature' | 'view.sidebar' | 'view.sidebarPages'
+  | 'tool.pointer' | 'insert.image' | 'insert.screenshot' | 'insert.regionScreenshot' | 'insert.printoutPdf' | 'insert.printoutPptx' | 'insert.signature' | 'insert.formula' | 'view.sidebar' | 'view.sidebarPages'
   | 'view.sidebarBookmarks' | 'view.sidebarOutline' | 'view.sidebarAnnotations'
   | 'view.sidebarSearch' | 'view.zoomIn' | 'view.zoomOut' | 'view.actualSize'
   | 'view.fitWidth' | 'view.fitPage' | 'view.layoutContinuous'
@@ -113,6 +113,7 @@ export const APP_COMMANDS = {
   'tool.laserPointer': toolCommand('laserPointer', 'Laser Pointer', undefined, 'laserPointer'),
   'tool.pointer': unavailableTool('tool.pointer', 'Pointer', 'pointer'),
   'insert.image': command('insert.image', 'Insert Image…', 'insert', 'action', 'document', { icon: 'image', menuPlacements: ['edit'], toolbarPlacements: ['primary.insert'] }),
+  'insert.formula': command('insert.formula', 'Insert Formula…', 'insert', 'action', 'document', { icon: 'formula', shortcut: '⌥⌘E', menuPlacements: ['edit'], toolbarPlacements: ['primary.insert'] }),
   'insert.signature': command('insert.signature', 'Signature & Stamps…', 'insert', 'action', 'document', { icon: 'pen', shortcut: '⌥⌘S', menuPlacements: ['edit'], toolbarPlacements: ['primary.insert'] }),
   'insert.screenshot': command('insert.screenshot', 'Capture Screen', 'insert', 'action', 'document', { icon: 'screenshot', menuPlacements: ['edit'], toolbarPlacements: ['primary.insert'] }),
   'insert.regionScreenshot': command('insert.regionScreenshot', 'Capture Region', 'insert', 'action', 'document', { icon: 'regionScreenshot', menuPlacements: ['edit'], toolbarPlacements: ['primary.insert'] }),

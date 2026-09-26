@@ -16,8 +16,9 @@ export default defineConfig({
     // Export fonts must be readable without fetch() from a file:// app, so they
     // are inlined as data: URLs (see src/pdf/exportFonts.ts). Other assets keep
     // Vite's default 4 KB rule.
-    // Same for pdf.js CMaps / standard fonts (src/pdf/pdfjsAssets.ts).
-    assetsInlineLimit: (filePath: string) => (/\.(ttf|pfb|bcmap)$/.test(filePath) ? true : undefined),
+    // Same for pdf.js CMaps / standard fonts (src/pdf/pdfjsAssets.ts) and the
+    // KaTeX fonts of the Formula tool (src/pdf/formula.ts).
+    assetsInlineLimit: (filePath: string) => (/\.(ttf|pfb|bcmap|woff2)$/.test(filePath) ? true : undefined),
     rollupOptions: {
       // Externalize pdfjs worker
       output: {

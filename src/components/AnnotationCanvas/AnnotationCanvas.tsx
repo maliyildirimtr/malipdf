@@ -1051,6 +1051,20 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     pushHistory(makeAddAction(docId, ann));
   }
 
+  /** Double-click a formula (Select tool) to edit its LaTeX. */
+  function onDoubleClick(e: React.MouseEvent<HTMLDivElement>) {
+    if (selectedTool !== 'select' || e.metaKey || e.shiftKey) return;
+    const rect = interactionRef.current!.getBoundingClientRect();
+    const p = screenToPdfPoint(e.clientX - rect.left, e.clientY - rect.top);
+    const hit = hitTestAnnotations(p, getPageAnnotations(docId, pageIndex), transform, []);
+    if (!hit || hit.type !== 'image' || !hit.formula || hit.locked) return;
+    e.preventDefault();
+    cancelActiveInteraction();
+    useUIStore.getState().setFormulaDialog({
+      edit: { docId, annotationId: hit.id, pageIndex, latex: hit.formula.latex, color: hit.formula.color, size: hit.formula.size },
+    });
+  }
+
   function onPointerDown(e: React.PointerEvent<HTMLDivElement>) {
     if (replayRef.current) {
       // Any click ends the replay.
@@ -1276,6 +1290,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
         openTextEditor(hit);
         return;
       }
+
 
       if (hit) {
         let newIds = [...activeIds];
@@ -2432,6 +2447,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
         onPointerCancel={onPointerCancel}
         onLostPointerCapture={onLostPointerCapture}
         onContextMenu={(e) => e.preventDefault()}
+        onDoubleClick={onDoubleClick}
         onDragOver={(e) => {
           if (e.dataTransfer.types.includes('Files')) {
             e.preventDefault();

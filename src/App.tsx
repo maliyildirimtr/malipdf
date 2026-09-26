@@ -33,6 +33,7 @@ import { useAppCommands } from './commands';
 import { NewDocumentDialog } from './components/NewDocumentDialog/NewDocumentDialog';
 import { NotePageDialog } from './components/NewDocumentDialog/NotePageDialog';
 import { PresentationView } from './components/Presentation/PresentationView';
+import { FormulaDialog } from './components/Formula/FormulaDialog';
 import { LaserOverlay } from './components/Laser/LaserOverlay';
 import { RecoveryDialog } from './components/RecoveryDialog/RecoveryDialog';
 import { Ruler } from './components/Ruler/Ruler';
@@ -250,6 +251,7 @@ export default function App() {
       <NotePageDialog />
       <LaserOverlay />
       <PresentationView />
+      <FormulaDialog />
       <RecoveryDialog />
       <Ruler />
 

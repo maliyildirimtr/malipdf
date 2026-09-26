@@ -589,6 +589,7 @@ export function DocumentArea() {
   return (
     <div
       ref={scrollContainerRef}
+      data-document-scroll
       className={styles.root}
       style={{ cursor: interactionTool === 'hand' ? (isPanningRef.current ? 'grabbing' : 'grab') : undefined }}
       onScroll={onScroll}

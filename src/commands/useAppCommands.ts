@@ -277,6 +277,9 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
       case 'insert.printoutPptx':
         import('./printoutCommands').then(m => m.insertPptxPrintoutFromFile());
         return;
+      case 'insert.formula':
+        ui.setFormulaDialog({});
+        return;
       case 'insert.signature':
         window.dispatchEvent(new CustomEvent(OPEN_SIGN_MENU_EVENT));
         return;

@@ -156,6 +156,13 @@ interface UIStore {
   presentationOpen: boolean;
   setPresentationOpen: (open: boolean) => void;
 
+  /** Formula dialog: null = closed; with `edit` it changes an existing formula. */
+  formulaDialog: FormulaDialogState | null;
+  setFormulaDialog: (state: FormulaDialogState | null) => void;
+  /** Last formula colour and size. */
+  formulaStyle: { color: string; size: number };
+  setFormulaStyle: (style: { color: string; size: number }) => void;
+
   /** Laser pointer look and fade (MaliPen style). */
   laserOptions: LaserOptions;
   updateLaserOptions: (patch: Partial<LaserOptions>) => void;
@@ -163,6 +170,10 @@ interface UIStore {
   /** Last choice in Insert Note Page (background, line spacing, page size). */
   notePageStyle: NotePageStyle;
   setNotePageStyle: (style: Partial<NotePageStyle>) => void;
+}
+
+export interface FormulaDialogState {
+  edit?: { docId: string; annotationId: string; pageIndex: number; latex: string; color: string; size: number };
 }
 
 export interface NotePageStyle {
@@ -376,6 +387,11 @@ export const useUIStore = create<UIStore>()(
         presentationOpen: false,
         setPresentationOpen: (open) => set({ presentationOpen: open }),
 
+        formulaDialog: null,
+        setFormulaDialog: (formulaDialog) => set({ formulaDialog }),
+        formulaStyle: { color: '#1a1a2e', size: 16 },
+        setFormulaStyle: (formulaStyle) => set({ formulaStyle }),
+
         laserOptions: DEFAULT_LASER_OPTIONS,
         updateLaserOptions: (patch) => set((state) => ({ laserOptions: { ...state.laserOptions, ...patch } })),
 
@@ -429,6 +445,7 @@ export const useUIStore = create<UIStore>()(
           hiddenToolbarTools: state.hiddenToolbarTools,
           notePageStyle: state.notePageStyle,
           laserOptions: state.laserOptions,
+          formulaStyle: state.formulaStyle,
         }),
       },
     ),

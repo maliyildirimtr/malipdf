@@ -23,6 +23,7 @@ import {
   Monitor,
   MoreHorizontal,
   MonitorPlay,
+  Sigma,
   MousePointer2,
   Pointer as LaserIcon,
   Pen,
@@ -87,6 +88,7 @@ const DOCUMENT_COMMANDS = new Set<AppCommandId>([
   'history.redo',
   'insert.image',
   'insert.signature',
+  'insert.formula',
   'insert.screenshot',
   'insert.regionScreenshot',
   'view.zoomIn',
@@ -238,6 +240,14 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
             enabled={isEnabled('insert.image')}
           />
           <SignStampMenu enabled={isEnabled('insert.signature')} />
+          <CommandButton
+            commandId="insert.formula"
+            label="Formula…"
+            shortcut="⌥⌘E"
+            icon={Sigma}
+            onCommand={runCommand}
+            enabled={isEnabled('insert.formula')}
+          />
           <CommandButton
             commandId="insert.printoutPdf"
             label="Insert PDF…"

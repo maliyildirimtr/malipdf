@@ -90,6 +90,7 @@ export function createNativeMenuSchema(isMac: boolean, isDev: boolean): readonly
         separator(),
         command('insert.image', 'Insert Image…', { accelerator: 'CmdOrCtrl+I', enabled: false }),
         command('insert.signature', 'Signature & Stamps…', { accelerator: 'Alt+CmdOrCtrl+S', enabled: false }),
+        command('insert.formula', 'Insert Formula…', { accelerator: 'Alt+CmdOrCtrl+E', enabled: false }),
         command('insert.screenshot', 'Capture Screen', { enabled: false }),
         command('insert.regionScreenshot', 'Capture Region', { enabled: false }),
         separator(),
