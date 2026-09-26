@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { FolderGrants, safePdfFileName, uniqueName, writeFilesToFolder } from '../folderWrite';
+import { FolderGrants, outputExtension, safeFileName, safePdfFileName, uniqueName, writeFilesToFolder } from '../folderWrite';
 
 describe('split output files', () => {
   it('makes plain, safe PDF names', () => {
@@ -11,6 +11,10 @@ describe('split output files', () => {
     expect(safePdfFileName('..hidden.PDF')).toBe('hidden.pdf');
     expect(safePdfFileName('')).toBe('Document.pdf');
     expect(safePdfFileName(42)).toBe('Document.pdf');
+    expect(safeFileName('Sayfa 1.png', 'png')).toBe('Sayfa 1.png');
+    expect(safeFileName('x.pdf', 'jpg')).toBe('x.pdf.jpg');
+    expect(outputExtension('exe')).toBe('pdf');
+    expect(uniqueName('a.png', (n) => n === 'a.png')).toBe('a (2).png');
   });
 
   it('never reuses a taken name', () => {

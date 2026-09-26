@@ -309,6 +309,7 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
               { commandId: 'tool.crop', label: 'Crop Pages', enabled: isEnabled('tool.crop'), icon: Crop },
               { commandId: 'page.removeCrop', label: 'Remove Crop from This Page', enabled: isEnabled('page.removeCrop'), icon: Crop },
               { commandId: 'file.reduceSize', label: 'Reduce File Size…', enabled: isEnabled('file.reduceSize'), icon: Minimize2 },
+              { commandId: 'file.exportImages', label: 'Export Pages as Images…', enabled: isEnabled('file.exportImages'), icon: ImageIcon },
             ]}
           />
         </ToolbarGroup>

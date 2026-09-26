@@ -23,7 +23,7 @@ export type AppCommandId =
   | 'view.rotateCW' | 'view.annotations' | 'view.primaryToolbar'
   | 'view.propertyShelf' | 'view.statusBar' | 'view.nativeFullscreen'
   | 'view.focusMode' | 'extras.favorites' | 'extras.toolStyles' | 'help.open'
-  | 'app.requestQuit' | 'app.requestCloseWindow' | 'app.settings' | 'view.splitView' | 'view.moveTabToNewWindow' | 'insert.headerFooter' | 'page.removeCrop' | 'file.reduceSize'
+  | 'app.requestQuit' | 'app.requestCloseWindow' | 'app.settings' | 'view.splitView' | 'view.moveTabToNewWindow' | 'insert.headerFooter' | 'page.removeCrop' | 'file.reduceSize' | 'file.exportImages'
   | 'file.recoveredDocuments' | 'help.checkForUpdates' | 'help.about' | 'help.crashReports'
   | 'page.insertBlank' | 'page.insertNotePage' | 'page.duplicate' | 'page.delete' | 'page.rotateLeft' | 'page.rotateRight'
   | 'page.insertFromPdf' | 'page.exportSelected' | 'page.addBookmark'
@@ -166,6 +166,7 @@ export const APP_COMMANDS = {
   'insert.headerFooter': command('insert.headerFooter', 'Header, Footer & Page Numbers…', 'insert', 'action', 'document', { icon: 'text', menuPlacements: ['edit'], toolbarPlacements: ['primary.insert'] }),
   'page.removeCrop': command('page.removeCrop', 'Remove Crop from This Page', 'page', 'action', 'document', { icon: 'crop', menuPlacements: ['page'] }),
   'file.reduceSize': command('file.reduceSize', 'Reduce File Size…', 'file', 'action', 'document', { icon: 'export', menuPlacements: ['file'] }),
+  'file.exportImages': command('file.exportImages', 'Export Pages as Images…', 'file', 'action', 'document', { icon: 'image', menuPlacements: ['file'] }),
   'app.settings': command('app.settings', 'Settings…', 'extras', 'action', 'always', { icon: 'toolStyles', shortcut: '⌘,', menuPlacements: ['app'] }),
   'page.split': command('page.split', 'Split Document…', 'page', 'action', 'document', { icon: 'export', menuPlacements: ['page'] }),
   'page.exportSelected': command('page.exportSelected', 'Export Selected Pages…', 'page', 'action', 'document', { icon: 'export', menuPlacements: ['page'] }),

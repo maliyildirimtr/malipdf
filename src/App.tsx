@@ -38,6 +38,7 @@ import { SettingsDialog } from './components/Settings/SettingsDialog';
 import { SplitView } from './components/SplitView/SplitView';
 import { HeaderFooterDialog } from './components/NewDocumentDialog/HeaderFooterDialog';
 import { CompressDialog } from './components/NewDocumentDialog/CompressDialog';
+import { ExportImagesDialog } from './components/NewDocumentDialog/ExportImagesDialog';
 import { PresentationView } from './components/Presentation/PresentationView';
 import { FormulaDialog } from './components/Formula/FormulaDialog';
 import { TaskProgressPanel } from './components/TaskProgress/TaskProgress';
@@ -261,6 +262,7 @@ export default function App() {
       <SettingsDialog />
       <HeaderFooterDialog />
       <CompressDialog />
+      <ExportImagesDialog />
       <LaserOverlay />
       <PresentationView />
       <FormulaDialog />

@@ -97,6 +97,8 @@ interface UIStore {
   settingsOpen: boolean;
   headerFooterOpen: boolean;
   compressOpen: boolean;
+  exportImagesOpen: boolean;
+  setExportImagesOpen: (open: boolean) => void;
   setCompressOpen: (open: boolean) => void;
   setHeaderFooterOpen: (open: boolean) => void;
   /** Side-by-side view: the document shown in the right pane. */
@@ -426,6 +428,8 @@ export const useUIStore = create<UIStore>()(
 
         splitView: null,
         setSplitView: (splitView) => set({ splitView }),
+        exportImagesOpen: false,
+        setExportImagesOpen: (exportImagesOpen) => set({ exportImagesOpen }),
         compressOpen: false,
         setCompressOpen: (compressOpen) => set({ compressOpen }),
         headerFooterOpen: false,

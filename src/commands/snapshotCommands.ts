@@ -15,12 +15,17 @@ const SNAPSHOT_SCALE = 3;
 /** Longest side, so huge regions stay within canvas limits. */
 const MAX_SIDE = 8000;
 
-export async function renderSnapshot(identity: DocumentIdentity, pageIndex: number, rect: PdfRect, rotation = 0): Promise<HTMLCanvasElement> {
+export async function renderSnapshot(identity: DocumentIdentity, pageIndex: number, rect: PdfRect | null, rotation = 0, pixelsPerPoint = SNAPSHOT_SCALE): Promise<HTMLCanvasElement> {
   const proxy = getDocumentProxy(identity);
   if (!proxy) throw new Error('The document is not open.');
   const page = await proxy.getPage(pageIndex + 1);
+  if (!rect) {
+    // The whole page (its crop box).
+    const [x0, y0, x1, y1] = page.view;
+    rect = { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
+  }
   const unit = pdfRectToScreenBounds(rect, createPageTransform(page, { scale: 1, displayRotation: rotation }));
-  const scale = Math.min(SNAPSHOT_SCALE, MAX_SIDE / Math.max(unit.width, unit.height, 1));
+  const scale = Math.min(pixelsPerPoint, MAX_SIDE / Math.max(unit.width, unit.height, 1));
   const transform = createPageTransform(page, { scale, displayRotation: rotation });
   const region = pdfRectToScreenBounds(rect, transform);
   const canvas = document.createElement('canvas');

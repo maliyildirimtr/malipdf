@@ -27,7 +27,7 @@ import {
 } from './nativeMenuSchema';
 import { setupPptxIpc } from './services/pptx/pptxIpc';
 import { setupOcrIpc } from './services/ocr/ocrIpc';
-import { FolderGrants, writeFilesToFolder } from './services/files/folderWrite';
+import { FolderGrants, outputExtension, writeFilesToFolder } from './services/files/folderWrite';
 import { setupRecoveryIpc } from './services/recovery';
 import { setupUpdates } from './services/updates';
 import { logCrash, setupAppInfo } from './services/appInfo';
@@ -454,11 +454,11 @@ handleTrusted('fs:writeFilesToFolder', isDev, async (_event, folder: unknown, ra
   if (!Array.isArray(rawFiles) || rawFiles.length === 0 || rawFiles.length > 2000) throw new TypeError('Invalid files.');
   let total = 0;
   const files = rawFiles.map((file) => {
-    const entry = file as { name?: unknown; data?: unknown };
+    const entry = file as { name?: unknown; data?: unknown; ext?: unknown };
     const data = requireBinary(entry?.data, 'data', MAX_WRITE_BYTES);
     total += data.byteLength;
     if (total > MAX_WRITE_BYTES * 4) throw new Error('The files are too large.');
-    return { name: typeof entry?.name === 'string' ? entry.name : '', data };
+    return { name: typeof entry?.name === 'string' ? entry.name : '', data, ext: outputExtension(entry?.ext) };
   });
   return writeFilesToFolder(folder, files);
 });

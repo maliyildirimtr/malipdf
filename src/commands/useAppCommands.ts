@@ -196,6 +196,9 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
       case 'page.removeCrop':
         if (docId) void import('./cropCommands').then((m) => m.cropPages([documents.documents.get(docId)?.activePageIndex ?? 0], null));
         return;
+      case 'file.exportImages':
+        ui.setExportImagesOpen(true);
+        return;
       case 'file.reduceSize':
         ui.setCompressOpen(true);
         return;

@@ -60,6 +60,7 @@ export function createNativeMenuSchema(isMac: boolean, isDev: boolean): readonly
         command('file.new', 'New Document…', { accelerator: 'CmdOrCtrl+N', enabled: true }),
         command('file.combine', 'Combine Files…', { enabled: true }),
         command('file.reduceSize', 'Reduce File Size…', { enabled: false }),
+        command('file.exportImages', 'Export Pages as Images…', { enabled: false }),
         ...(isMac ? [] : [command('app.settings', 'Settings…', { accelerator: 'CmdOrCtrl+,' })]),
         command('file.open', 'Open…', { accelerator: 'CmdOrCtrl+O' }),
         ...(isMac ? [{ kind: 'submenu', label: 'Open Recent', role: 'recentDocuments', items: [role('clearRecentDocuments')] } as NativeMenuNode] : []),

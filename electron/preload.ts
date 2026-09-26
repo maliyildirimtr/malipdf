@@ -60,7 +60,7 @@ export interface ElectronAPI {
   writeClipboardImage: (png: ArrayBuffer) => Promise<boolean>;
   chooseFolder: (title?: string) => Promise<string | null>;
   moveTabToNewWindow: (docId: string) => Promise<boolean>;
-  writeFilesToFolder: (folder: string, files: { name: string; data: ArrayBuffer }[]) => Promise<string[]>;
+  writeFilesToFolder: (folder: string, files: { name: string; data: ArrayBuffer; ext?: 'pdf' | 'png' | 'jpg' }[]) => Promise<string[]>;
 
   // Crash recovery (Auto Save)
   recoveryWrite: (docId: string, meta: string, source: Uint8Array | null, assets: RecoveryAsset[]) => Promise<boolean>;
