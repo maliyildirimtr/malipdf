@@ -28,7 +28,7 @@ export type AppCommandId =
   | 'page.insertBlank' | 'page.insertNotePage' | 'page.duplicate' | 'page.delete' | 'page.rotateLeft' | 'page.rotateRight'
   | 'page.insertFromPdf' | 'page.exportSelected' | 'page.addBookmark'
   | 'view.ruler' | 'view.replayInk' | 'view.presentation' | 'view.nightMode'
-  | 'page.ocrPage' | 'page.ocrAll' | 'edit.inkToText';
+  | 'page.ocrPage' | 'page.ocrAll' | 'edit.inkToText' | 'page.split';
 
 export type CommandGroup = 'file' | 'history' | 'edit' | 'tool' | 'view' | 'insert' | 'page' | 'extras' | 'help';
 export type CommandKind = 'action' | 'tool' | 'toggle' | 'radio';
@@ -72,7 +72,7 @@ interface CommandOptions {
 /** Shared command metadata for menus, toolbars, shortcuts, and Electron. */
 export const APP_COMMANDS = {
   'file.new': command('file.new', 'New Document…', 'file', 'action', 'always', { icon: 'newDocument', shortcut: '⌘N', menuPlacements: ['file'] }),
-  'file.combine': command('file.combine', 'Combine Files…', 'file', 'action', 'unavailable', { icon: 'combine', menuPlacements: ['file'] }),
+  'file.combine': command('file.combine', 'Combine Files…', 'file', 'action', 'always', { icon: 'combine', menuPlacements: ['file'] }),
   'file.open': command('file.open', 'Open…', 'file', 'action', 'always', { icon: 'open', shortcut: '⌘O', menuPlacements: ['file'], toolbarPlacements: ['primary.file'] }),
   'file.save': command('file.save', 'Save', 'file', 'action', 'save', { icon: 'save', shortcut: '⌘S', menuPlacements: ['file'], toolbarPlacements: ['primary.file'] }),
   'file.saveAs': command('file.saveAs', 'Save As…', 'file', 'action', 'document', { icon: 'saveAs', shortcut: '⇧⌘S', menuPlacements: ['file'] }),
@@ -161,6 +161,7 @@ export const APP_COMMANDS = {
   'view.presentation': command('view.presentation', 'Present', 'view', 'action', 'document', { icon: 'fullscreen', shortcut: '⌥⌘P', menuPlacements: ['view'] }),
   'view.replayInk': command('view.replayInk', 'Replay Ink on This Page', 'view', 'action', 'document', { icon: 'annotations', menuPlacements: ['view'] }),
   'page.addBookmark': command('page.addBookmark', 'Add Bookmark', 'page', 'action', 'document', { icon: 'favorites', shortcut: '⌥⌘B', menuPlacements: ['page'] }),
+  'page.split': command('page.split', 'Split Document…', 'page', 'action', 'document', { icon: 'export', menuPlacements: ['page'] }),
   'page.exportSelected': command('page.exportSelected', 'Export Selected Pages…', 'page', 'action', 'document', { icon: 'export', menuPlacements: ['page'] }),
   'file.recoveredDocuments': command('file.recoveredDocuments', 'Recovered Documents…', 'file', 'action', 'always', { icon: 'open', menuPlacements: ['file'] }),
   'help.checkForUpdates': command('help.checkForUpdates', 'Check for Updates…', 'help', 'action', 'always', { icon: 'help', menuPlacements: ['help'] }),

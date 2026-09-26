@@ -57,7 +57,7 @@ export function createNativeMenuSchema(isMac: boolean, isDev: boolean): readonly
       label: 'File',
       items: [
         command('file.new', 'New Document…', { accelerator: 'CmdOrCtrl+N', enabled: true }),
-        command('file.combine', 'Combine Files…', { enabled: false }),
+        command('file.combine', 'Combine Files…', { enabled: true }),
         command('file.open', 'Open…', { accelerator: 'CmdOrCtrl+O' }),
         ...(isMac ? [{ kind: 'submenu', label: 'Open Recent', role: 'recentDocuments', items: [role('clearRecentDocuments')] } as NativeMenuNode] : []),
         command('file.recoveredDocuments', 'Recovered Documents…'),
@@ -162,6 +162,7 @@ export function createNativeMenuSchema(isMac: boolean, isDev: boolean): readonly
         command('page.addBookmark', 'Add Bookmark', { accelerator: 'Alt+CmdOrCtrl+B', enabled: false }),
         separator(),
         command('page.exportSelected', 'Export Selected Pages…', { enabled: false }),
+        command('page.split', 'Split Document…', { enabled: false }),
         separator(),
         command('page.ocrPage', 'Recognize Text on This Page', { enabled: false }),
         command('page.ocrAll', 'Recognize Text in Document (OCR)', { enabled: false }),

@@ -58,6 +58,8 @@ export interface ElectronAPI {
   captureRegion: () => Promise<{ success: boolean; canceled?: boolean; data?: ArrayBuffer; mimeType?: string; width?: number; height?: number; error?: string }>;
   readClipboardImage: () => Promise<{ data: ArrayBuffer; mimeType: string } | null>;
   writeClipboardImage: (png: ArrayBuffer) => Promise<boolean>;
+  chooseFolder: (title?: string) => Promise<string | null>;
+  writeFilesToFolder: (folder: string, files: { name: string; data: ArrayBuffer }[]) => Promise<string[]>;
 
   // Crash recovery (Auto Save)
   recoveryWrite: (docId: string, meta: string, source: Uint8Array | null, assets: RecoveryAsset[]) => Promise<boolean>;
@@ -106,6 +108,8 @@ const electronAPI: ElectronAPI = {
   captureRegion: () => ipcRenderer.invoke('screenshot:captureRegion'),
   readClipboardImage: () => ipcRenderer.invoke('clipboard:readImage'),
   writeClipboardImage: (png) => ipcRenderer.invoke('clipboard:writeImage', png),
+  chooseFolder: (title) => ipcRenderer.invoke('dialog:chooseFolder', title),
+  writeFilesToFolder: (folder, files) => ipcRenderer.invoke('fs:writeFilesToFolder', folder, files),
 
   recoveryWrite: (docId, meta, source, assets) => ipcRenderer.invoke('recovery:write', docId, meta, source, assets),
   recoveryRemove: (docId) => ipcRenderer.invoke('recovery:remove', docId),

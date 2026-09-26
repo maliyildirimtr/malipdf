@@ -173,7 +173,11 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
         ui.setNewDocumentDialogOpen(true);
         return;
       case 'file.combine':
-        return; // not implemented (command is 'unavailable')
+        void import('./combineSplitCommands').then((m) => m.combineFiles());
+        return;
+      case 'page.split':
+        ui.setSplitDialogOpen(true);
+        return;
       case 'file.save':
         if (docId) void saveDocument(docId);
         return;

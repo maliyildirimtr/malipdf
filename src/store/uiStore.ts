@@ -160,6 +160,8 @@ interface UIStore {
   newDocumentDialogOpen: boolean;
   setNewDocumentDialogOpen: (open: boolean) => void;
   notePageDialogOpen: boolean;
+  splitDialogOpen: boolean;
+  setSplitDialogOpen: (open: boolean) => void;
   setNotePageDialogOpen: (open: boolean) => void;
   presentationOpen: boolean;
   setPresentationOpen: (open: boolean) => void;
@@ -411,6 +413,8 @@ export const useUIStore = create<UIStore>()(
         presentationOpen: false,
         setPresentationOpen: (open) => set({ presentationOpen: open }),
 
+        splitDialogOpen: false,
+        setSplitDialogOpen: (splitDialogOpen) => set({ splitDialogOpen }),
         openNote: null,
         setOpenNote: (openNote) => set({ openNote }),
         formulaDialog: null,

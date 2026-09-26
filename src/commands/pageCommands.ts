@@ -231,22 +231,27 @@ export async function insertPagesFromPdf(): Promise<boolean> {
   });
 }
 
+/** A new PDF with `pages` of `doc` (0-based), annotations flattened in. */
+export async function buildPagesPdf(doc: DocumentState, pages: readonly number[]): Promise<Uint8Array> {
+  const plan = planExtract([...pages]);
+  const subsetBytes = await buildPdfFromPlan(doc.sourceData, plan);
+  const subsetAnnotations = remapAnnotationsForPlan(allAnnotations(doc.id), plan);
+  const annotationMap = new Map<number, Annotation[]>();
+  for (const ann of subsetAnnotations) {
+    annotationMap.set(ann.pageIndex, [...(annotationMap.get(ann.pageIndex) ?? []), ann]);
+  }
+  const fonts = subsetAnnotations.some((a) => a.type === 'text') ? await loadDefaultExportFonts() : undefined;
+  const assets = useAssetStore.getState().getAssetsForDocument(identityOf(doc));
+  return (await exportAnnotatedPdf(subsetBytes, annotationMap, { assets, fonts })).data;
+}
+
 /** Save the selected pages (with their annotations flattened) as a new PDF. */
 export async function exportSelectedPages(): Promise<boolean> {
   const doc = activeDocument();
   if (!doc || !window.electronAPI?.saveFile) return false;
   const pages = targetPages(doc);
   try {
-    const plan = planExtract(pages);
-    const subsetBytes = await buildPdfFromPlan(doc.sourceData, plan);
-    const subsetAnnotations = remapAnnotationsForPlan(allAnnotations(doc.id), plan);
-    const annotationMap = new Map<number, Annotation[]>();
-    for (const ann of subsetAnnotations) {
-      annotationMap.set(ann.pageIndex, [...(annotationMap.get(ann.pageIndex) ?? []), ann]);
-    }
-    const fonts = subsetAnnotations.some((a) => a.type === 'text') ? await loadDefaultExportFonts() : undefined;
-    const assets = useAssetStore.getState().getAssetsForDocument(identityOf(doc));
-    const result = await exportAnnotatedPdf(subsetBytes, annotationMap, { assets, fonts });
+    const result = { data: await buildPagesPdf(doc, pages) };
 
     const base = doc.title.replace(/\.pdf$/i, '');
     const label = pages.length === 1 ? `page ${pages[0] + 1}` : `${pages.length} pages`;

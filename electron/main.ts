@@ -27,6 +27,7 @@ import {
 } from './nativeMenuSchema';
 import { setupPptxIpc } from './services/pptx/pptxIpc';
 import { setupOcrIpc } from './services/ocr/ocrIpc';
+import { FolderGrants, writeFilesToFolder } from './services/files/folderWrite';
 import { setupRecoveryIpc } from './services/recovery';
 import { setupUpdates } from './services/updates';
 import { logCrash, setupAppInfo } from './services/appInfo';
@@ -49,6 +50,7 @@ const MAX_WRITE_BYTES = 2 * 1024 * 1024 * 1024 - 1;
 /** Matches the renderer's MAX_IMAGE_FILE_SIZE_BYTES. */
 const MAX_IMAGE_FILE_BYTES = 50 * 1024 * 1024;
 const fileGrants = new FileAccessGrants();
+const folderGrants = new FolderGrants();
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -369,6 +371,32 @@ handleTrusted('dialog:saveFile', isDev, async (_event, defaultName: unknown) => 
   if (result.canceled || !result.filePath) return null;
   fileGrants.grantWrite(result.filePath);
   return result.filePath;
+});
+
+// Split PDF: choose a folder, then write the parts into it.
+handleTrusted('dialog:chooseFolder', isDev, async (_event, rawTitle: unknown) => {
+  if (!mainWindow) return null;
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: typeof rawTitle === 'string' ? rawTitle.slice(0, 200) : 'Choose a Folder',
+    properties: ['openDirectory', 'createDirectory'],
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+  folderGrants.grant(result.filePaths[0]);
+  return result.filePaths[0];
+});
+
+handleTrusted('fs:writeFilesToFolder', isDev, async (_event, folder: unknown, rawFiles: unknown) => {
+  if (!folderGrants.has(folder)) throw new Error('Refusing to write into a folder the user did not choose.');
+  if (!Array.isArray(rawFiles) || rawFiles.length === 0 || rawFiles.length > 2000) throw new TypeError('Invalid files.');
+  let total = 0;
+  const files = rawFiles.map((file) => {
+    const entry = file as { name?: unknown; data?: unknown };
+    const data = requireBinary(entry?.data, 'data', MAX_WRITE_BYTES);
+    total += data.byteLength;
+    if (total > MAX_WRITE_BYTES * 4) throw new Error('The files are too large.');
+    return { name: typeof entry?.name === 'string' ? entry.name : '', data };
+  });
+  return writeFilesToFolder(folder, files);
 });
 
 // Close confirm dialog

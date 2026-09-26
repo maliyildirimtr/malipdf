@@ -474,6 +474,8 @@ declare global {
       captureRegion: () => Promise<{ success: boolean; canceled?: boolean; data?: ArrayBuffer; mimeType?: string; width?: number; height?: number; error?: string }>;
       readClipboardImage: () => Promise<{ data: ArrayBuffer; mimeType: string } | null>;
       writeClipboardImage?: (png: ArrayBuffer) => Promise<boolean>;
+      chooseFolder?: (title?: string) => Promise<string | null>;
+      writeFilesToFolder?: (folder: string, files: { name: string; data: ArrayBuffer }[]) => Promise<string[]>;
       recoveryWrite: (
         docId: string,
         meta: string,
