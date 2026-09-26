@@ -53,6 +53,24 @@ import {
   ZoomIn,
   ZoomOut,
   type LucideIcon,
+  FilePlus2,
+  Files,
+  FileOutput,
+  Printer,
+  AppWindow,
+  History,
+  X,
+  RefreshCw,
+  Info,
+  FileStack,
+  NotebookPen,
+  FileInput,
+  Copy,
+  Trash2,
+  Bookmark,
+  ScanText,
+  Wand2,
+  Search,
 } from 'lucide-react';
 import { APP_COMMANDS, type AppCommandId } from '../../commands';
 import { useDocumentStore } from '../../store/documentStore';
@@ -165,6 +183,11 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
     return !DOCUMENT_COMMANDS.has(commandId) || hasDocument;
   }, [canExecute, hasDocument]);
 
+  /** A menu entry with the command's own label and keyboard shortcut. */
+  const item = (commandId: AppCommandId, icon?: LucideIcon, label?: string): ToolbarMenuItem => ({
+    commandId, icon, label: label ?? APP_COMMANDS[commandId].label, shortcut: APP_COMMANDS[commandId].shortcut, enabled: isEnabled(commandId),
+  });
+
   const runCommand = React.useCallback((commandId: AppCommandId) => {
     if (isEnabled(commandId)) onCommand(commandId);
   }, [isEnabled, onCommand]);
@@ -200,12 +223,50 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
             icon={FolderOpen}
             onCommand={runCommand}
             items={[
-              { commandId: 'file.new', label: 'New Document…', shortcut: '⌘N', enabled: isEnabled('file.new') },
-              { commandId: 'file.open', label: 'Open PDF…', shortcut: '⌘O', enabled: isEnabled('file.open') },
-              { commandId: 'file.save', label: 'Save', shortcut: '⌘S', enabled: isEnabled('file.save') },
-              { commandId: 'file.saveAs', label: 'Save As…', shortcut: '⇧⌘S', enabled: isEnabled('file.saveAs') },
-              { commandId: 'file.export', label: 'Export PDF…', shortcut: '⌘E', enabled: isEnabled('file.export') },
-              { commandId: 'file.close', label: 'Close', shortcut: '⌘W', enabled: isEnabled('file.close') },
+              item('file.new', FilePlus2),
+              item('file.fromImages', ImageIcon),
+              item('file.open', FolderOpen, 'Open PDF…'),
+              item('file.combine', Files),
+              item('file.save', Save),
+              item('file.saveAs', Save),
+              item('file.saveAll', Save),
+              item('file.export', FileOutput),
+              item('file.exportImages', ImageIcon),
+              item('file.reduceSize', Minimize2),
+              item('file.print', Printer),
+              item('view.moveTabToNewWindow', AppWindow),
+              item('file.recoveredDocuments', History),
+              item('file.close', X),
+              item('file.closeAll', X),
+              item('app.settings', Settings, 'Settings…'),
+              item('help.checkForUpdates', RefreshCw),
+              item('help.about', Info),
+            ]}
+          />
+        </ToolbarGroup>
+
+        <ToolbarSeparator />
+
+        <ToolbarGroup label="Pages">
+          <ToolbarMenu
+            label="Page menu"
+            icon={FileStack}
+            onCommand={runCommand}
+            items={[
+              item('page.insertBlank', FilePlus2),
+              item('page.insertNotePage', NotebookPen),
+              item('page.insertFromPdf', FileInput),
+              item('page.duplicate', Copy),
+              item('page.delete', Trash2),
+              item('page.rotateLeft', RotateCcw),
+              item('page.rotateRight', RotateCw),
+              item('page.addBookmark', Bookmark),
+              item('page.split', Scissors),
+              item('page.exportSelected', FileOutput),
+              item('page.ocrPage', ScanText),
+              item('page.ocrAll', ScanText),
+              item('edit.inkToText', Wand2),
+              item('edit.find', Search),
             ]}
           />
         </ToolbarGroup>
@@ -378,7 +439,21 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
 
         <div className={styles.propertyScroller}>
           {activeTool === 'select' && <PropertyHint>Select an annotation to move or resize it.</PropertyHint>}
-          {activeTool === 'lasso' && <PropertyHint>Draw around ink to select it. Shift adds to the selection. Drag the selection to move it. ⌥⌘T turns selected handwriting into text.</PropertyHint>}
+          {(activeTool === 'lasso' || activeTool === 'select') && (
+            <>
+              <button type="button" className={styles.shelfButton} disabled={!isEnabled('edit.inkToText')} onClick={() => runCommand('edit.inkToText')} title="Convert Ink to Text (⌥⌘T)">
+                <Wand2 size={14} aria-hidden="true" /> Ink to Text
+              </button>
+              <button type="button" className={styles.shelfButton} disabled={!isEnabled('edit.duplicate')} onClick={() => runCommand('edit.duplicate')} title="Duplicate (⌘D)">
+                <Copy size={14} aria-hidden="true" /> Duplicate
+              </button>
+              <button type="button" className={styles.shelfButton} disabled={!isEnabled('edit.deleteSelected')} onClick={() => runCommand('edit.deleteSelected')} title="Delete (⌫)">
+                <Trash2 size={14} aria-hidden="true" /> Delete
+              </button>
+              <PropertySeparator />
+            </>
+          )}
+          {activeTool === 'lasso' && <PropertyHint>Draw around ink to select it. Shift adds to the selection. Drag the selection to move it.</PropertyHint>}
           {activeTool === 'laserPointer' && (
             <>
               <div className={styles.propertySegment} role="group" aria-label="Laser mode">
