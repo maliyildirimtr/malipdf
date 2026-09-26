@@ -2,7 +2,7 @@
  * The ruler overlay. Drag to move, scroll (or the ↺ ↻ buttons) to rotate,
  * double-click to straighten. Marks are in centimetres at the current zoom.
  */
-import React, { useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { RotateCcw, RotateCw, X } from 'lucide-react';
 import { RULER_LENGTH, RULER_THICKNESS, useRulerStore } from '../../store/rulerStore';
 import { useDocumentStore } from '../../store/documentStore';
@@ -10,11 +10,35 @@ import styles from './Ruler.module.css';
 
 const POINTS_PER_CM = 72 / 2.54;
 
+/** Screen angle (clockwise) → shown angle: counter-clockwise, 0–359, whole degrees. */
+export function displayAngle(screenAngle: number): number {
+  return ((Math.round(-screenAngle) % 360) + 360) % 360;
+}
+
 export function Ruler() {
   const { visible, x, y, angle, moveBy, rotateBy, setAngle, toggle } = useRulerStore();
   const zoom = useDocumentStore((s) => (s.activeDocId ? s.documents.get(s.activeDocId)?.zoom ?? 1 : 1));
   const drag = useRef<{ id: number; x: number; y: number } | null>(null);
+  // Shown counter-clockwise, 0–359° (30° = rising to the right), like a protractor.
+  const shownAngle = displayAngle(angle);
+  const [draft, setDraft] = useState(String(shownAngle));
+  const [editing, setEditing] = useState(false);
+  const cancelEdit = useRef(false);
+  useEffect(() => {
+    if (!editing) setDraft(String(shownAngle));
+  }, [shownAngle, editing]);
   if (!visible) return null;
+
+  const commitDraft = () => {
+    if (cancelEdit.current) {
+      cancelEdit.current = false;
+      setEditing(false);
+      return;
+    }
+    const value = Number(draft.replace(',', '.').replace('°', '').trim());
+    if (Number.isFinite(value)) setAngle(-value);
+    setEditing(false);
+  };
 
   const pxPerCm = POINTS_PER_CM * zoom;
   const ticks: React.ReactNode[] = [];
@@ -46,7 +70,7 @@ export function Ruler() {
         transform: `rotate(${angle}deg)`,
       }}
       onPointerDown={(e) => {
-        if ((e.target as HTMLElement).closest('button')) return;
+        if ((e.target as HTMLElement).closest('button, input')) return;
         e.currentTarget.setPointerCapture(e.pointerId);
         drag.current = { id: e.pointerId, x: e.clientX, y: e.clientY };
       }}
@@ -77,7 +101,30 @@ export function Ruler() {
         <button type="button" className={styles.button} onClick={() => rotateBy(-15)} title="Rotate left 15°" aria-label="Rotate left">
           <RotateCcw size={12} />
         </button>
-        <span className={styles.angle} style={{ transform: `rotate(${-angle}deg)` }}>{Math.round(Math.abs(angle))}°</span>
+        <label className={styles.angleField} style={{ transform: `rotate(${-angle}deg)` }} title="Type an angle and press Enter">
+          <input
+            className={styles.angleInput}
+            value={editing ? draft : String(shownAngle)}
+            inputMode="decimal"
+            aria-label="Ruler angle in degrees"
+            onFocus={(e) => {
+              setEditing(true);
+              setDraft(String(shownAngle));
+              e.currentTarget.select();
+            }}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commitDraft}
+            onKeyDown={(e) => {
+              e.stopPropagation(); // typing must not rotate the ruler or trigger tool shortcuts
+              if (e.key === 'Enter') e.currentTarget.blur();
+              if (e.key === 'Escape') {
+                cancelEdit.current = true;
+                e.currentTarget.blur();
+              }
+            }}
+          />
+          °
+        </label>
         <button type="button" className={styles.button} onClick={() => rotateBy(15)} title="Rotate right 15°" aria-label="Rotate right">
           <RotateCw size={12} />
         </button>

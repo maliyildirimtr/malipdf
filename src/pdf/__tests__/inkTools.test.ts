@@ -92,3 +92,14 @@ describe('ink layer region', () => {
     expect(computeLayerRegion({ left: 0, top: -3000 }, 1000, 5000, region, viewport)).not.toBe(region);
   });
 });
+
+import { displayAngle } from '../../components/Ruler/Ruler';
+
+describe('ruler angle input', () => {
+  it('shows the angle counter-clockwise, 0–359', () => {
+    expect(displayAngle(0)).toBe(0);
+    expect(displayAngle(-30)).toBe(30);
+    expect(displayAngle(30)).toBe(330);
+    expect(displayAngle(-180)).toBe(180);
+  });
+});
