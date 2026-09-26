@@ -2,7 +2,7 @@ import { useDocumentStore } from '../store/documentStore';
 import { notifyUser } from '../utils/notify';
 import { useAnnotationStore } from '../store/annotationStore';
 import { useHistoryStore, makeMutateDocumentBytesAction } from '../store/historyStore';
-import { insertBlankPagesAfter } from '../document/documentMutator';
+import { displayedPageSize, fitPrintoutToWidth, insertBlankPagesAfter } from '../document/documentMutator';
 import type { Annotation, DocumentAnnotationState, ImageAnnotation } from '../types/annotations';
 import { remapDocumentStateForInsertion, remapAnnotationsForInsertion } from '../pdf/pageRemap';
 import { nanoid } from '../utils/nanoid';
@@ -86,12 +86,14 @@ async function runPrintoutPipeline(
   const insertAfter = Math.min(targetPageIndex, initialDoc.pageCount - 1);
 
   let mutatedBytes: Uint8Array;
+  let pageSizes: { width: number; height: number }[];
   try {
-    mutatedBytes = await insertBlankPagesAfter(
-      baseSourceData,
-      insertAfter,
+    const target = await displayedPageSize(baseSourceData, insertAfter);
+    pageSizes = fitPrintoutToWidth(
       generatedPages.map(p => ({ width: p.widthPdfPoints, height: p.heightPdfPoints })),
+      target?.width ?? null,
     );
+    mutatedBytes = await insertBlankPagesAfter(baseSourceData, insertAfter, pageSizes);
   } catch (error) {
     console.error('Printout page insertion failed:', error);
     useImportJobStore.getState().updateStatus('failed', error instanceof Error ? error.message : String(error));
@@ -131,8 +133,8 @@ async function runPrintoutPipeline(
     updatedAt: now,
     x: 0,
     y: 0,
-    width: p.widthPdfPoints,
-    height: p.heightPdfPoints,
+    width: pageSizes[i].width,
+    height: pageSizes[i].height,
     assetId: p.asset.id,
   }));
   const afterAnnotations: Annotation[] = [
@@ -173,6 +175,12 @@ async function runPrintoutPipeline(
 
   useImportJobStore.getState().updateStatus('completed');
   scheduleJobClear(requestId);
+  // Show the first inserted page once it is laid out.
+  if (typeof requestAnimationFrame === 'function') {
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      void import('./bookmarkCommands').then(({ goToPage }) => goToPage(docId, insertAfter + 1));
+    }));
+  }
   return true;
 }
 
