@@ -50,6 +50,7 @@ export type AnnotationType =
   | 'shape'
   | 'freeform'
   | 'markup'
+  | 'note'
   | 'image'   // future
   | 'stamp';  // future
 
@@ -166,6 +167,19 @@ export interface TextMarkupAnnotation extends BaseAnnotation {
   text: string;
 }
 
+// ─── Sticky note ──────────────────────────────────────────────────────────────
+
+/** Size of a note's icon on the page, in PDF points (it never scales). */
+export const NOTE_ICON_SIZE = 20;
+
+export interface NoteAnnotation extends BaseAnnotation {
+  type: 'note';
+  /** Bottom-left corner of the icon, PDF user space. */
+  x: number;
+  y: number;
+  content: string;
+}
+
 // ─── Union type ───────────────────────────────────────────────────────────────
 
 export type Annotation =
@@ -175,7 +189,8 @@ export type Annotation =
   | ShapeAnnotation
   | FreeformAnnotation
   | ImageAnnotation
-  | TextMarkupAnnotation;
+  | TextMarkupAnnotation
+  | NoteAnnotation;
 
 // ─── Tool types ───────────────────────────────────────────────────────────────
 
@@ -194,7 +209,8 @@ export type ToolType =
   | 'freeform'
   | 'lasso'
   | 'textMarkup'
-  | 'laserPointer';
+  | 'laserPointer'
+  | 'note';
 
 // ─── Tool options (shared across all instances, not per-annotation) ───────────
 
@@ -258,8 +274,13 @@ export interface TextMarkupOptions {
   opacity: number;
 }
 
+export interface NoteOptions {
+  color: string;
+}
+
 export interface ToolOptions {
   textMarkup: TextMarkupOptions;
+  note: NoteOptions;
   pen: PenOptions;
   highlighter: HighlighterOptions;
   eraser: EraserOptions;

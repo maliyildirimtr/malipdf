@@ -29,6 +29,7 @@ import {
 } from 'pdf-lib';
 import type { Annotation, Bookmark } from '../types/annotations';
 import { removeAppendedBookmarks, type OutlineChange } from './outlineWriter';
+import { removeMaliPdfNotes } from './noteExport';
 
 export const EDITABLE_KEY = 'MaliPDFEditable';
 export const EDITABLE_VERSION = 1;
@@ -290,6 +291,7 @@ export async function extractEditableData(bytes: Uint8Array): Promise<EditableOp
         node.delete(N('Resources'));
         cleanResources(inheritedResources(page)); // pdf-lib edited the shared parent dict too
       }
+      removeMaliPdfNotes(pdfDoc, page);
       if (record.get(N('HadAnnots'))?.toString() === 'false') {
         const annots = node.lookupMaybe(N('Annots'), PDFArray);
         if (annots && annots.size() === 0) node.delete(N('Annots'));

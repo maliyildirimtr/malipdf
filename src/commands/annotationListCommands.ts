@@ -22,7 +22,7 @@ export function matchesFilter(annotation: Annotation, filter: AnnotationFilter):
     case 'all': return true;
     case 'pen': return annotation.type === 'stroke';
     case 'highlight': return annotation.type === 'highlight' || annotation.type === 'markup';
-    case 'text': return annotation.type === 'text';
+    case 'text': return annotation.type === 'text' || annotation.type === 'note';
     case 'shape': return annotation.type === 'shape' || annotation.type === 'freeform';
     case 'image': return annotation.type === 'image';
   }
@@ -43,6 +43,10 @@ export function describeAnnotation(annotation: Annotation): string {
       const kind = ({ highlight: 'Highlight', underline: 'Underline', strikeout: 'Strikethrough' })[annotation.markup];
       const text = annotation.text.replace(/\s+/g, ' ').trim();
       return text ? `${kind}: ${text.length > 22 ? `${text.slice(0, 22)}…` : text}` : kind;
+    }
+    case 'note': {
+      const text = annotation.content.replace(/\s+/g, ' ').trim();
+      return text ? `Note: ${text.length > 24 ? `${text.slice(0, 24)}…` : text}` : 'Note';
     }
   }
 }

@@ -22,12 +22,16 @@ function isFocusShapeTool(tool: ToolType): tool is FocusShapeTool {
   return (SHAPE_TOOLS as readonly ToolType[]).includes(tool);
 }
 
+/** An open sticky-note popup. `isNew`: just placed, not in the undo history yet. */
+export interface OpenNoteState { docId: string; pageIndex: number; annotationId: string; isNew?: boolean }
+
 // ─── Default tool options ─────────────────────────────────────────────────────
 
 export const DEFAULT_TEXT_MARKUP_OPTIONS = { markup: 'highlight', color: '#FFEB3B', opacity: 0.45 } as const;
 
 const defaultToolOptions: ToolOptions = {
   textMarkup: { ...DEFAULT_TEXT_MARKUP_OPTIONS },
+  note: { color: '#F5C400' },
   pen: {
     color: '#1a1a2e',
     width: 3,
@@ -85,6 +89,7 @@ interface UIStore {
   updatePenOptions: (patch: Partial<ToolOptions['pen']>) => void;
   updateHighlighterOptions: (patch: Partial<ToolOptions['highlighter']>) => void;
   updateTextMarkupOptions: (patch: Partial<ToolOptions['textMarkup']>) => void;
+  updateNoteOptions: (patch: Partial<ToolOptions['note']>) => void;
   updateEraserOptions: (patch: Partial<ToolOptions['eraser']>) => void;
   updateTextOptions: (patch: Partial<ToolOptions['text']>) => void;
   updateShapeOptions: (patch: Partial<ToolOptions['shape']>) => void;
@@ -155,6 +160,10 @@ interface UIStore {
   setNotePageDialogOpen: (open: boolean) => void;
   presentationOpen: boolean;
   setPresentationOpen: (open: boolean) => void;
+
+  /** The sticky note whose popup is open (one at a time). */
+  openNote: OpenNoteState | null;
+  setOpenNote: (note: OpenNoteState | null) => void;
 
   /** Formula dialog: null = closed; with `edit` it changes an existing formula. */
   formulaDialog: FormulaDialogState | null;
@@ -273,6 +282,8 @@ export const useUIStore = create<UIStore>()(
           set((s) => ({
             toolOptions: { ...s.toolOptions, textMarkup: { ...s.toolOptions.textMarkup, ...patch } },
           })),
+        updateNoteOptions: (patch) =>
+          set((s) => ({ toolOptions: { ...s.toolOptions, note: { ...s.toolOptions.note, ...patch } } })),
         updateEraserOptions: (patch) =>
           set((s) => ({ toolOptions: { ...s.toolOptions, eraser: { ...s.toolOptions.eraser, ...patch } } })),
         updateTextOptions: (patch) =>
@@ -393,6 +404,8 @@ export const useUIStore = create<UIStore>()(
         presentationOpen: false,
         setPresentationOpen: (open) => set({ presentationOpen: open }),
 
+        openNote: null,
+        setOpenNote: (openNote) => set({ openNote }),
         formulaDialog: null,
         setFormulaDialog: (formulaDialog) => set({ formulaDialog }),
         formulaStyle: { color: '#1a1a2e', size: 16 },

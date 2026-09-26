@@ -37,6 +37,7 @@ import {
   Scan,
   Square,
   TextSelect,
+  StickyNote,
   Type,
   Undo2,
   ZoomIn,
@@ -81,6 +82,7 @@ const TOOL_DEFINITIONS: Record<ToolType, ToolDefinition> = {
   lasso: { icon: LassoSelect, commandId: 'tool.lasso' },
   textMarkup: { icon: TextSelect, commandId: 'tool.textMarkup' },
   laserPointer: { icon: LaserIcon, commandId: 'tool.laserPointer' },
+  note: { icon: StickyNote, commandId: 'tool.note' },
 };
 
 const DOCUMENT_COMMANDS = new Set<AppCommandId>([
@@ -122,6 +124,7 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
     updatePenOptions,
     updateHighlighterOptions,
     updateTextMarkupOptions,
+    updateNoteOptions,
     updateEraserOptions,
     laserOptions,
     updateLaserOptions,
@@ -218,6 +221,7 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
 
         <ToolbarGroup label="Annotation tools" segmented>
           <ToolButton tool="text" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.text')} />
+          <ToolButton tool="note" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.note')} />
           <ToolButton tool="line" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.line')} />
           <ToolButton tool="arrow" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.arrow')} />
           <ToolButton tool="rectangle" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.rectangle')} />
@@ -425,6 +429,15 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
               <OpacityControl value={toolOptions.textMarkup.opacity} onChange={(opacity) => updateTextMarkupOptions({ opacity })} />
               <PropertySeparator />
               <PropertyHint>Drag across the PDF's text. Works on text PDFs, not on scans.</PropertyHint>
+            </>
+          )}
+
+          {activeTool === 'note' && (
+            <>
+              <ColorWell label="Color" value={toolOptions.note.color} onChange={(color) => updateNoteOptions({ color })} />
+              <QuickColors value={toolOptions.note.color} onPick={(color) => updateNoteOptions({ color })} />
+              <PropertySeparator />
+              <PropertyHint>Click the page to add a note. Double-click a note to open it.</PropertyHint>
             </>
           )}
 

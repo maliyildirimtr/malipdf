@@ -1,4 +1,5 @@
 import type { Annotation, PdfRect, PdfPoint } from '../types/annotations';
+import { NOTE_ICON_SIZE } from '../types/annotations';
 
 export function translateAnnotation(annotation: Annotation, dx: number, dy: number): Annotation {
   if (dx === 0 && dy === 0) return annotation;
@@ -39,6 +40,8 @@ export function translateAnnotation(annotation: Annotation, dx: number, dy: numb
     case 'markup':
       // Text markup belongs to the text under it and does not move.
       return annotation;
+    case 'note':
+      return { ...annotation, x: annotation.x + dx, y: annotation.y + dy };
   }
 }
 
@@ -99,6 +102,11 @@ export function scaleAnnotationFromBounds(
     }
     case 'markup':
       return annotation;
+    case 'note': {
+      // The icon keeps its size; its top-left corner follows the group.
+      const top = annotation.y + NOTE_ICON_SIZE;
+      return { ...annotation, x: annotation.x * scaleX + translateX, y: top * scaleY + translateY - NOTE_ICON_SIZE };
+    }
   }
 }
 

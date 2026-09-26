@@ -105,7 +105,7 @@ export function createNativeMenuSchema(isMac: boolean, isDev: boolean): readonly
         tool('tool.select', 'Select', 'V'), tool('tool.extractText', 'Extract Text', undefined, false),
         tool('tool.hand', 'Hand / Pan', 'H'), tool('tool.zoom', 'Zoom Tool', undefined, false), separator(),
         tool('tool.pen', 'Pen', 'P'), tool('tool.highlighter', 'Highlighter', 'M'), tool('tool.textMarkup', 'Text Highlight', 'U'),
-        tool('tool.text', 'Text', 'T'), tool('tool.stamp', 'Stamp', undefined, false), separator(),
+        tool('tool.text', 'Text', 'T'), tool('tool.note', 'Sticky Note', 'N'), tool('tool.stamp', 'Stamp', undefined, false), separator(),
         tool('tool.line', 'Line', 'L'), tool('tool.arrow', 'Arrow', 'A'),
         tool('tool.rectangle', 'Rectangle', 'R'), tool('tool.ellipse', 'Ellipse', 'C'),
         tool('tool.polygon', 'Polygon', undefined, false), tool('tool.dimension', 'Dimension', undefined, false), separator(),

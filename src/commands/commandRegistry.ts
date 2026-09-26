@@ -3,7 +3,7 @@ import type { WorkspaceMode } from '../store/uiStore';
 
 export type CanonicalTool = Extract<ToolType,
   'select' | 'hand' | 'pen' | 'highlighter' | 'eraser' | 'text' |
-  'line' | 'arrow' | 'rectangle' | 'ellipse' | 'freeform' | 'lasso' | 'textMarkup' | 'laserPointer'>;
+  'line' | 'arrow' | 'rectangle' | 'ellipse' | 'freeform' | 'lasso' | 'textMarkup' | 'laserPointer' | 'note'>;
 
 export type ToolCommandId = `tool.${CanonicalTool}`;
 
@@ -39,7 +39,7 @@ export type CommandIconId =
   | 'undo' | 'redo' | 'selectAll' | 'delete' | 'select' | 'extractText'
   | 'hand' | 'zoom' | 'pen' | 'highlighter' | 'eraser' | 'text' | 'stamp'
   | 'line' | 'arrow' | 'rectangle' | 'ellipse' | 'freeform' | 'dimension'
-  | 'lasso' | 'snapshot' | 'crop' | 'measure' | 'formula' | 'laserPointer'
+  | 'lasso' | 'snapshot' | 'crop' | 'measure' | 'formula' | 'laserPointer' | 'note'
   | 'pointer' | 'image' | 'screenshot' | 'regionScreenshot' | 'sidebar' | 'zoomIn' | 'zoomOut' | 'actualSize' | 'fitWidth'
   | 'fitPage' | 'layout' | 'rotateLeft' | 'rotateRight' | 'annotations'
   | 'toolbar' | 'fullscreen' | 'focus' | 'favorites' | 'toolStyles' | 'help';
@@ -112,6 +112,7 @@ export const APP_COMMANDS = {
   'tool.measure': unavailableTool('tool.measure', 'Measure', 'measure'),
   'tool.formula': unavailableTool('tool.formula', 'Formula', 'formula'),
   'tool.laserPointer': toolCommand('laserPointer', 'Laser Pointer', undefined, 'laserPointer'),
+  'tool.note': toolCommand('note', 'Sticky Note', 'N', 'note'),
   'tool.pointer': unavailableTool('tool.pointer', 'Pointer', 'pointer'),
   'insert.image': command('insert.image', 'Insert Image…', 'insert', 'action', 'document', { icon: 'image', menuPlacements: ['edit'], toolbarPlacements: ['primary.insert'] }),
   'insert.formula': command('insert.formula', 'Insert Formula…', 'insert', 'action', 'document', { icon: 'formula', shortcut: '⌥⌘E', menuPlacements: ['edit'], toolbarPlacements: ['primary.insert'] }),
@@ -225,14 +226,14 @@ function unavailableTool(id: AppCommandId, label: string, icon: CommandIconId): 
 export interface ToolShortcutDefinition {
   readonly commandId: ToolCommandId;
   readonly tool: CanonicalTool;
-  readonly key: 'V' | 'H' | 'P' | 'M' | 'E' | 'T' | 'L' | 'A' | 'R' | 'C' | 'S' | 'U';
+  readonly key: 'V' | 'H' | 'P' | 'M' | 'E' | 'T' | 'L' | 'A' | 'R' | 'C' | 'S' | 'U' | 'N';
   readonly label: string;
 }
 export const TOOL_SHORTCUTS = [
   toolShortcut('V', 'select'), toolShortcut('H', 'hand'), toolShortcut('P', 'pen'),
   toolShortcut('M', 'highlighter'), toolShortcut('E', 'eraser'), toolShortcut('T', 'text'),
   toolShortcut('L', 'line'), toolShortcut('A', 'arrow'), toolShortcut('R', 'rectangle'),
-  toolShortcut('C', 'ellipse'), toolShortcut('S', 'lasso'), toolShortcut('U', 'textMarkup'),
+  toolShortcut('C', 'ellipse'), toolShortcut('S', 'lasso'), toolShortcut('U', 'textMarkup'), toolShortcut('N', 'note'),
 ] as const satisfies readonly ToolShortcutDefinition[];
 const TOOL_SHORTCUT_BY_KEY = new Map<string, ToolShortcutDefinition>(TOOL_SHORTCUTS.map((shortcut) => [shortcut.key.toLowerCase(), shortcut]));
 const TOOL_COMMAND_BY_TOOL = new Map<CanonicalTool, ToolCommandId>(TOOL_SHORTCUTS.map(({ tool, commandId }) => [tool, commandId]));

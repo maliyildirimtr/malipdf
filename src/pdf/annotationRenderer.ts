@@ -25,7 +25,10 @@ import type {
   ImageAnnotation,
   InputPoint,
   TextMarkupAnnotation,
+  NoteAnnotation,
 } from '../types/annotations';
+import { NOTE_ICON_SIZE } from '../types/annotations';
+import { NOTE_ICON_PATHS, NOTE_ICON_STROKE, noteShade } from './noteIcon';
 import { markupShape } from './textSelection';
 import {
   pdfPointsToScreen,
@@ -79,6 +82,9 @@ export function renderAnnotations(
         break;
       case 'markup':
         renderMarkup(ctx, ann, transform);
+        break;
+      case 'note':
+        renderNote(ctx, ann, transform);
         break;
       default:
         console.warn(`Unsupported annotation type: ${(ann as any).type}`);
@@ -249,6 +255,51 @@ export function renderMarkup(
     ctx.lineWidth = width * transform.scale;
     ctx.lineCap = 'butt';
     ctx.stroke(path);
+  }
+  ctx.restore();
+}
+
+// ─── Sticky note ──────────────────────────────────────────────────────────────
+
+export function renderNote(
+  ctx: CanvasRenderingContext2D,
+  annotation: NoteAnnotation,
+  transform: PageTransform,
+): void {
+  // Always upright on screen, whatever the page rotation.
+  const r = pdfRectToScreenBounds({ x: annotation.x, y: annotation.y, width: NOTE_ICON_SIZE, height: NOTE_ICON_SIZE }, transform);
+  const size = Math.min(r.width, r.height);
+  const ox = r.x;
+  const oy = r.y;
+  const dark = noteShade(annotation.color);
+  ctx.save();
+  ctx.globalAlpha = annotation.opacity;
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  ctx.shadowColor = 'rgba(0,0,0,0.25)';
+  ctx.shadowBlur = size * 0.12;
+  ctx.shadowOffsetY = size * 0.05;
+  for (const part of NOTE_ICON_PATHS) {
+    const path = new Path2D();
+    part.points.forEach(([u, v], i) => {
+      const x = ox + u * size;
+      const y = oy + v * size;
+      if (i === 0) path.moveTo(x, y); else path.lineTo(x, y);
+    });
+    if (part.closed) path.closePath();
+    ctx.lineWidth = NOTE_ICON_STROKE * size;
+    ctx.strokeStyle = dark;
+    if (part.role === 'body') {
+      ctx.fillStyle = annotation.color;
+      ctx.fill(path);
+      ctx.shadowColor = 'transparent';
+      ctx.stroke(path);
+    } else if (part.role === 'fold') {
+      ctx.fillStyle = dark;
+      ctx.fill(path);
+    } else {
+      ctx.stroke(path);
+    }
   }
   ctx.restore();
 }

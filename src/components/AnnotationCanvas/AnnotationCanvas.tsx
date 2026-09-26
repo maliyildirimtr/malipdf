@@ -108,7 +108,9 @@ import { loadPageTextLayout, peekPageTextLayout } from '../../pdf/pageTextLayout
 import { addLaserPoint, endLaserTrail, startLaserTrail } from '../Laser/laserTrail';
 import { ERASER_CURSOR, HIGHLIGHTER_CURSOR, LASER_CURSOR, PEN_CURSOR } from './toolCursors';
 import { selectText, type TextSelection } from '../../pdf/textSelection';
-import type { TextMarkupAnnotation } from '../../types/annotations';
+import type { TextMarkupAnnotation, NoteAnnotation } from '../../types/annotations';
+import { NOTE_ICON_SIZE } from '../../types/annotations';
+import { NotePopup } from './NotePopup';
 import { autoSizeTextBox, canvasMeasure, cssFont, LINE_HEIGHT, MAX_AUTO_TEXT_WIDTH, TEXT_PADDING } from '../../pdf/textLayout';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -166,6 +168,7 @@ function getCursor(tool: ToolType, mode: InteractionMode): string {
     case 'eraser':      return ERASER_CURSOR;
     case 'text':        return 'text';
     case 'textMarkup':  return 'text';
+    case 'note':        return 'copy';
     case 'laserPointer': return LASER_CURSOR;
     case 'freeform':    return 'crosshair';
     case 'line':
@@ -351,6 +354,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
   const activeTool = useUIStore(state => state.activeTool);
   const temporaryTool = useUIStore(state => state.temporaryTool);
   const setIsDrawing = useUIStore(state => state.setIsDrawing);
+  const openNote = useUIStore(state => state.openNote);
   const interactionTool = temporaryTool ?? activeTool;
   const selectedTool = interactionTool; // before per-gesture pen-button overrides
   const addAnnotation = useAnnotationStore(state => state.addAnnotation);
@@ -1057,6 +1061,12 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     const rect = interactionRef.current!.getBoundingClientRect();
     const p = screenToPdfPoint(e.clientX - rect.left, e.clientY - rect.top);
     const hit = hitTestAnnotations(p, getPageAnnotations(docId, pageIndex), transform, []);
+    if (hit?.type === 'note' && !hit.locked) {
+      e.preventDefault();
+      cancelActiveInteraction();
+      useUIStore.getState().setOpenNote({ docId, pageIndex, annotationId: hit.id });
+      return;
+    }
     if (!hit || hit.type !== 'image' || !hit.formula || hit.locked) return;
     e.preventDefault();
     cancelActiveInteraction();
@@ -1071,6 +1081,11 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
       e.preventDefault();
       stopReplay();
       return;
+    }
+    // A click outside an open sticky note closes (and saves) it.
+    if (useUIStore.getState().openNote) {
+      useUIStore.getState().setOpenNote(null);
+      if (selectedTool === 'note' || selectedTool === 'select') return;
     }
     // A stroke whose pointerup never arrived: keep it before starting anew.
     if ((mode.current === 'drawing' || mode.current === 'shapeHold') && e.pointerType !== 'touch') finishInkIfDrawing();
@@ -1182,6 +1197,26 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
       return;
     }
 
+    // ── Sticky note ──
+    if (interactionTool === 'note') {
+      const existing = hitTestAnnotations(pdfPt, getPageAnnotations(docId, pageIndex), transform);
+      if (existing?.type === 'note') {
+        if (!existing.locked) useUIStore.getState().setOpenNote({ docId, pageIndex, annotationId: existing.id });
+        return;
+      }
+      const now = Date.now();
+      const note: NoteAnnotation = {
+        id: nanoid(), pageIndex, type: 'note',
+        x: pdfPt.x - NOTE_ICON_SIZE / 2, y: pdfPt.y - NOTE_ICON_SIZE / 2,
+        content: '', color: toolOptions.note.color, opacity: 1,
+        locked: false, createdAt: now, updatedAt: now,
+      };
+      // Added to the history when the popup closes with some text.
+      addAnnotation(docId, note);
+      useUIStore.getState().setOpenNote({ docId, pageIndex, annotationId: note.id, isNew: true });
+      return;
+    }
+
     // ── Text highlight / underline / strikethrough ──
     if (interactionTool === 'textMarkup') {
       mode.current = 'markupDrag';
@@ -1225,7 +1260,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
       // First: check if clicking on a resize handle of the selected group
       if (selectedAnns.length > 0) {
         // Group resize is disabled if the group contains a text annotation, to prevent distortion
-        const canResize = !selectedAnns.some(a => a.type === 'text');
+        const canResize = !selectedAnns.some(a => a.type === 'text' || a.type === 'note');
         
         if (canResize) {
           const groupBounds = getGroupBounds(selectedAnns);
@@ -2436,6 +2471,13 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
           );
         }
         return null;
+      })()}
+
+      {openNote && openNote.docId === docId && openNote.pageIndex === pageIndex && (() => {
+        const note = annotations.find((a) => a.id === openNote.annotationId);
+        return note?.type === 'note'
+          ? <NotePopup key={note.id} note={note} state={openNote} transform={transform} />
+          : null;
       })()}
 
       <div

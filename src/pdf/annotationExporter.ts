@@ -73,6 +73,7 @@ import { captureEditableState, writeEditableData, type EditableAsset } from './e
 import { appendBookmarksToOutline } from './outlineWriter';
 import { highlightShape, penShape, type InkShape, type PathCommand } from './inkGeometry';
 import { markupShape } from './textSelection';
+import { addNoteAnnotation } from './noteExport';
 
 export type ImageAssetResolver =
   | Map<string, ImageAsset>
@@ -782,6 +783,12 @@ function validateAnnotation(annotation: Annotation, pageIndex: number): void {
       });
       if (typeof annotation.text !== 'string') throw new Error('Text markup text must be a string.');
       return;
+    case 'note':
+      assertFinite(annotation.x, 'note x');
+      assertFinite(annotation.y, 'note y');
+      if (typeof annotation.content !== 'string') throw new Error('Note content must be a string.');
+      parseCssColor(annotation.color);
+      return;
     default:
       throw new Error(`Unsupported annotation type: ${String((annotation as Annotation).type)}.`);
   }
@@ -809,6 +816,7 @@ function cloneAnnotation(annotation: Annotation): Annotation {
         points: Object.freeze(annotation.points.map((value) => Object.freeze({ ...value }))),
       }) as unknown as Annotation;
     case 'image':
+    case 'note':
       return Object.freeze({ ...annotation }) as Annotation;
     case 'markup':
       return Object.freeze({
@@ -928,6 +936,9 @@ export async function exportAnnotatedPdf(
             break;
           case 'markup':
             exportMarkup(page, annotation, info);
+            break;
+          case 'note':
+            addNoteAnnotation(pdfDoc, page, annotation);
             break;
           case 'image': {
             let pdfImg = embeddedImages.get(annotation.assetId);

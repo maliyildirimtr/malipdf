@@ -15,6 +15,7 @@
  */
 
 import { hasRealPressure } from './inkGeometry';
+import { NOTE_ICON_SIZE } from '../types/annotations';
 import type {
   Annotation,
   StrokeAnnotation,
@@ -132,6 +133,9 @@ export function hitTestAnnotation(
       return hitTestFreeform(pdfPoint, annotation, tolerance);
     case 'image':
       return hitTestImage(pdfPoint, annotation, tolerance);
+    case 'note':
+      return pdfPoint.x >= annotation.x - tolerance && pdfPoint.x <= annotation.x + NOTE_ICON_SIZE + tolerance
+        && pdfPoint.y >= annotation.y - tolerance && pdfPoint.y <= annotation.y + NOTE_ICON_SIZE + tolerance;
     case 'markup':
       return annotation.quads.some((quad) => quad.length === 4 && pointNearQuad(pdfPoint, quad, tolerance));
     default:
