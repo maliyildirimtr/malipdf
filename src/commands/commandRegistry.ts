@@ -3,7 +3,7 @@ import type { WorkspaceMode } from '../store/uiStore';
 
 export type CanonicalTool = Extract<ToolType,
   'select' | 'hand' | 'pen' | 'highlighter' | 'eraser' | 'text' |
-  'line' | 'arrow' | 'rectangle' | 'ellipse' | 'freeform'>;
+  'line' | 'arrow' | 'rectangle' | 'ellipse' | 'freeform' | 'lasso'>;
 
 export type ToolCommandId = `tool.${CanonicalTool}`;
 
@@ -26,7 +26,8 @@ export type AppCommandId =
   | 'app.requestQuit' | 'app.requestCloseWindow'
   | 'file.recoveredDocuments' | 'help.checkForUpdates' | 'help.about' | 'help.crashReports'
   | 'page.insertBlank' | 'page.duplicate' | 'page.delete' | 'page.rotateLeft' | 'page.rotateRight'
-  | 'page.insertFromPdf' | 'page.exportSelected' | 'page.addBookmark';
+  | 'page.insertFromPdf' | 'page.exportSelected' | 'page.addBookmark'
+  | 'view.ruler' | 'view.replayInk';
 
 export type CommandGroup = 'file' | 'history' | 'edit' | 'tool' | 'view' | 'insert' | 'page' | 'extras' | 'help';
 export type CommandKind = 'action' | 'tool' | 'toggle' | 'radio';
@@ -103,7 +104,7 @@ export const APP_COMMANDS = {
   'tool.zoom': unavailableTool('tool.zoom', 'Zoom Tool', 'zoom'),
   'tool.stamp': unavailableTool('tool.stamp', 'Stamp', 'stamp'),
   'tool.dimension': unavailableTool('tool.dimension', 'Dimension', 'dimension'),
-  'tool.lasso': unavailableTool('tool.lasso', 'Lasso Select', 'lasso'),
+  'tool.lasso': toolCommand('lasso', 'Lasso Select', 'S', 'lasso'),
   'tool.snapshot': unavailableTool('tool.snapshot', 'Snapshot', 'snapshot'),
   'tool.crop': unavailableTool('tool.crop', 'Crop', 'crop'),
   'tool.measure': unavailableTool('tool.measure', 'Measure', 'measure'),
@@ -147,6 +148,8 @@ export const APP_COMMANDS = {
   'page.rotateLeft': command('page.rotateLeft', 'Rotate Page Left', 'page', 'action', 'document', { icon: 'rotateLeft', shortcut: '⇧⌘[', menuPlacements: ['page'] }),
   'page.rotateRight': command('page.rotateRight', 'Rotate Page Right', 'page', 'action', 'document', { icon: 'rotateRight', shortcut: '⇧⌘]', menuPlacements: ['page'] }),
   'page.insertFromPdf': command('page.insertFromPdf', 'Insert Pages from PDF…', 'page', 'action', 'document', { icon: 'open', menuPlacements: ['page'] }),
+  'view.ruler': command('view.ruler', 'Ruler', 'view', 'action', 'document', { icon: 'measure', shortcut: '⌥⌘R', menuPlacements: ['view'] }),
+  'view.replayInk': command('view.replayInk', 'Replay Ink on This Page', 'view', 'action', 'document', { icon: 'annotations', menuPlacements: ['view'] }),
   'page.addBookmark': command('page.addBookmark', 'Add Bookmark', 'page', 'action', 'document', { icon: 'favorites', shortcut: '⌥⌘B', menuPlacements: ['page'] }),
   'page.exportSelected': command('page.exportSelected', 'Export Selected Pages…', 'page', 'action', 'document', { icon: 'export', menuPlacements: ['page'] }),
   'file.recoveredDocuments': command('file.recoveredDocuments', 'Recovered Documents…', 'file', 'action', 'always', { icon: 'open', menuPlacements: ['file'] }),
@@ -211,14 +214,14 @@ function unavailableTool(id: AppCommandId, label: string, icon: CommandIconId): 
 export interface ToolShortcutDefinition {
   readonly commandId: ToolCommandId;
   readonly tool: CanonicalTool;
-  readonly key: 'V' | 'H' | 'P' | 'M' | 'E' | 'T' | 'L' | 'A' | 'R' | 'C';
+  readonly key: 'V' | 'H' | 'P' | 'M' | 'E' | 'T' | 'L' | 'A' | 'R' | 'C' | 'S';
   readonly label: string;
 }
 export const TOOL_SHORTCUTS = [
   toolShortcut('V', 'select'), toolShortcut('H', 'hand'), toolShortcut('P', 'pen'),
   toolShortcut('M', 'highlighter'), toolShortcut('E', 'eraser'), toolShortcut('T', 'text'),
   toolShortcut('L', 'line'), toolShortcut('A', 'arrow'), toolShortcut('R', 'rectangle'),
-  toolShortcut('C', 'ellipse'),
+  toolShortcut('C', 'ellipse'), toolShortcut('S', 'lasso'),
 ] as const satisfies readonly ToolShortcutDefinition[];
 const TOOL_SHORTCUT_BY_KEY = new Map<string, ToolShortcutDefinition>(TOOL_SHORTCUTS.map((shortcut) => [shortcut.key.toLowerCase(), shortcut]));
 const TOOL_COMMAND_BY_TOOL = new Map<CanonicalTool, ToolCommandId>(TOOL_SHORTCUTS.map(({ tool, commandId }) => [tool, commandId]));

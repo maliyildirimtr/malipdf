@@ -32,6 +32,7 @@ import { exportAndSave, loadDefaultExportFonts } from './pdf/annotationExporter'
 import { useAppCommands } from './commands';
 import { NewDocumentDialog } from './components/NewDocumentDialog/NewDocumentDialog';
 import { RecoveryDialog } from './components/RecoveryDialog/RecoveryDialog';
+import { Ruler } from './components/Ruler/Ruler';
 import { startAutoSave } from './document/autoSave';
 import { NOTIFY_EVENT, type NotifyDetail } from './utils/notify';
 
@@ -239,6 +240,7 @@ export default function App() {
       
       <NewDocumentDialog />
       <RecoveryDialog />
+      <Ruler />
 
       {/* Export toasts */}
       <div style={styles.toastContainer}>

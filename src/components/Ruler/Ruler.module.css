@@ -1,0 +1,85 @@
+.ruler {
+  position: fixed;
+  z-index: 900;
+  transform-origin: 50% 50%;
+  border-radius: 6px;
+  background: rgba(248, 250, 252, 0.72);
+  border: 1px solid rgba(15, 23, 42, 0.35);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+  backdrop-filter: blur(2px);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.ruler:active {
+  cursor: grabbing;
+}
+
+.ruler:focus-visible {
+  outline: 2px solid var(--color-accent, #0066ff);
+}
+
+.tick,
+.tickBottom {
+  position: absolute;
+  width: 1px;
+  background: rgba(15, 23, 42, 0.7);
+}
+
+.tick {
+  top: 0;
+}
+
+.tickBottom {
+  bottom: 0;
+}
+
+.label {
+  position: absolute;
+  top: 18px;
+  transform: translateX(-50%);
+  font-size: 9px;
+  color: rgba(15, 23, 42, 0.8);
+  font-variant-numeric: tabular-nums;
+}
+
+.center {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(15, 23, 42, 0.2);
+}
+
+.angle {
+  min-width: 28px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: #0f172a;
+  font-variant-numeric: tabular-nums;
+}
+
+.button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: #334155;
+  cursor: pointer;
+}
+
+.button:hover {
+  background: rgba(15, 23, 42, 0.08);
+}

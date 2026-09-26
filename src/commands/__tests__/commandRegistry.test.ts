@@ -46,10 +46,11 @@ describe('command registry', () => {
       ['A', 'arrow'],
       ['R', 'rectangle'],
       ['C', 'ellipse'],
+      ['S', 'lasso'],
     ]);
 
-    expect(new Set(TOOL_SHORTCUTS.map(({ key }) => key)).size).toBe(10);
-    expect(new Set(TOOL_SHORTCUTS.map(({ tool }) => tool)).size).toBe(10);
+    expect(new Set(TOOL_SHORTCUTS.map(({ key }) => key)).size).toBe(11);
+    expect(new Set(TOOL_SHORTCUTS.map(({ tool }) => tool)).size).toBe(11);
   });
 
   it.each(TOOL_SHORTCUTS)(

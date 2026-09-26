@@ -13,6 +13,9 @@ import {
   FileText,
   Hand,
   Hexagon,
+  LassoSelect,
+  Ruler as RulerIcon,
+  CirclePlay,
   Highlighter,
   Image as ImageIcon,
   Maximize2,
@@ -43,6 +46,7 @@ import { TEXT_FONT_FAMILIES, cssForFamily, fontFamilyKey } from '../../pdf/fontF
 import { ColorWell } from './ColorWell';
 import { PenPresetBar, QuickColors, ToolbarCustomizeMenu } from './ToolbarExtras';
 import { SignStampMenu } from '../SignStamp/SignStampMenu';
+import { useRulerStore } from '../../store/rulerStore';
 import { OpacityControl } from './PropertyControls';
 import { TOOL_WIDTH_CONSTRAINTS } from '../../constants/toolConstraints';
 import { WidthControl } from '../Properties/WidthControl';
@@ -69,6 +73,7 @@ const TOOL_DEFINITIONS: Record<ToolType, ToolDefinition> = {
   roundedRect: { icon: RectangleHorizontal, commandId: 'tool.rectangle' },
   ellipse: { icon: Circle, commandId: 'tool.ellipse' },
   freeform: { icon: Hexagon, commandId: 'tool.freeform' },
+  lasso: { icon: LassoSelect, commandId: 'tool.lasso' },
 };
 
 const DOCUMENT_COMMANDS = new Set<AppCommandId>([
@@ -122,6 +127,7 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
       ? 'FIT P'
       : `${Math.round((activeDoc?.zoom ?? 1) * 100)}%`;
 
+  const rulerVisible = useRulerStore((s) => s.visible);
   const isEnabled = React.useCallback((commandId: AppCommandId) => {
     if (canExecute) return canExecute(commandId);
     return !DOCUMENT_COMMANDS.has(commandId) || hasDocument;
@@ -184,6 +190,7 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
         <ToolbarGroup label="Navigation tools" segmented>
           <ToolButton tool="select" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.select')} />
           <ToolButton tool="hand" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.hand')} />
+          <ToolButton tool="lasso" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.lasso')} />
         </ToolbarGroup>
 
         <ToolbarSeparator />
@@ -203,6 +210,8 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
           <ToolButton tool="rectangle" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.rectangle')} />
           <ToolButton tool="ellipse" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.ellipse')} />
           <ToolButton tool="freeform" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.freeform')} />
+          <CommandButton commandId="view.ruler" label="Ruler" shortcut="⌥⌘R" icon={RulerIcon} onCommand={runCommand} enabled={isEnabled('view.ruler')} pressed={rulerVisible} />
+          <CommandButton commandId="view.replayInk" label="Replay Ink" icon={CirclePlay} onCommand={runCommand} enabled={isEnabled('view.replayInk')} />
           <ToolbarCustomizeMenu />
         </ToolbarGroup>
 
@@ -304,6 +313,7 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
 
         <div className={styles.propertyScroller}>
           {activeTool === 'select' && <PropertyHint>Select an annotation to move or resize it.</PropertyHint>}
+          {activeTool === 'lasso' && <PropertyHint>Draw around ink to select it. Shift adds to the selection. Drag the selection to move it.</PropertyHint>}
           {activeTool === 'hand' && <PropertyHint>Hold Space to temporarily pan the document.</PropertyHint>}
 
           {activeTool === 'pen' && (
@@ -318,6 +328,7 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
               <OpacityControl value={toolOptions.pen.opacity} onChange={(opacity) => updatePenOptions({ opacity })} />
               <PropertySeparator />
               <PropertyToggle label="Pressure" pressed={toolOptions.pen.pressureSensitive} onChange={(pressureSensitive) => updatePenOptions({ pressureSensitive })} />
+              <PropertyToggle label="Ink to Shape" shortLabel="Shapes" pressed={toolOptions.pen.inkToShape === true} onChange={(inkToShape) => updatePenOptions({ inkToShape })} />
               <PropertyOptionsMenu
                 label="More pen properties"
                 items={[{ label: 'Smooth strokes', checked: toolOptions.pen.smooth, onSelect: () => updatePenOptions({ smooth: !toolOptions.pen.smooth }) }]}

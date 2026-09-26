@@ -35,13 +35,13 @@ describe('native macOS menu schema', () => {
     const tools = findTopMenu('Tools');
     for (const id of [
       'tool.select', 'tool.hand', 'tool.pen', 'tool.highlighter', 'tool.eraser',
-      'tool.text', 'tool.line', 'tool.arrow', 'tool.rectangle', 'tool.ellipse',
+      'tool.text', 'tool.line', 'tool.arrow', 'tool.rectangle', 'tool.ellipse', 'tool.lasso',
     ]) {
       expect(findCommand(tools.items, id)?.enabled).not.toBe(false);
     }
     for (const id of [
       'tool.extractText', 'tool.zoom', 'tool.stamp', 'tool.polygon', 'tool.dimension',
-      'tool.lasso', 'tool.snapshot', 'tool.crop', 'tool.measure', 'tool.formula',
+      'tool.snapshot', 'tool.crop', 'tool.measure', 'tool.formula',
       'tool.laserPointer', 'tool.pointer',
     ]) {
       expect(findCommand(tools.items, id)?.enabled, id).toBe(false);

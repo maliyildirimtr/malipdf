@@ -107,7 +107,7 @@ export function createNativeMenuSchema(isMac: boolean, isDev: boolean): readonly
         tool('tool.line', 'Line', 'L'), tool('tool.arrow', 'Arrow', 'A'),
         tool('tool.rectangle', 'Rectangle', 'R'), tool('tool.ellipse', 'Ellipse', 'C'),
         tool('tool.polygon', 'Polygon', undefined, false), tool('tool.dimension', 'Dimension', undefined, false), separator(),
-        tool('tool.eraser', 'Eraser', 'E'), tool('tool.lasso', 'Lasso Select', undefined, false), separator(),
+        tool('tool.eraser', 'Eraser', 'E'), tool('tool.lasso', 'Lasso Select', 'S'), separator(),
         tool('tool.snapshot', 'Snapshot', undefined, false), tool('tool.crop', 'Crop', undefined, false),
         tool('tool.measure', 'Measure', undefined, false), tool('tool.formula', 'Formula', undefined, false), separator(),
         tool('tool.laserPointer', 'Laser Pointer', undefined, false), tool('tool.pointer', 'Pointer', undefined, false), separator(),
@@ -126,6 +126,8 @@ export function createNativeMenuSchema(isMac: boolean, isDev: boolean): readonly
         command('view.rotateCCW', 'Rotate View Left', { accelerator: 'CmdOrCtrl+[', enabled: false }),
         command('view.rotateCW', 'Rotate View Right', { accelerator: 'CmdOrCtrl+]', enabled: false }), separator(),
         command('view.annotations', 'Hide Annotations', { enabled: false }),
+        command('view.ruler', 'Ruler', { accelerator: 'Alt+CmdOrCtrl+R', enabled: false }),
+        command('view.replayInk', 'Replay Ink on This Page', { enabled: false }),
         submenu('Sidebar', [
           command('view.sidebarPages', 'Pages', { enabled: false }),
           command('view.sidebarBookmarks', 'Bookmarks', { enabled: false }),

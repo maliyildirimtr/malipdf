@@ -74,6 +74,12 @@ import {
   renderFreeform,
 } from '../../pdf/annotationRenderer';
 import { simplifyInkPoints } from '../../pdf/inkGeometry';
+import { annotationsInLasso } from '../../pdf/lassoSelect';
+import { recognizeShape } from '../../pdf/shapeRecognizer';
+import { penButtonTool } from '../../utils/penButtons';
+import { projectOntoEdge, snapEdgeFor, useRulerStore, type EdgeLine } from '../../store/rulerStore';
+import { buildReplayPlan, replayFrame, type ReplayItem } from '../../pdf/inkReplay';
+import { REPLAY_INK_EVENT, type ReplayInkDetail } from './replayEvents';
 import { FloatingInspector } from '../Properties/FloatingInspector';
 import { getAnnotationBounds, getGroupBounds } from '../../pdf/annotationGeometry';
 import { translateAnnotation, scaleAnnotationFromBounds, computeResizeTargetBounds } from '../../pdf/annotationTransform';
@@ -115,6 +121,7 @@ type InteractionMode =
   | 'erasing'       // eraser active
   | 'freeformDrawing' // freeform polygon drawing
   | 'selectDrag'    // rubber-band selection
+  | 'lassoDrag'     // free-form lasso selection
   | 'moving'        // moving selected annotations
   | 'resizing';     // resizing selected annotation
 
@@ -143,6 +150,7 @@ function getCursor(tool: ToolType, mode: InteractionMode): string {
   switch (tool) {
     case 'hand':        return 'grab';
     case 'select':      return 'default';
+    case 'lasso':       return 'crosshair';
     case 'pen':         return 'crosshair';
     case 'highlighter': return 'crosshair';
     case 'eraser':      return 'cell';
@@ -192,6 +200,26 @@ function rectsOverlap(a: PdfRect, b: PdfRect): boolean {
   return a.x <= b.x + b.width && a.x + a.width >= b.x && a.y <= b.y + b.height && a.y + a.height >= b.y;
 }
 
+/** Ink to Shape: the recognised clean shape for a pen stroke, or null. */
+function shapeFromInk(stroke: Extract<Annotation, { type: 'stroke' }>): Annotation | null {
+  const shape = recognizeShape(stroke.points);
+  if (!shape) return null;
+  const common = {
+    id: stroke.id, pageIndex: stroke.pageIndex, color: stroke.color, opacity: stroke.opacity,
+    locked: false, createdAt: stroke.createdAt, updatedAt: stroke.updatedAt,
+  };
+  if (shape.kind === 'polygon') {
+    return { ...common, type: 'freeform', points: shape.points, strokeWidth: stroke.width, fillColor: 'transparent' };
+  }
+  const [startPoint, endPoint] = shape.kind === 'line'
+    ? [shape.start, shape.end]
+    : [{ x: shape.x, y: shape.y }, { x: shape.x + shape.width, y: shape.y + shape.height }];
+  return {
+    ...common, type: 'shape', shapeKind: shape.kind,
+    startPoint, endPoint, strokeWidth: stroke.width, fillColor: 'transparent',
+  };
+}
+
 /** Points closer than this (screen px) to the drawn line are dropped on pen-up. */
 const INK_SIMPLIFY_PX = 0.35;
 /** Touches this soon after pen input are treated as a resting palm. */
@@ -234,6 +262,10 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
   const shiftKeyRef = useRef(false);
   const predictedPoints = useRef<InputPoint[]>([]);
   const lastPenInputAt = useRef(0);
+  const penButtonSelectionRef = useRef(false);
+  const rulerSnapRef = useRef<{ edge: EdgeLine; offset: number } | null>(null);
+  const replayRef = useRef<{ plan: ReplayItem[]; startedAt: number; painted: number; raf: number | null } | null>(null);
+  const [replaying, setReplaying] = useState(false);
   const layerRedrawId = useRef<number | null>(null);
   const pendingRedrawRegion = useRef<PdfRect | null>(null);
   const lastLayerDraw = useRef<{
@@ -255,6 +287,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
   const temporaryTool = useUIStore(state => state.temporaryTool);
   const setIsDrawing = useUIStore(state => state.setIsDrawing);
   const interactionTool = temporaryTool ?? activeTool;
+  const selectedTool = interactionTool; // before per-gesture pen-button overrides
   const addAnnotation = useAnnotationStore(state => state.addAnnotation);
   const replaceAnnotation = useAnnotationStore(state => state.replaceAnnotation);
   const getPageAnnotations = useAnnotationStore(state => state.getPageAnnotations);
@@ -278,8 +311,14 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
 
   // A selection belongs to the Select tool. Switching to another persistent
   // tool clears it; the temporary Space/Hand gesture does not.
+  // A lasso made with the pen's barrel button keeps working with the pen
+  // tool (tap inside to drag it) until the tool changes.
   useEffect(() => {
-    if (activeTool !== 'select' && selectedIdsArray.length > 0) {
+    penButtonSelectionRef.current = false;
+  }, [activeTool]);
+  useEffect(() => {
+    if (activeTool !== 'select' && activeTool !== 'lasso' && selectedIdsArray.length > 0
+      && !penButtonSelectionRef.current) {
       useSelectionStore.getState().clearSelection(identity);
     }
   }, [activeTool, identity, selectedIdsArray.length]);
@@ -386,7 +425,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     const selectionState = useSelectionStore.getState().getSelection(identity);
     const transientStyle = selectionState?.pageIndex === pageIndex ? selectionState.transientStyle : undefined;
     const currentSelectedIds = selectionState?.pageIndex === pageIndex ? selectionState.selectedIds : [];
-    const currentAnnotations = getPageAnnotations(docId, pageIndex);
+    const currentAnnotations = replayRef.current ? [] : getPageAnnotations(docId, pageIndex);
 
     const committedAnnotations: Annotation[] = [];
     for (const a of currentAnnotations) {
@@ -456,6 +495,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     }
 
     // ── Full repaint ──
+    if (replayRef.current) replayRef.current.painted = 0; // the replay repaints what it had shown
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     if (highlightCanvas && highlightCtx) highlightCtx.clearRect(0, 0, highlightCanvas.width, highlightCanvas.height);
     paint(committedAnnotations);
@@ -577,6 +617,23 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
       const { screenX: sx, screenY: sy } = selectionStart.current;
       const { screenX: ex, screenY: ey } = currentEnd.current;
       renderSelectionRect(ctx, sx, sy, ex, ey, dpr);
+    } else if (m === 'lassoDrag') {
+      const pts = activePoints.current;
+      if (pts.length > 1) {
+        ctx.save();
+        ctx.scale(dpr, dpr);
+        ctx.beginPath();
+        ctx.moveTo(pts[0].x, pts[0].y);
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(0, 122, 255, 0.08)';
+        ctx.fill();
+        ctx.setLineDash([5, 4]);
+        ctx.lineWidth = 1.25;
+        ctx.strokeStyle = '#007aff';
+        ctx.stroke();
+        ctx.restore();
+      }
     } else if (m === 'erasing') {
       const pts = activePoints.current;
       if (pts.length > 0) {
@@ -666,6 +723,14 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     };
   }
 
+  /** Window point → page-local point, following the ruler edge when snapped. */
+  function toLocalInkPoint(clientX: number, clientY: number): { x: number; y: number } {
+    const rect = interactionRef.current!.getBoundingClientRect();
+    const snap = rulerSnapRef.current;
+    const p = snap ? projectOntoEdge(snap.edge, clientX, clientY, snap.offset) : { x: clientX, y: clientY };
+    return { x: p.x - rect.left, y: p.y - rect.top };
+  }
+
   /** Only one pointer draws at a time; a resting palm is ignored while a pen is in use. */
   function isForeignPointer(e: React.PointerEvent<HTMLDivElement>): boolean {
     if (e.pointerType === 'pen') lastPenInputAt.current = e.timeStamp;
@@ -689,9 +754,109 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
 
   // ── Pointer down ──────────────────────────────────────────────────────────
 
+  // ── Ink Replay ────────────────────────────────────────────────────────────
+
+  function stopReplay() {
+    const replay = replayRef.current;
+    if (!replay) return;
+    if (replay.raf !== null) cancelAnimationFrame(replay.raf);
+    replayRef.current = null;
+    setReplaying(false);
+    clearDrawingCanvas();
+    lastLayerDraw.current = null; // the layers hold replay drawing: repaint everything
+    redrawAnnotationLayer();
+  }
+
+  function startReplay() {
+    stopReplay();
+    cancelActiveInteraction();
+    const plan = buildReplayPlan(getPageAnnotations(docId, pageIndex));
+    if (plan.length === 0) return;
+    replayRef.current = { plan, startedAt: performance.now(), painted: 0, raf: null };
+    setReplaying(true);
+    redrawAnnotationLayer(); // empty page to start from
+    const tick = () => {
+      const replay = replayRef.current;
+      if (!replay) return;
+      const frame = replayFrame(replay.plan, performance.now() - replay.startedAt);
+      // Finished items go onto the normal layers once; the growing stroke is
+      // drawn on the preview layer.
+      const newlyDone = frame.done.slice(replay.painted);
+      if (newlyDone.length) {
+        const ink = annotationCanvasRef.current?.getContext('2d');
+        const marker = highlightCanvasRef.current?.getContext('2d');
+        if (ink) renderAnnotations(ink, newlyDone.filter((a) => a.type !== 'highlight'), transform, dpr, identity);
+        if (marker) renderAnnotations(marker, newlyDone.filter((a) => a.type === 'highlight'), transform, dpr, identity);
+        replay.painted = frame.done.length;
+      }
+      const canvas = drawingCanvasRef.current;
+      const ctx = canvas?.getContext('2d');
+      if (canvas && ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        canvas.style.mixBlendMode = frame.partial?.type === 'highlight' ? 'multiply' : 'normal';
+        if (frame.partial) renderAnnotations(ctx, [frame.partial], transform, dpr, identity);
+      }
+      if (frame.finished) {
+        stopReplay();
+        return;
+      }
+      replay.raf = requestAnimationFrame(tick);
+    };
+    replayRef.current.raf = requestAnimationFrame(tick);
+  }
+
+  useEffect(() => {
+    const onReplay = (event: Event) => {
+      const detail = (event as CustomEvent<ReplayInkDetail>).detail;
+      if (detail?.docId === docId && detail.pageIndex === pageIndex) startReplay();
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && replayRef.current) stopReplay();
+    };
+    window.addEventListener(REPLAY_INK_EVENT, onReplay);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener(REPLAY_INK_EVENT, onReplay);
+      window.removeEventListener('keydown', onKey);
+    };
+  });
+
+  // Stop a running replay when the page goes away.
+  useEffect(() => () => {
+    const replay = replayRef.current;
+    if (replay?.raf != null) cancelAnimationFrame(replay.raf);
+    replayRef.current = null;
+  }, []);
+
   function onPointerDown(e: React.PointerEvent<HTMLDivElement>) {
-    if (e.button !== 0) return; // left button only
+    if (replayRef.current) {
+      // Any click ends the replay.
+      e.preventDefault();
+      stopReplay();
+      return;
+    }
+    // Pen hardware: the eraser end erases, the barrel button lassoes.
+    const penButton = penButtonTool(e);
+    if (e.button !== 0 && !penButton) return; // left button (or pen tip) only
     if (isForeignPointer(e)) return;
+    let interactionTool: ToolType = penButton ?? selectedTool;
+
+    // A pen-button selection: drag it from inside, otherwise drop it and draw.
+    if (!penButton && penButtonSelectionRef.current && interactionTool !== 'select' && interactionTool !== 'lasso') {
+      const current = useSelectionStore.getState().getSelection(identity);
+      const selected = current?.pageIndex === pageIndex
+        ? getPageAnnotations(docId, pageIndex).filter((a) => current.selectedIds.includes(a.id))
+        : [];
+      const bounds = selected.length ? getGroupBounds(selected) : null;
+      const { screenX: sx, screenY: sy } = getPagePoint(e);
+      const p = screenToPdfPoint(sx, sy);
+      if (bounds && p.x >= bounds.x && p.x <= bounds.x + bounds.width && p.y >= bounds.y && p.y <= bounds.y + bounds.height) {
+        interactionTool = 'lasso';
+      } else {
+        penButtonSelectionRef.current = false;
+        useSelectionStore.getState().clearSelection(identity);
+      }
+    }
     
     // Pass through to DocumentArea for panning
     if (interactionTool === 'hand') return;
@@ -714,7 +879,12 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     if (interactionTool === 'pen' || interactionTool === 'highlighter') {
       mode.current = 'drawing';
       predictedPoints.current = [];
-      activePoints.current = [{ x: screenX, y: screenY, pressure: e.pressure > 0 ? e.pressure : 0.5, timestamp: e.timeStamp }];
+      // Starting next to the ruler: the whole stroke follows its edge.
+      const edge = snapEdgeFor(useRulerStore.getState(), e.clientX, e.clientY);
+      const inkWidth = (interactionTool === 'pen' ? toolOptions.pen.width : toolOptions.highlighter.width) * scale;
+      rulerSnapRef.current = edge ? { edge, offset: inkWidth / 2 } : null;
+      const start = toLocalInkPoint(e.clientX, e.clientY);
+      activePoints.current = [{ x: start.x, y: start.y, pressure: e.pressure > 0 ? e.pressure : 0.5, timestamp: e.timeStamp }];
       schedulePreviewRender();
       return;
     }
@@ -785,8 +955,8 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
       return;
     }
 
-    // ── Select ──
-    if (interactionTool === 'select') {
+    // ── Select / Lasso ──
+    if (interactionTool === 'select' || interactionTool === 'lasso') {
       const annotations = getPageAnnotations(docId, pageIndex);
       const currentSelectionState = useSelectionStore.getState().getSelection(identity);
       const activeIds = currentSelectionState?.pageIndex === pageIndex ? currentSelectionState.selectedIds : [];
@@ -821,6 +991,31 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
             }
           }
         }
+      }
+
+      // Lasso: drag inside the current selection moves it; anywhere else
+      // starts a new loop (even on top of ink, unlike the Select tool).
+      if (interactionTool === 'lasso') {
+        const groupBounds = selectedAnns.length > 0 ? getGroupBounds(selectedAnns) : null;
+        const insideSelection = groupBounds
+          && pdfPt.x >= groupBounds.x && pdfPt.x <= groupBounds.x + groupBounds.width
+          && pdfPt.y >= groupBounds.y && pdfPt.y <= groupBounds.y + groupBounds.height;
+        if (insideSelection && !(e.shiftKey || e.metaKey)) {
+          mode.current = 'moving';
+          shapeStart.current = { screenX, screenY, pdfX: pdfPt.x, pdfY: pdfPt.y };
+          moveAnchor.current = { screenX, screenY, pdfX: pdfPt.x, pdfY: pdfPt.y };
+          gestureSelectedIdsRef.current = [...activeIds];
+          moveBefore.current = new Map(selectedAnns.map((ann) => [ann.id, structuredClone(ann)]));
+          redrawAnnotationLayer();
+          schedulePreviewRender();
+          return;
+        }
+        selectionBefore.current = [...activeIds];
+        if (!(e.shiftKey || e.metaKey)) useSelectionStore.getState().clearSelection(identity);
+        mode.current = 'lassoDrag';
+        activePoints.current = [{ x: screenX, y: screenY, pressure: 0.5, timestamp: e.timeStamp }];
+        schedulePreviewRender();
+        return;
       }
 
       // Second: check if we hit any annotation
@@ -912,22 +1107,20 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     if (m === 'drawing') {
       // Use coalesced events for stylus fidelity
       const events = e.nativeEvent.getCoalescedEvents?.() ?? [e.nativeEvent];
-      const rect = interactionRef.current!.getBoundingClientRect();
       for (const ev of events) {
+        const local = toLocalInkPoint(ev.clientX, ev.clientY);
         activePoints.current.push({
-          x: ev.clientX - rect.left,
-          y: ev.clientY - rect.top,
+          x: local.x,
+          y: local.y,
           pressure: ev.pressure > 0 ? ev.pressure : 0.5,
           timestamp: ev.timeStamp,
         });
       }
       // Predicted points shorten the visible lag; they are preview-only.
-      predictedPoints.current = (e.nativeEvent.getPredictedEvents?.() ?? []).slice(0, 2).map((ev) => ({
-        x: ev.clientX - rect.left,
-        y: ev.clientY - rect.top,
-        pressure: ev.pressure > 0 ? ev.pressure : 0.5,
-        timestamp: ev.timeStamp,
-      }));
+      predictedPoints.current = (e.nativeEvent.getPredictedEvents?.() ?? []).slice(0, 2).map((ev) => {
+        const local = toLocalInkPoint(ev.clientX, ev.clientY);
+        return { x: local.x, y: local.y, pressure: ev.pressure > 0 ? ev.pressure : 0.5, timestamp: ev.timeStamp };
+      });
       schedulePreviewRender();
       return;
     }
@@ -999,6 +1192,15 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
       return;
     }
 
+    if (m === 'lassoDrag') {
+      const rect = interactionRef.current!.getBoundingClientRect();
+      for (const ev of e.nativeEvent.getCoalescedEvents?.() ?? [e.nativeEvent]) {
+        activePoints.current.push({ x: ev.clientX - rect.left, y: ev.clientY - rect.top, pressure: 0.5, timestamp: ev.timeStamp });
+      }
+      schedulePreviewRender();
+      return;
+    }
+
     if (m === 'moving' && moveAnchor.current) {
       moveAnchor.current = { screenX, screenY, pdfX: pdfPt.x, pdfY: pdfPt.y };
       schedulePreviewRender();
@@ -1036,6 +1238,8 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
       commitShape();
     } else if (m === 'selectDrag') {
       commitRubberBand(e);
+    } else if (m === 'lassoDrag') {
+      commitLasso(e);
     } else if (m === 'moving') {
       commitMove();
     } else if (m === 'resizing') {
@@ -1089,6 +1293,14 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     // A single tap with the pen leaves a dot; the highlighter needs a drag.
     const ann = buildInkAnnotation(activePoints.current, gestureToolRef.current, true);
     if (!ann) return;
+    if (ann.type === 'stroke' && toolOptions.pen.inkToShape) {
+      const shape = shapeFromInk(ann);
+      if (shape) {
+        addAnnotation(docId, shape);
+        pushHistory(makeAddAction(docId, shape));
+        return;
+      }
+    }
     addAnnotation(docId, ann);
     pushHistory(makeAddAction(docId, ann));
   }
@@ -1356,6 +1568,29 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     useSelectionStore.getState().setSelection(identity, pageIndex, finalSelection);
   }
 
+  function commitLasso(e: React.PointerEvent<HTMLDivElement>) {
+    const additive = e.shiftKey || e.metaKey;
+    const pts = activePoints.current;
+    let length = 0;
+    for (let i = 1; i < pts.length; i++) length += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+    if (pts.length < 3 || length < 12) {
+      // A click, not a loop: keep the previous selection when adding.
+      if (additive) useSelectionStore.getState().setSelection(identity, pageIndex, selectionBefore.current);
+      return;
+    }
+    const polygon = screenPointsToPdf(pts, transform);
+    const annotations = getPageAnnotations(docId, pageIndex);
+    const inside = new Set(annotationsInLasso(annotations, polygon));
+    if (additive) for (const id of selectionBefore.current) inside.add(id);
+    // Made with the barrel button while another tool is active?
+    penButtonSelectionRef.current = selectedTool !== 'select' && selectedTool !== 'lasso' && inside.size > 0;
+    useSelectionStore.getState().setSelection(
+      identity,
+      pageIndex,
+      annotations.filter((a) => inside.has(a.id)).map((a) => a.id),
+    );
+  }
+
   // ── Move ─────────────────────────────────────────────────────────────────
 
 
@@ -1442,7 +1677,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
 
     if (activeMode === 'moving' || activeMode === 'resizing') {
       // Nothing to write to store since transient preview never modified the store!
-    } else if (activeMode === 'selectDrag') {
+    } else if (activeMode === 'selectDrag' || activeMode === 'lassoDrag') {
       useSelectionStore.getState().setSelection(identity, pageIndex, selectionBefore.current);
     }
 
@@ -1784,6 +2019,19 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
           opacity: (mode.current === 'moving' || mode.current === 'resizing') ? 0.7 : 1, // Visual feedback during transient moves
         }}
       />
+
+      {replaying && (
+        <div
+          role="status"
+          style={{
+            position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)', zIndex: 30,
+            padding: '4px 10px', borderRadius: 999, fontSize: 12, pointerEvents: 'none',
+            background: 'rgba(20, 20, 30, 0.8)', color: '#fff',
+          }}
+        >
+          Replaying ink… click or press Esc to stop
+        </div>
+      )}
 
       {textOverlay && (
         <textarea

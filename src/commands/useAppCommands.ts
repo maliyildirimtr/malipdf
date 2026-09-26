@@ -34,6 +34,7 @@ import {
 } from './clipboardCommands';
 import { SHOW_RECOVERY_EVENT } from '../components/RecoveryDialog/recoveryEvents';
 import { OPEN_SIGN_MENU_EVENT } from '../components/SignStamp/signStampEvents';
+import { REPLAY_INK_EVENT } from '../components/AnnotationCanvas/replayEvents';
 import {
   insertImageFromFile,
   captureScreenToImage,
@@ -255,7 +256,6 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
       case 'tool.zoom':
       case 'tool.stamp':
       case 'tool.dimension':
-      case 'tool.lasso':
       case 'tool.snapshot':
       case 'tool.crop':
       case 'tool.measure':
@@ -286,6 +286,16 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
         ui.setActiveSidebarPanel(commandId === 'view.sidebarBookmarks' ? 'bookmarks' : 'outline');
         ui.setSidebarOpen(true);
         return;
+      case 'view.ruler':
+        void import('../store/rulerStore').then(({ useRulerStore }) => useRulerStore.getState().toggle());
+        return;
+      case 'view.replayInk': {
+        const doc = docId ? documents.documents.get(docId) : null;
+        if (doc) {
+          window.dispatchEvent(new CustomEvent(REPLAY_INK_EVENT, { detail: { docId: doc.id, pageIndex: doc.activePageIndex } }));
+        }
+        return;
+      }
       case 'page.addBookmark':
         if (docId) {
           void import('./bookmarkCommands').then(({ addBookmark }) => {

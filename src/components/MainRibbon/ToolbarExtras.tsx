@@ -78,6 +78,7 @@ export function PenPresetBar({ tool }: { tool: PenPreset['tool'] }) {
 
 const CUSTOMIZABLE_TOOLS: { tool: ToolType; label: string }[] = [
   { tool: 'hand', label: 'Hand' },
+  { tool: 'lasso', label: 'Lasso Select' },
   { tool: 'pen', label: 'Pen' },
   { tool: 'highlighter', label: 'Highlighter' },
   { tool: 'eraser', label: 'Eraser' },

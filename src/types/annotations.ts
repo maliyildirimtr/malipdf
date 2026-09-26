@@ -174,7 +174,8 @@ export type ToolType =
   | 'rectangle'
   | 'roundedRect'
   | 'ellipse'
-  | 'freeform';
+  | 'freeform'
+  | 'lasso';
 
 // ─── Tool options (shared across all instances, not per-annotation) ───────────
 
@@ -184,6 +185,8 @@ export interface PenOptions {
   opacity: number;
   smooth: boolean;
   pressureSensitive: boolean;
+  /** Ink to Shape: clean up hand-drawn lines, circles, rectangles, polygons. */
+  inkToShape?: boolean;
 }
 
 export interface HighlighterOptions {
