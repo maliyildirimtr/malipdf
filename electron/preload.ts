@@ -75,6 +75,7 @@ export interface ElectronAPI {
   // PPTX Printout
   pptxIsAvailable: () => Promise<boolean>;
   pptxStartConversion: (jobId: string) => Promise<{ buffer: ArrayBuffer; name: string } | null>;
+  pptxConvertBytes: (jobId: string, data: ArrayBuffer, name: string) => Promise<{ buffer: ArrayBuffer; name: string }>;
   pptxCancelConversion: (jobId: string) => Promise<void>;
 }
 
@@ -118,6 +119,7 @@ const electronAPI: ElectronAPI = {
   // PPTX Printout
   pptxIsAvailable: () => ipcRenderer.invoke('pptx:isAvailable'),
   pptxStartConversion: (jobId) => ipcRenderer.invoke('pptx:startConversion', jobId),
+  pptxConvertBytes: (jobId, data, name) => ipcRenderer.invoke('pptx:convertBytes', jobId, data, name),
   pptxCancelConversion: (jobId) => ipcRenderer.invoke('pptx:cancelConversion', jobId),
 };
 

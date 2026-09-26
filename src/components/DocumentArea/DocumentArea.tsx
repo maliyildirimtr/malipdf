@@ -159,8 +159,16 @@ export function DocumentArea() {
   async function onDrop(event: React.DragEvent) {
     event.preventDefault();
     setIsDragOver(false);
-    const files = Array.from(event.dataTransfer.files).filter(
-      (file) => file.type === 'application/pdf' || file.name.endsWith('.pdf'),
+    const all = Array.from(event.dataTransfer.files);
+    const printouts = await import('../../commands/printoutCommands');
+    // PowerPoint and OpenDocument presentations are converted to PDF with LibreOffice.
+    for (const file of all.filter((f) => printouts.isPresentationFile(f.name))) {
+      const data = await file.arrayBuffer();
+      if (activeDoc) await printouts.insertPptxPrintoutFromBytes(data, file.name);
+      else await printouts.openPresentationAsDocument(data, file.name);
+    }
+    const files = all.filter(
+      (file) => file.type === 'application/pdf' || /\.pdf$/i.test(file.name),
     );
     for (const file of files) {
       if (activeDoc) {
@@ -554,14 +562,14 @@ export function DocumentArea() {
       >
         {isDragOver && (
           <div className="drop-overlay">
-            <div className="drop-overlay__text">Drop PDF to open</div>
+            <div className="drop-overlay__text">Drop a PDF or PowerPoint file to open</div>
           </div>
         )}
         <div className="empty-state">
           <div className="empty-state__icon"><FileText size={36} /></div>
           <div className="empty-state__title">No document open</div>
           <p className="empty-state__subtitle">
-            Open a PDF file to start annotating. You can also drag and drop a PDF anywhere in this window.
+            Open a PDF file to start annotating. You can also drag and drop a PDF or PowerPoint file anywhere in this window.
           </p>
           <div className="empty-state__actions">
             <button className="btn btn--primary" onClick={openFileDialog}>
@@ -595,7 +603,7 @@ export function DocumentArea() {
     >
       {isDragOver && (
         <div className="drop-overlay">
-          <div className="drop-overlay__text">Drop PDF to insert as printout pages</div>
+          <div className="drop-overlay__text">Drop a PDF or PowerPoint file to insert it as printout pages</div>
         </div>
       )}
 

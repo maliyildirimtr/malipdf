@@ -1,4 +1,5 @@
 import { useDocumentStore } from '../store/documentStore';
+import { notifyUser } from '../utils/notify';
 import { useAnnotationStore } from '../store/annotationStore';
 import { useHistoryStore, makeMutateDocumentBytesAction } from '../store/historyStore';
 import { insertBlankPagesAfter } from '../document/documentMutator';
@@ -207,7 +208,53 @@ export async function insertPrintoutFromFile(): Promise<void> {
   }
 }
 
-export async function insertPptxPrintoutFromFile(): Promise<void> {
+export function insertPptxPrintoutFromFile(): Promise<void> {
+  return runPptxImport((jobId) => window.electronAPI.pptxStartConversion(jobId));
+}
+
+/** Presentation files LibreOffice can turn into PDF printout pages. */
+export function isPresentationFile(name: string): boolean {
+  return /\.(pptx|ppt|odp)$/i.test(name);
+}
+
+export const MAX_DROPPED_PRESENTATION_BYTES = 300 * 1024 * 1024;
+
+/** Drag & drop: convert a dropped presentation and insert it as printout pages. */
+export function insertPptxPrintoutFromBytes(data: ArrayBuffer, name: string): Promise<void> {
+  return runPptxImport((jobId) => {
+    if (!window.electronAPI?.pptxConvertBytes) {
+      throw new Error('PowerPoint import by drag and drop needs the updated app (rebuild the Electron main process).');
+    }
+    if (data.byteLength > MAX_DROPPED_PRESENTATION_BYTES) {
+      throw new Error('The presentation is larger than 300 MB.');
+    }
+    return window.electronAPI.pptxConvertBytes(jobId, data, name);
+  });
+}
+
+/** No document open: convert a dropped presentation and open it as a new PDF. */
+export async function openPresentationAsDocument(data: ArrayBuffer, name: string): Promise<void> {
+  const api = window.electronAPI;
+  try {
+    if (!api?.pptxConvertBytes || !api.pptxIsAvailable) {
+      throw new Error('PowerPoint import needs the desktop app.');
+    }
+    if (data.byteLength > MAX_DROPPED_PRESENTATION_BYTES) throw new Error('The presentation is larger than 300 MB.');
+    if (!(await api.pptxIsAvailable())) {
+      throw new Error('LibreOffice was not found. Install LibreOffice to import PowerPoint files.');
+    }
+    notifyUser('info', `Converting "${name}" to PDF…`);
+    const result = await api.pptxConvertBytes(`open-${Date.now().toString(36)}`, data, name);
+    const { openDocumentBytes } = await import('../document/openDocumentBytes');
+    await openDocumentBytes(name.replace(/\.(pptx|ppt|odp)$/i, '.pdf'), null, result.buffer);
+  } catch (error) {
+    notifyUser('error', `"${name}" could not be converted: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+async function runPptxImport(
+  convert: (jobId: string) => Promise<{ buffer: ArrayBuffer; name: string } | null>,
+): Promise<void> {
   const docStore = useDocumentStore.getState();
   const activeDocId = docStore.activeDocId;
   if (!activeDocId) return;
@@ -246,7 +293,7 @@ export async function insertPptxPrintoutFromFile(): Promise<void> {
   useImportJobStore.getState().updateStatus('converting');
 
   try {
-    const result = await window.electronAPI.pptxStartConversion(requestId.toString());
+    const result = await convert(requestId.toString());
     
     if (abortController.signal.aborted || !result) {
       if (abortController.signal.aborted) scheduleJobClear(requestId);

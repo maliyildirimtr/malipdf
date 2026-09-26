@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { randomUUID } from 'crypto';
 import { LibreOfficeProvider } from './libreOfficeProvider';
-import { handleTrusted } from '../../security';
+import { handleTrusted, requireBinary } from '../../security';
 
 const provider = new LibreOfficeProvider();
 
@@ -15,6 +15,7 @@ const MAX_INPUT_PPTX_BYTES = 300 * 1024 * 1024;
 const MAX_CONVERTED_PDF_BYTES = 500 * 1024 * 1024;
 
 const TEMP_DIR_PREFIX = 'malipdf-pptx-';
+const PRESENTATION_EXTENSIONS = ['.pptx', '.ppt', '.odp'];
 /** Temp folders older than this are leftovers of a crash and are removed at startup. */
 const STALE_TEMP_AGE_MS = 24 * 60 * 60 * 1000;
 
@@ -55,6 +56,46 @@ export function abortAllPptxJobs(): void {
   for (const job of activeJobs.values()) job.abortController.abort();
 }
 
+/**
+ * Convert one presentation in a private temp folder. `writeInput` puts the
+ * presentation at the given (generated) path, so LibreOffice never sees the
+ * user's own file path.
+ */
+async function convertJob(
+  jobId: string,
+  extension: string,
+  displayName: string,
+  writeInput: (target: string) => Promise<void>,
+): Promise<{ buffer: ArrayBuffer; name: string }> {
+  if (activeJobs.has(jobId)) throw new Error(`Job ID ${jobId} is already active.`);
+  const tempDir = await fs.promises.mkdtemp(path.join(app.getPath('temp'), TEMP_DIR_PREFIX));
+  const abortController = new AbortController();
+  activeJobs.set(jobId, { abortController, tempDir });
+  try {
+    await fs.promises.chmod(tempDir, 0o700).catch(() => {});
+    const safeInputPath = path.join(tempDir, `input-${randomUUID()}${extension}`);
+    await writeInput(safeInputPath);
+    if (abortController.signal.aborted) throw new Error('Conversion aborted by user.');
+
+    const pdfPath = await provider.convertToPdf(safeInputPath, tempDir, abortController.signal);
+
+    const stats = await fs.promises.stat(pdfPath);
+    if (stats.size > MAX_CONVERTED_PDF_BYTES) {
+      throw new Error(`Converted PDF exceeds the 500MB size limit (was ${Math.round(stats.size / 1024 / 1024)}MB).`);
+    }
+    const pdfBuffer = await fs.promises.readFile(pdfPath);
+    const exact = pdfBuffer.buffer.slice(pdfBuffer.byteOffset, pdfBuffer.byteOffset + pdfBuffer.byteLength) as ArrayBuffer;
+    return { buffer: exact, name: displayName };
+  } finally {
+    activeJobs.delete(jobId);
+    try {
+      await fs.promises.rm(tempDir, { recursive: true, force: true });
+    } catch (err) {
+      console.error(`Failed to cleanup temp directory ${tempDir}:`, err);
+    }
+  }
+}
+
 export function setupPptxIpc(isDev: boolean) {
   app.whenReady().then(() => { void removeStaleTempDirs(); });
   app.on('will-quit', abortAllPptxJobs);
@@ -93,42 +134,22 @@ export function setupPptxIpc(isDev: boolean) {
     if (inputStats.size > MAX_INPUT_PPTX_BYTES) {
       throw new Error(`The presentation is larger than ${MAX_INPUT_PPTX_BYTES / 1024 / 1024} MB.`);
     }
+    return convertJob(jobId, '.pptx', path.basename(inputPath), (target) => fs.promises.copyFile(inputPath, target));
+  });
 
-    // 3. Private temp directory (owner-only) for this job
-    const tempDir = await fs.promises.mkdtemp(path.join(app.getPath('temp'), TEMP_DIR_PREFIX));
-    const abortController = new AbortController();
-    activeJobs.set(jobId, { abortController, tempDir });
-
-    try {
-      await fs.promises.chmod(tempDir, 0o700).catch(() => {});
-
-      // Copy under a generated name: LibreOffice never sees the user's path.
-      const safeInputPath = path.join(tempDir, `input-${randomUUID()}.pptx`);
-      await fs.promises.copyFile(inputPath, safeInputPath);
-      if (abortController.signal.aborted) throw new Error('Conversion aborted by user.');
-
-      // 4. Convert
-      const pdfPath = await provider.convertToPdf(safeInputPath, tempDir, abortController.signal);
-
-      // 5. Read output and validate size
-      const stats = await fs.promises.stat(pdfPath);
-      if (stats.size > MAX_CONVERTED_PDF_BYTES) {
-        throw new Error(`Converted PDF exceeds the 500MB size limit (was ${Math.round(stats.size / 1024 / 1024)}MB).`);
-      }
-
-      const pdfBuffer = await fs.promises.readFile(pdfPath);
-      const exact = pdfBuffer.buffer.slice(pdfBuffer.byteOffset, pdfBuffer.byteOffset + pdfBuffer.byteLength);
-
-      return { buffer: exact, name: path.basename(inputPath) };
-    } finally {
-      activeJobs.delete(jobId);
-      // Best-effort cleanup
-      try {
-        await fs.promises.rm(tempDir, { recursive: true, force: true });
-      } catch (err) {
-        console.error(`Failed to cleanup temp directory ${tempDir}:`, err);
-      }
+  // Drag & drop: the renderer sends the dropped file's bytes (it has no path).
+  handleTrusted('pptx:convertBytes', isDev, async (_event, rawJobId: unknown, rawData: unknown, rawName: unknown) => {
+    const jobId = requireJobId(rawJobId);
+    const data = requireBinary(rawData, 'Presentation', MAX_INPUT_PPTX_BYTES);
+    const name = typeof rawName === 'string' ? path.basename(rawName).slice(0, 255) : 'Presentation.pptx';
+    const extension = path.extname(name).toLowerCase();
+    if (!PRESENTATION_EXTENSIONS.includes(extension)) {
+      throw new Error('Only PowerPoint (.pptx, .ppt) and OpenDocument (.odp) presentations can be converted.');
     }
+    if (!(await provider.isAvailable())) {
+      throw new Error('PowerPoint to PDF conversion is not available on this system (LibreOffice not found).');
+    }
+    return convertJob(jobId, extension, name, (target) => fs.promises.writeFile(target, data, { mode: 0o600 }));
   });
 
   handleTrusted('pptx:cancelConversion', isDev, async (_event, rawJobId: unknown) => {
