@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useUIStore } from '../../store/uiStore';
 import { errorMessage, notifyUser } from '../../utils/notify';
+import { insertStructure } from '../../pdf/formulaCatalog';
+import { EquationRibbon } from './EquationRibbon';
 import styles from './FormulaDialog.module.css';
 
 const SIZES = [12, 14, 16, 20, 24, 32] as const;
@@ -28,6 +30,7 @@ function FormulaDialogBody() {
   const [mod, setMod] = useState<FormulaModule | null>(null);
   const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const menuOpen = useRef(false);
 
   useEffect(() => {
     let alive = true;
@@ -51,20 +54,15 @@ function FormulaDialogBody() {
 
   const close = () => setDialog(null);
 
-  const insertSnippet = (text: string) => {
+  const insertLatex = (text: string) => {
     const el = inputRef.current;
-    if (!el) return;
-    const start = el.selectionStart ?? latex.length;
-    const end = el.selectionEnd ?? latex.length;
-    const next = latex.slice(0, start) + text + latex.slice(end);
-    setLatex(next);
+    const start = el?.selectionStart ?? latex.length;
+    const end = el?.selectionEnd ?? latex.length;
+    const next = insertStructure(latex, start, end, text);
+    setLatex(next.text);
     requestAnimationFrame(() => {
-      el.focus();
-      // Put the cursor inside the first {…} of what was inserted.
-      const brace = text.indexOf('{');
-      const caret = brace >= 0 ? start + brace + 1 : start + text.length;
-      const close = brace >= 0 ? text.indexOf('}', brace) : -1;
-      el.setSelectionRange(caret, close > brace && brace >= 0 ? start + close : caret);
+      el?.focus();
+      el?.setSelectionRange(next.selStart, next.selEnd);
     });
   };
 
@@ -87,7 +85,7 @@ function FormulaDialogBody() {
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     e.stopPropagation();
-    if (e.key === 'Escape') close();
+    if (e.key === 'Escape' && !menuOpen.current) close();
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       void submit();
@@ -102,11 +100,9 @@ function FormulaDialogBody() {
           <span className={styles.hint}>LaTeX · ⌘↩ to {editing ? 'update' : 'insert'}</span>
         </div>
 
-        <div className={styles.snippets} role="toolbar" aria-label="Quick insert">
-          {(mod?.FORMULA_SNIPPETS ?? []).map((s) => (
-            <button key={s.title} type="button" title={`${s.title}: ${s.insert}`} onClick={() => insertSnippet(s.insert)}>{s.label}</button>
-          ))}
-        </div>
+        {mod
+          ? <EquationRibbon onInsert={insertLatex} onMenuChange={(open) => { menuOpen.current = open; }} />
+          : <div className={styles.ribbonLoading}>Loading…</div>}
 
         <textarea
           ref={inputRef}

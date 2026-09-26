@@ -13,7 +13,7 @@
   background: var(--bg-primary, #ffffff);
   border-radius: 10px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15), 0 2px 8px rgba(0, 0, 0, 0.08);
-  width: 560px;
+  width: 1120px;
   max-width: calc(100vw - 32px);
   display: flex;
   flex-direction: column;
@@ -40,29 +40,6 @@
 .hint {
   font-size: 11px;
   color: var(--text-tertiary, #888888);
-}
-
-.snippets {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  padding: 0 16px;
-}
-
-.snippets button {
-  min-width: 32px;
-  height: 26px;
-  padding: 0 6px;
-  border: 1px solid var(--border-color, #dcdcdc);
-  border-radius: 6px;
-  background: var(--bg-secondary, #f6f6f7);
-  color: inherit;
-  font: 13px/1 'Times New Roman', serif;
-  cursor: pointer;
-}
-
-.snippets button:hover {
-  background: var(--bg-hover, #ececef);
 }
 
 .input {
@@ -184,4 +161,264 @@
 .primary:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+/* ─── Equation ribbon (Word-style) ─────────────────────────────────────── */
+
+.ribbonLoading {
+  height: 76px;
+  margin: 0 16px;
+  display: flex;
+  align-items: center;
+  color: var(--text-tertiary, #888888);
+  font-size: 12px;
+}
+
+.ribbon {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  margin: 0 16px;
+  padding: 6px;
+  border-radius: 8px;
+  background: var(--bg-secondary, #f4f4f6);
+  border: 1px solid var(--border-color, #e3e3e6);
+  user-select: none;
+}
+
+.ribbonGroup {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  padding-right: 6px;
+  border-right: 1px solid var(--border-color, #e0e0e4);
+}
+
+.ribbonGroup:last-child {
+  border-right: 0;
+  padding-right: 0;
+}
+
+.tex {
+  pointer-events: none;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.tex :global(.katex) {
+  font-size: 1em;
+}
+
+.textButton {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 42px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.textButton:hover,
+.structure:hover,
+.symbol:hover,
+.template:hover,
+.galleryMore:hover {
+  background: var(--bg-hover, #e6e6ea);
+}
+
+.textButtonIcon {
+  font: 15px/1 'Times New Roman', serif;
+}
+
+.gallery {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--border-color, #dcdce0);
+  border-radius: 6px;
+  background: var(--bg-primary, #ffffff);
+  overflow: hidden;
+}
+
+.galleryGrid {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  width: 290px;
+  height: 52px;
+  overflow: hidden;
+}
+
+.galleryMore {
+  width: 18px;
+  border: 0;
+  border-left: 1px solid var(--border-color, #e3e3e6);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.symbol {
+  min-width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-primary, #222222);
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 3px;
+}
+
+.structures {
+  gap: 1px;
+}
+
+.structureWrap {
+  position: relative;
+  display: flex;
+}
+
+.structure {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 44px;
+  max-width: 64px;
+  padding: 3px 3px 2px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.structureOpen {
+  background: var(--bg-hover, #e6e6ea);
+}
+
+.structureIcon {
+  height: 36px;
+  display: flex;
+  align-items: center;
+  font-size: 15px;
+  color: var(--text-primary, #222222);
+}
+
+.structureLabel {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 1px;
+  min-height: 24px;
+  font-size: 10.5px;
+  line-height: 1.1;
+  text-align: center;
+  color: var(--text-secondary, #555555);
+}
+
+.menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  z-index: 5;
+  padding: 8px;
+  border-radius: 8px;
+  background: var(--bg-primary, #ffffff);
+  border: 1px solid var(--border-color, #dcdcdc);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+  color: var(--text-primary, #222222);
+  max-height: min(60vh, 440px);
+  overflow: auto;
+}
+
+.symbolMenu {
+  left: 0;
+  width: 440px;
+}
+
+.symbolMenuGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+
+.symbolMenuGrid .symbol {
+  min-width: 32px;
+  height: 32px;
+  font-size: 14px;
+}
+
+.menuSelect {
+  width: 100%;
+  height: 26px;
+  margin-bottom: 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color, #dcdcdc);
+  background: var(--bg-primary, #ffffff);
+  color: inherit;
+}
+
+.structureMenu {
+  left: 50%;
+  transform: translateX(-50%);
+  width: 380px;
+}
+
+.structureWrap:nth-last-child(-n + 4) .structureMenu {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+
+.structureWrap:nth-child(-n + 2) .structureMenu {
+  left: 0;
+  transform: none;
+}
+
+.menuHeading {
+  margin: 4px 2px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-tertiary, #888888);
+}
+
+.templateGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.template {
+  min-height: 52px;
+  padding: 4px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.template :global(.katex-display) {
+  margin: 0;
 }

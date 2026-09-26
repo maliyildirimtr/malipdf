@@ -127,23 +127,3 @@ export async function renderFormula(latex: string, style: FormulaStyle): Promise
   if (!blob) throw new Error('Could not draw the formula.');
   return { png: new Uint8Array(await blob.arrayBuffer()), width, height };
 }
-
-/** Common building blocks for the dialog's quick-insert buttons. */
-export const FORMULA_SNIPPETS: readonly { label: string; insert: string; title: string }[] = [
-  { label: 'a/b', insert: '\\frac{a}{b}', title: 'Fraction' },
-  { label: 'x²', insert: '^{2}', title: 'Power' },
-  { label: 'xₙ', insert: '_{n}', title: 'Subscript' },
-  { label: '√', insert: '\\sqrt{x}', title: 'Square root' },
-  { label: 'Σ', insert: '\\sum_{i=1}^{n}', title: 'Sum' },
-  { label: '∫', insert: '\\int_{a}^{b}', title: 'Integral' },
-  { label: 'lim', insert: '\\lim_{x \\to \\infty}', title: 'Limit' },
-  { label: 'Ā', insert: '\\overline{A}', title: 'NOT (overline)' },
-  { label: '·', insert: '\\cdot ', title: 'AND (dot)' },
-  { label: '⊕', insert: '\\oplus ', title: 'XOR' },
-  { label: '→', insert: '\\rightarrow ', title: 'Arrow' },
-  { label: '≤', insert: '\\leq ', title: 'Less or equal' },
-  { label: '≠', insert: '\\neq ', title: 'Not equal' },
-  { label: 'α', insert: '\\alpha ', title: 'Alpha' },
-  { label: 'π', insert: '\\pi ', title: 'Pi' },
-  { label: '[ ]', insert: '\\begin{bmatrix} a & b \\\\ c & d \\end{bmatrix}', title: 'Matrix' },
-];
