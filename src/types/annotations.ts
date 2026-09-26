@@ -80,6 +80,8 @@ interface BaseAnnotation {
   locked: boolean;
   /** Hidden in the view and left out of Save/Export (Annotations panel). */
   hidden?: boolean;
+  /** Labels such as "important" or "exam", for finding annotations again. */
+  tags?: string[];
   readonly createdAt: number;      // Date.now()
   updatedAt: number;
 }

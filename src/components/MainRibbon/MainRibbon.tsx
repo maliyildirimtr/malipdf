@@ -1,6 +1,8 @@
 import { MEASURE_UNITS } from '../../pdf/measure';
 import type { MeasureUnit } from '../../types/annotations';
 import React from 'react';
+import { useSelectionStore } from '../../store/selectionStore';
+import { SelectionTagButton } from '../Tags/TagPicker';
 import {
   AlignCenter,
   AlignLeft,
@@ -152,6 +154,11 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
   const splitOpen = useUIStore((s) => s.splitView !== null);
   const [density, setDensity] = React.useState<'full' | 'compact' | 'tight'>('full');
   const { activeDocId, documents } = useDocumentStore();
+  // Re-render when the selection changes, so selection commands enable at once.
+  useSelectionStore((s) => {
+    const doc = activeDocId ? documents.get(activeDocId) : undefined;
+    return doc ? s.getSelection({ docId: doc.id, instanceId: doc.instanceId })?.selectedIds.length ?? 0 : 0;
+  });
   const {
     activeTool,
     toolOptions,
@@ -429,7 +436,7 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
         </ToolbarGroup>
       </div>
 
-      <div className={styles.propertyShelf} role="toolbar" aria-label={`${activeCommand.shortLabel} properties`}>
+      <div className={styles.propertyShelf} data-keeps-selection role="toolbar" aria-label={`${activeCommand.shortLabel} properties`}>
         <div className={styles.toolIdentity} aria-label={`Active tool: ${activeCommand.shortLabel}`}>
           <ActiveToolIcon size={17} aria-hidden="true" />
           <strong>{activeCommand.shortLabel}</strong>
@@ -450,6 +457,7 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
               <button type="button" className={styles.shelfButton} disabled={!isEnabled('edit.deleteSelected')} onClick={() => runCommand('edit.deleteSelected')} title="Delete (⌫)">
                 <Trash2 size={14} aria-hidden="true" /> Delete
               </button>
+              <SelectionTagButton />
               <PropertySeparator />
             </>
           )}

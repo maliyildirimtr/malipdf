@@ -421,7 +421,8 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
 
     const clearWhenOutside = (event: PointerEvent) => {
       const target = event.target as Element | null;
-      if (target?.closest?.('[data-annotation-canvas="true"]')) {
+      // Pages, and controls that act on the selection (tool shelf, tag menu).
+      if (target?.closest?.('[data-annotation-canvas="true"], [data-keeps-selection]')) {
         return;
       }
       useSelectionStore.getState().clearSelection(identity);
