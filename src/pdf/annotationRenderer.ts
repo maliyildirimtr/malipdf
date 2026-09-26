@@ -52,6 +52,10 @@ export function renderAnnotations(
   ctx.scale(dpr, dpr);
 
   for (const ann of annotations) {
+    // Every annotation starts from a clean state: a dashed shape must never
+    // leave its dash pattern (or alpha, caps, …) on the next pen stroke.
+    ctx.save();
+    ctx.setLineDash([]);
     switch (ann.type) {
       case 'stroke':
         renderStroke(ctx, ann, transform);
@@ -74,6 +78,7 @@ export function renderAnnotations(
       default:
         console.warn(`Unsupported annotation type: ${(ann as any).type}`);
     }
+    ctx.restore();
   }
 
   ctx.restore();

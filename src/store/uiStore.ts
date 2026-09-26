@@ -81,6 +81,8 @@ interface UIStore {
   updateEraserOptions: (patch: Partial<ToolOptions['eraser']>) => void;
   updateTextOptions: (patch: Partial<ToolOptions['text']>) => void;
   updateShapeOptions: (patch: Partial<ToolOptions['shape']>) => void;
+  /** Saved style per shape tool (see shapeStyleKey). */
+  shapeStyles: Partial<Record<ShapeStyleKey, ToolOptions['shape']>>;
   updateFreeformOptions: (patch: Partial<ToolOptions['freeform']>) => void;
 
   // Workspace chrome
@@ -174,17 +176,43 @@ export const SIGNATURES_MAX = 6;
 /** ~750 KB per signature is far more than a trimmed signature ever needs. */
 export const SIGNATURE_MAX_CHARS = 1_000_000;
 
+export type ShapeStyleKey = 'line' | 'arrow' | 'rectangle' | 'ellipse' | 'freeform';
+const DEFAULT_SHAPE_OPTIONS: ToolOptions['shape'] = { ...defaultToolOptions.shape };
+
+/** Which saved shape style a tool uses (rounded rectangles share the rectangle's). */
+export function shapeStyleKey(tool: ToolType): ShapeStyleKey | null {
+  switch (tool) {
+    case 'line':
+    case 'arrow':
+    case 'rectangle':
+    case 'ellipse':
+    case 'freeform':
+      return tool;
+    case 'roundedRect':
+      return 'rectangle';
+    default:
+      return null;
+  }
+}
+
 export const useUIStore = create<UIStore>()(
   subscribeWithSelector(
     persist(
       (set, get) => ({
         activeTool: 'select',
-        setActiveTool: (tool) => set((state) => ({
-          activeTool: tool,
-          lastShapeTool: isFocusShapeTool(tool)
-            ? tool
-            : state.lastShapeTool,
-        })),
+        setActiveTool: (tool) => set((state) => {
+          // Each shape tool keeps its own style (line, arrow, rectangle, …):
+          // switching tools swaps the style shown in the toolbar.
+          const key = shapeStyleKey(tool);
+          const shape = key ? { ...DEFAULT_SHAPE_OPTIONS, ...state.shapeStyles[key] } : state.toolOptions.shape;
+          return {
+            activeTool: tool,
+            lastShapeTool: isFocusShapeTool(tool)
+              ? tool
+              : state.lastShapeTool,
+            toolOptions: key ? { ...state.toolOptions, shape } : state.toolOptions,
+          };
+        }),
         temporaryTool: null,
         setTemporaryTool: (tool) => set({ temporaryTool: tool }),
 
@@ -204,9 +232,15 @@ export const useUIStore = create<UIStore>()(
             toolOptions: { ...s.toolOptions, text: { ...s.toolOptions.text, ...patch } },
           })),
         updateShapeOptions: (patch) =>
-          set((s) => ({
-            toolOptions: { ...s.toolOptions, shape: { ...s.toolOptions.shape, ...patch } },
-          })),
+          set((s) => {
+            const shape = { ...s.toolOptions.shape, ...patch };
+            const key = shapeStyleKey(s.activeTool);
+            return {
+              toolOptions: { ...s.toolOptions, shape },
+              shapeStyles: key ? { ...s.shapeStyles, [key]: shape } : s.shapeStyles,
+            };
+          }),
+        shapeStyles: {},
         updateFreeformOptions: (patch) =>
           set((s) => ({
             toolOptions: { ...s.toolOptions, freeform: { ...s.toolOptions.freeform, ...patch } },
@@ -340,6 +374,7 @@ export const useUIStore = create<UIStore>()(
           recentColors: state.recentColors,
           penPresets: state.penPresets,
           signatures: state.signatures,
+          shapeStyles: state.shapeStyles,
           hiddenToolbarTools: state.hiddenToolbarTools,
         }),
       },
