@@ -1,5 +1,6 @@
 import type { Annotation, PdfRect, PdfPoint } from '../types/annotations';
 import { pointsBoundingBox } from './coordinateTransform';
+import { hasRealPressure } from './inkGeometry';
 
 /**
  * Get the axis-aligned bounding rect of an annotation in PDF User Space.
@@ -9,7 +10,8 @@ export function getAnnotationBounds(annotation: Annotation): PdfRect {
     case 'stroke':
     case 'highlight': {
       const { minX, minY, maxX, maxY } = pointsBoundingBox(annotation.points);
-      const pad = annotation.width / 2;
+      // Pressure strokes are up to 1.7× the nominal width.
+      const pad = annotation.width * (annotation.type === 'stroke' && annotation.pressure && hasRealPressure(annotation.points) ? 0.85 : 0.5);
       return { x: minX - pad, y: minY - pad, width: (maxX - minX) + pad * 2, height: (maxY - minY) + pad * 2 };
     }
     case 'freeform': {

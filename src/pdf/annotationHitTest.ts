@@ -14,6 +14,7 @@
  * Output: annotation id or null
  */
 
+import { hasRealPressure } from './inkGeometry';
 import type {
   Annotation,
   StrokeAnnotation,
@@ -157,9 +158,10 @@ function hitTestStroke(
   tolerance: number,
 ): boolean {
   const { points } = annotation;
-  // Half the stroke width in PDF space + tolerance
-  const halfWidth = (annotation.width / 2) + tolerance;
+  // Half the stroke width in PDF space + tolerance (pressure strokes reach 1.7×)
+  const halfWidth = annotation.width * (annotation.pressure && hasRealPressure(points) ? 0.85 : 0.5) + tolerance;
 
+  if (points.length === 1) return Math.hypot(pt.x - points[0].x, pt.y - points[0].y) <= halfWidth;
   for (let i = 0; i < points.length - 1; i++) {
     if (distanceToSegment(pt, points[i], points[i + 1]) <= halfWidth) {
       return true;

@@ -26,3 +26,6 @@ npm-debug.log*
 
 # electron-builder output
 release/
+
+# Screenshots/files delivered by Claude
+Claude outputs/

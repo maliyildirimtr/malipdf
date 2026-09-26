@@ -1,3 +1,4 @@
+import { simplifyInkPoints } from './inkGeometry';
 import type { PdfPoint, Annotation, StrokeAnnotation, HighlightAnnotation, InputPoint } from '../types/annotations';
 
 // ─── Geometry Primitives ──────────────────────────────────────────────────────
@@ -268,8 +269,11 @@ export function eraseStrokePath(
   }
 
   if (!touched) return { erased: false, segments: [points] };
+  // splitStrokePath resamples to 1 pt spacing to cut precisely; drop the
+  // extra in-between points again so erased strokes do not grow.
   return {
     erased: true,
-    segments: splitStrokePath(points, strokeWidth, eraserStart, eraserEnd, eraserRadius),
+    segments: splitStrokePath(points, strokeWidth, eraserStart, eraserEnd, eraserRadius)
+      .map((segment) => simplifyInkPoints(segment, 0.05, strokeWidth * 0.7)),
   };
 }

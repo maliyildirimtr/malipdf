@@ -31,11 +31,27 @@ import {
   rgb,
   StandardFonts,
   LineCapStyle,
-  BlendMode,
   PDFName,
   PDFNumber,
 } from 'pdf-lib';
-import type { PDFPage, PDFImage, PDFFont } from 'pdf-lib';
+import {
+  appendBezierCurve,
+  closePath,
+  fill as fillOp,
+  LineJoinStyle,
+  lineTo,
+  moveTo,
+  popGraphicsState,
+  pushGraphicsState,
+  setFillingColor,
+  setGraphicsState,
+  setLineCap,
+  setLineJoin,
+  setLineWidth,
+  setStrokingColor,
+  stroke as strokeOp,
+} from 'pdf-lib';
+import type { PDFPage, PDFImage, PDFFont, PDFOperator } from 'pdf-lib';
 import type {
   Annotation,
   StrokeAnnotation,
@@ -54,6 +70,7 @@ import { fontFamilyKey, fontStyleKey, type FontFamilyKey, type FontStyleKey } fr
 import { layoutTextLines, LINE_HEIGHT, TEXT_PADDING } from './textLayout';
 import { captureEditableState, writeEditableData, type EditableAsset } from './editableData';
 import { appendBookmarksToOutline } from './outlineWriter';
+import { highlightShape, penShape, type InkShape, type PathCommand } from './inkGeometry';
 
 export type ImageAssetResolver =
   | Map<string, ImageAsset>
@@ -248,127 +265,101 @@ function toLib(pdfX: number, pdfY: number, _context: PdfPageExportContext): { x:
   return annotationPointToExportPoint(pdfX, pdfY);
 }
 
-/** Matches the committed-canvas Catmull-Rom interpolation in PDF space. */
-function smoothAnnotationPoints(points: readonly InputPoint[]): InputPoint[] {
-  if (points.length < 3) return [...points];
-  const result: InputPoint[] = [{ ...points[0] }];
-  for (let index = 0; index < points.length - 1; index++) {
-    const p0 = points[Math.max(index - 1, 0)];
-    const p1 = points[index];
-    const p2 = points[index + 1];
-    const p3 = points[Math.min(index + 2, points.length - 1)];
-    for (let step = 1; step <= 8; step++) {
-      const s = step / 8;
-      const s2 = s * s;
-      const s3 = s2 * s;
-      result.push({
-        x: 0.5 * ((2 * p1.x) + (-p0.x + p2.x) * s +
-          (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * s2 +
-          (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * s3),
-        y: 0.5 * ((2 * p1.y) + (-p0.y + p2.y) * s +
-          (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * s2 +
-          (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * s3),
-        pressure: p1.pressure + (p2.pressure - p1.pressure) * s,
-        timestamp: p1.timestamp,
-      });
-    }
+// ─── Ink (pen / highlighter) ──────────────────────────────────────────────────
+
+/** Coordinates are written with 0.01 pt precision (keeps content streams small). */
+const round2 = (value: number) => Math.round(value * 100) / 100;
+
+const extGStateCache = new WeakMap<PDFPage, Map<string, PDFName>>();
+
+/** One ExtGState per (opacity, blend) per page — not one per drawing call. */
+function graphicsStateFor(page: PDFPage, opacity: number, blend?: 'Multiply'): PDFName | null {
+  const alpha = Math.max(0, Math.min(1, opacity));
+  if (alpha >= 1 && !blend) return null;
+  let cache = extGStateCache.get(page);
+  if (!cache) {
+    cache = new Map();
+    extGStateCache.set(page, cache);
   }
-  result.push({ ...points[points.length - 1] });
-  return result;
+  const key = `${alpha}|${blend ?? ''}`;
+  let name = cache.get(key);
+  if (!name) {
+    const dict = page.doc.context.obj({
+      Type: 'ExtGState',
+      CA: alpha,
+      ca: alpha,
+      ...(blend ? { BM: blend } : {}),
+    });
+    name = page.node.newExtGState('GS', dict);
+    cache.set(key, name);
+  }
+  return name;
 }
 
-// ─── Stroke annotation ─────────────────────────────────────────────────────────
+function pathOperators(commands: readonly PathCommand[], info: PdfPageExportContext): PDFOperator[] {
+  const ops: PDFOperator[] = [];
+  const p = (x: number, y: number) => {
+    const point = toLib(x, y, info);
+    return [round2(point.x), round2(point.y)] as const;
+  };
+  for (const c of commands) {
+    if (c.op === 'M') ops.push(moveTo(...p(c.x, c.y)));
+    else if (c.op === 'L') ops.push(lineTo(...p(c.x, c.y)));
+    else if (c.op === 'C') ops.push(appendBezierCurve(...p(c.x1, c.y1), ...p(c.x2, c.y2), ...p(c.x, c.y)));
+    else ops.push(closePath());
+  }
+  return ops;
+}
 
-/**
- * Draw a stroke annotation as a PDF path.
- *
- * Approach: draw each segment individually to support variable opacity
- * and match the canvas rendering as closely as possible.
- *
- * pdf-lib does not support variable width inside one path, so pressure strokes
- * are emitted as adjacent segments using the same width formula as canvas.
- */
+/** Draws one ink shape as a single PDF path (one stroke or one fill). */
+function drawInkShape(
+  page: PDFPage,
+  shape: InkShape,
+  info: PdfPageExportContext,
+  style: { color: string; width: number; opacity: number; blend?: 'Multiply'; cap: 'round' | 'butt' },
+): void {
+  if (shape.commands.length === 0) return;
+  const color = parseCssColor(style.color);
+  const gs = graphicsStateFor(page, style.opacity, style.blend);
+  const ops: PDFOperator[] = [pushGraphicsState()];
+  if (gs) ops.push(setGraphicsState(gs));
+  if (shape.mode === 'stroke') {
+    ops.push(
+      setStrokingColor(color),
+      setLineWidth(round2(style.width)),
+      setLineCap(style.cap === 'round' ? LineCapStyle.Round : LineCapStyle.Butt),
+      setLineJoin(LineJoinStyle.Round),
+      ...pathOperators(shape.commands, info),
+      strokeOp(),
+    );
+  } else {
+    ops.push(setFillingColor(color), ...pathOperators(shape.commands, info), fillOp());
+  }
+  ops.push(popGraphicsState());
+  page.pushOperators(...ops);
+}
+
 function exportStroke(
   page: PDFPage,
   annotation: StrokeAnnotation,
   info: PdfPageExportContext,
 ): void {
-  const { color, width, opacity } = annotation;
-  const points = annotation.smooth ? smoothAnnotationPoints(annotation.points) : annotation.points;
-  if (points.length < 2) return;
-
-  const strokeColor = parseCssColor(color);
-
-  // For pressure-sensitive strokes, segment into groups with averaged width
-  // This approximates the variable width rendering better than a single width
-  if (annotation.pressure && points.some(p => p.pressure !== 0.5)) {
-    for (let i = 0; i < points.length - 1; i++) {
-      const p0 = points[i];
-      const p1 = points[i + 1];
-      const segWidth = width * (0.3 + p0.pressure * 1.4);
-      const start = toLib(p0.x, p0.y, info);
-      const end   = toLib(p1.x, p1.y, info);
-      page.drawLine({
-        start,
-        end,
-        thickness: segWidth,
-        color: strokeColor,
-        opacity,
-        lineCap: LineCapStyle.Round,
-      });
-    }
-    return;
-  }
-
-  // Draw direct PDF line operators. drawSvgPath uses SVG's inverted Y axis and
-  // would mirror canonical PDF-space pen points.
-  const libPoints = points.map(p => toLib(p.x, p.y, info));
-  for (let index = 0; index < libPoints.length - 1; index++) {
-    page.drawLine({
-      start: libPoints[index],
-      end: libPoints[index + 1],
-      thickness: width,
-      color: strokeColor,
-      opacity,
-      lineCap: LineCapStyle.Round,
-    });
-  }
+  const shape = penShape(annotation.points, annotation.width, annotation.smooth, annotation.pressure);
+  drawInkShape(page, shape, info, { color: annotation.color, width: annotation.width, opacity: annotation.opacity, cap: 'round' });
 }
 
-// ─── Highlight annotation ──────────────────────────────────────────────────────
-
-/**
- * Draw a highlight annotation.
- *
- * The canvas renderer uses globalCompositeOperation='multiply' for highlights.
- * pdf-lib supports BlendMode.Multiply for similar effect.
- *
- * We draw the highlight as a thick stroke with the Multiply blend mode.
- */
 function exportHighlight(
   page: PDFPage,
   annotation: HighlightAnnotation,
   info: PdfPageExportContext,
 ): void {
-  const { color, width, opacity } = annotation;
-  const points = smoothAnnotationPoints(annotation.points);
-  if (points.length < 2) return;
-
-  const highlightColor = parseCssColor(color);
-  const libPoints = points.map(p => toLib(p.x, p.y, info));
-
-  // Draw each segment with multiply blend mode
-  for (let i = 0; i < libPoints.length - 1; i++) {
-    page.drawLine({
-      start: libPoints[i],
-      end:   libPoints[i + 1],
-      thickness: width,
-      color: highlightColor,
-      opacity,
-      lineCap: LineCapStyle.Butt,
-      blendMode: BlendMode.Multiply,
-    });
-  }
+  drawInkShape(page, highlightShape(annotation.points), info, {
+    color: annotation.color,
+    width: annotation.width,
+    opacity: annotation.opacity,
+    blend: 'Multiply',
+    cap: 'butt',
+  });
 }
 
 // ─── Text annotation ───────────────────────────────────────────────────────────
@@ -718,7 +709,7 @@ function validateAnnotation(annotation: Annotation, pageIndex: number): void {
   switch (annotation.type) {
     case 'stroke':
       assertPositive(annotation.width, 'stroke width');
-      if (annotation.points.length < 2) throw new Error('Stroke requires at least two points.');
+      if (annotation.points.length < 1) throw new Error('Stroke requires at least one point.');
       annotation.points.forEach((value, index) => validatePoint(value, `stroke point ${index}`));
       return;
     case 'highlight':
@@ -872,7 +863,13 @@ export async function exportAnnotatedPdf(
     const info = createPdfPageExportContext(page);
 
     // Hidden annotations (Annotations panel) are left out of the output.
-    const pageAnnotations = (snapshot.get(pageIndex) || []).filter((annotation) => !annotation.hidden);
+    // Highlights go first (as on screen, where they sit under the ink layer):
+    // they are multiplied onto the page and never cover pen, text or images.
+    const visible = (snapshot.get(pageIndex) || []).filter((annotation) => !annotation.hidden);
+    const pageAnnotations = [
+      ...visible.filter((annotation) => annotation.type === 'highlight'),
+      ...visible.filter((annotation) => annotation.type !== 'highlight'),
+    ];
     if (pageAnnotations.length === 0) continue;
 
     for (const annotation of pageAnnotations) {

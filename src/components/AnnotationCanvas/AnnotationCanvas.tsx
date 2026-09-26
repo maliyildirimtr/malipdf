@@ -41,6 +41,7 @@ import type {
   PdfPoint,
   ShapeKind,
   ImageAnnotation,
+  PdfRect,
 } from '../../types/annotations';
 import type { DocumentIdentity } from '../../types/documentSession';
 import { useAnnotationStore } from '../../store/annotationStore';
@@ -67,12 +68,12 @@ import {
 } from '../../pdf/coordinateTransform';
 import {
   renderAnnotations,
-  renderActiveStroke,
   renderShapePreview,
   renderSelectionOverlay,
   renderSelectionRect,
   renderFreeform,
 } from '../../pdf/annotationRenderer';
+import { simplifyInkPoints } from '../../pdf/inkGeometry';
 import { FloatingInspector } from '../Properties/FloatingInspector';
 import { getAnnotationBounds, getGroupBounds } from '../../pdf/annotationGeometry';
 import { translateAnnotation, scaleAnnotationFromBounds, computeResizeTargetBounds } from '../../pdf/annotationTransform';
@@ -173,6 +174,29 @@ const EMPTY_IDS: string[] = [];
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
+const boundsCache = new WeakMap<Annotation, PdfRect>();
+function getCachedBounds(annotation: Annotation): PdfRect {
+  let bounds = boundsCache.get(annotation);
+  if (!bounds) {
+    bounds = getAnnotationBounds(annotation);
+    boundsCache.set(annotation, bounds);
+  }
+  return bounds;
+}
+function unionRects(a: PdfRect, b: PdfRect): PdfRect {
+  const x = Math.min(a.x, b.x);
+  const y = Math.min(a.y, b.y);
+  return { x, y, width: Math.max(a.x + a.width, b.x + b.width) - x, height: Math.max(a.y + a.height, b.y + b.height) - y };
+}
+function rectsOverlap(a: PdfRect, b: PdfRect): boolean {
+  return a.x <= b.x + b.width && a.x + a.width >= b.x && a.y <= b.y + b.height && a.y + a.height >= b.y;
+}
+
+/** Points closer than this (screen px) to the drawn line are dropped on pen-up. */
+const INK_SIMPLIFY_PX = 0.35;
+/** Touches this soon after pen input are treated as a resting palm. */
+const PALM_REJECTION_MS = 1000;
+
 const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCanvas({
   docId,
   instanceId,
@@ -181,6 +205,9 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
   onInteractionPinChange,
 }) {
   const annotationCanvasRef = useRef<HTMLCanvasElement>(null);
+  // Highlights live on their own layer (CSS mix-blend-mode: multiply) under
+  // the ink layer, so the page text below them stays dark.
+  const highlightCanvasRef  = useRef<HTMLCanvasElement>(null);
   const drawingCanvasRef    = useRef<HTMLCanvasElement>(null);
   const interactionRef      = useRef<HTMLDivElement>(null);
   const textareaRef         = useRef<HTMLTextAreaElement>(null);
@@ -205,9 +232,16 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
   const selectionBefore  = useRef<string[]>([]);
   const gestureSelectedIdsRef = useRef<string[]>([]);
   const shiftKeyRef = useRef(false);
+  const predictedPoints = useRef<InputPoint[]>([]);
+  const lastPenInputAt = useRef(0);
+  const layerRedrawId = useRef<number | null>(null);
+  const pendingRedrawRegion = useRef<PdfRect | null>(null);
+  const lastLayerDraw = useRef<{
+    list: Annotation[]; transform: PageTransform; dpr: number; overlay: boolean; width: number; height: number;
+  } | null>(null);
 
   // Eraser gesture state
-  const eraserHitsRef = useRef<Map<string, { type: 'delete' } | { type: 'split', segments: InputPoint[][] }>>(new Map());
+  const eraserHitsRef = useRef<Map<string, { type: 'delete' } | { type: 'split', segments: InputPoint[][]; pieces: Annotation[] }>>(new Map());
   const lastEraserPointRef = useRef<PdfPoint | null>(null);
   const originalEraserSnapshotRef = useRef<Annotation[]>([]);
 
@@ -316,6 +350,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
   }, [interactionTool]);
 
   useEffect(() => {
+    sizeCanvas(highlightCanvasRef.current);
     sizeCanvas(annotationCanvasRef.current);
     sizeCanvas(drawingCanvasRef.current);
     redrawAnnotationLayer();
@@ -324,14 +359,27 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
 
   // ── Annotation layer (completed annotations + selection overlay) ──────────
 
-  const redrawAnnotationLayer = useCallback(() => {
+  /**
+   * Redraws the highlight + ink layers.
+   * - Full redraw by default.
+   * - `region` (PDF space): only that area is cleared and repainted, with just
+   *   the annotations that overlap it (used by the eraser).
+   * - Append fast path: when the page only gained annotations at the top of
+   *   the stack (a new stroke), only the new ones are painted.
+   */
+  const redrawAnnotationLayer = useCallback((region?: PdfRect) => {
+    if (layerRedrawId.current !== null) {
+      cancelAnimationFrame(layerRedrawId.current);
+      layerRedrawId.current = null;
+    }
+    if (!region) pendingRedrawRegion.current = null;
     const canvas = annotationCanvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+    const highlightCanvas = highlightCanvasRef.current;
+    const highlightCtx = highlightCanvas?.getContext('2d') ?? null;
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
     const isActiveGesture = mode.current === 'moving' || mode.current === 'resizing';
     const activeIds = isActiveGesture ? gestureSelectedIdsRef.current : [];
     
@@ -349,14 +397,8 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
       if (eraseHit?.type === 'delete') continue;
 
       if (eraseHit?.type === 'split' && (a.type === 'stroke' || a.type === 'highlight')) {
-        // Draw the split segments instead of the original
-        for (const segmentPts of eraseHit.segments) {
-          committedAnnotations.push({
-            ...a,
-            id: generateId(),
-            points: segmentPts,
-          });
-        }
+        // Draw the remaining pieces instead of the original
+        committedAnnotations.push(...eraseHit.pieces);
         continue;
       }
 
@@ -367,11 +409,59 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
         committedAnnotations.push(a);
       }
     }
-    
-    renderAnnotations(ctx, committedAnnotations, transform, dpr, identity, redrawAnnotationLayer);
+
+    const showOverlay = currentSelectedIds.length > 0 && !isActiveGesture;
+    const previous = lastLayerDraw.current;
+    const sameSurface = previous !== null && previous.transform === transform && previous.dpr === dpr
+      && previous.width === canvas.width && previous.height === canvas.height;
+
+    const paint = (list: Annotation[]) => {
+      if (highlightCtx) {
+        renderAnnotations(highlightCtx, list.filter((a) => a.type === 'highlight'), transform, dpr, identity);
+        renderAnnotations(ctx, list.filter((a) => a.type !== 'highlight'), transform, dpr, identity, () => redrawAnnotationLayer());
+      } else {
+        renderAnnotations(ctx, list, transform, dpr, identity, () => redrawAnnotationLayer());
+      }
+    };
+
+    if (region && sameSurface && !previous!.overlay && !showOverlay) {
+      // ── Partial repaint (eraser) ──
+      const screen = pdfRectToScreenBounds(region, transform);
+      const pad = 2;
+      const x = Math.floor((screen.x - pad) * dpr);
+      const y = Math.floor((screen.y - pad) * dpr);
+      const w = Math.ceil((screen.width + pad * 2) * dpr);
+      const h = Math.ceil((screen.height + pad * 2) * dpr);
+      const layers = highlightCtx ? [ctx, highlightCtx] : [ctx];
+      for (const layer of layers) {
+        layer.save();
+        layer.beginPath();
+        layer.rect(x, y, w, h);
+        layer.clip();
+        layer.clearRect(x, y, w, h);
+      }
+      paint(committedAnnotations.filter((a) => rectsOverlap(getCachedBounds(a), region)));
+      for (const layer of layers) layer.restore();
+      lastLayerDraw.current = { list: committedAnnotations, transform, dpr, overlay: false, width: canvas.width, height: canvas.height };
+      return;
+    }
+
+    if (!region && sameSurface && !previous!.overlay && !showOverlay
+      && committedAnnotations.length > previous!.list.length
+      && previous!.list.every((a, i) => committedAnnotations[i] === a)) {
+      // ── Append fast path (new stroke on top) ──
+      paint(committedAnnotations.slice(previous!.list.length));
+      lastLayerDraw.current = { ...previous!, list: committedAnnotations };
+      return;
+    }
+
+    // ── Full repaint ──
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (highlightCanvas && highlightCtx) highlightCtx.clearRect(0, 0, highlightCanvas.width, highlightCanvas.height);
+    paint(committedAnnotations);
 
     // Draw selection overlays for selected annotations (unless they are being actively moved/resized)
-    if (currentSelectedIds.length > 0 && !isActiveGesture) {
+    if (showOverlay) {
       const selectedAnns: Annotation[] = [];
       for (const id of currentSelectedIds) {
         const ann = currentAnnotations.find(a => a.id === id);
@@ -391,12 +481,30 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
         renderSelectionOverlay(ctx, screenBounds, handles, dpr);
       }
     }
+    lastLayerDraw.current = {
+      list: committedAnnotations, transform, dpr, overlay: showOverlay, width: canvas.width, height: canvas.height,
+    };
   }, [docId, pageIndex, transform, dpr, annotations, selectedIdsArray, getPageAnnotations, identity]);
 
   // Re-render whenever store or selection changes
   useEffect(() => {
     redrawAnnotationLayer();
   }, [redrawAnnotationLayer, selectionState?.transientStyle]);
+
+  /** Coalesce many redraw requests (eraser) into one per animation frame. */
+  function scheduleLayerRedraw(region?: PdfRect) {
+    if (region) {
+      const r = pendingRedrawRegion.current;
+      pendingRedrawRegion.current = r ? unionRects(r, region) : region;
+    }
+    if (layerRedrawId.current !== null) return;
+    layerRedrawId.current = requestAnimationFrame(() => {
+      layerRedrawId.current = null;
+      const pending = pendingRedrawRegion.current;
+      pendingRedrawRegion.current = null;
+      redrawAnnotationLayer(pending ?? undefined);
+    });
+  }
 
   // ── Drawing canvas helpers ────────────────────────────────────────────────
 
@@ -426,17 +534,9 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     const m = mode.current;
 
     if (m === 'drawing') {
-      const pts = activePoints.current;
-      if (pts.length < 2) return;
-      const isHL = (gestureToolRef.current ?? interactionTool) === 'highlighter';
-      renderActiveStroke(
-        ctx, pts,
-        isHL ? toolOptions.highlighter.color : toolOptions.pen.color,
-        (isHL ? toolOptions.highlighter.width : toolOptions.pen.width) * scale,
-        isHL ? toolOptions.highlighter.opacity : toolOptions.pen.opacity,
-        isHL,
-        dpr,
-      );
+      const pts = [...activePoints.current, ...predictedPoints.current];
+      const preview = buildInkAnnotation(pts, gestureToolRef.current ?? interactionTool);
+      if (preview) renderAnnotations(ctx, [preview], transform, dpr);
     } else if (m === 'freeformDrawing') {
       const screenPts = activePoints.current;
       if (screenPts.length < 1) return;
@@ -538,6 +638,41 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
 
   // ── Pointer helpers ───────────────────────────────────────────────────────
 
+  /**
+   * The annotation for a pen/highlighter gesture (screen points). Used for
+   * the live preview and the committed stroke, so both look identical.
+   */
+  function buildInkAnnotation(screenPts: InputPoint[], tool: ToolType | null, simplify = false): Annotation | null {
+    const isHighlight = tool === 'highlighter';
+    if (screenPts.length < (isHighlight ? 2 : 1)) return null;
+    let pdfPts = screenPointsToPdf(screenPts, transform);
+    const now = Date.now();
+    if (isHighlight) {
+      const options = toolOptions.highlighter;
+      if (simplify) pdfPts = simplifyInkPoints(pdfPts, INK_SIMPLIFY_PX / scale);
+      return {
+        id: nanoid(), pageIndex, type: 'highlight',
+        points: pdfPts, color: options.color, width: options.width, opacity: options.opacity,
+        locked: false, createdAt: now, updatedAt: now,
+      };
+    }
+    const options = toolOptions.pen;
+    if (simplify) pdfPts = simplifyInkPoints(pdfPts, INK_SIMPLIFY_PX / scale, options.pressureSensitive ? options.width * 0.7 : 0);
+    return {
+      id: nanoid(), pageIndex, type: 'stroke',
+      points: pdfPts, color: options.color, width: options.width, opacity: options.opacity,
+      smooth: options.smooth, pressure: options.pressureSensitive,
+      locked: false, createdAt: now, updatedAt: now,
+    };
+  }
+
+  /** Only one pointer draws at a time; a resting palm is ignored while a pen is in use. */
+  function isForeignPointer(e: React.PointerEvent<HTMLDivElement>): boolean {
+    if (e.pointerType === 'pen') lastPenInputAt.current = e.timeStamp;
+    if (activePointerIdRef.current !== null && e.pointerId !== activePointerIdRef.current) return true;
+    return e.pointerType === 'touch' && e.timeStamp - lastPenInputAt.current < PALM_REJECTION_MS;
+  }
+
   function getPagePoint(e: React.PointerEvent<HTMLDivElement> | PointerEvent): { screenX: number; screenY: number } {
     const rect = interactionRef.current!.getBoundingClientRect();
     return { screenX: e.clientX - rect.left, screenY: e.clientY - rect.top };
@@ -556,6 +691,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
 
   function onPointerDown(e: React.PointerEvent<HTMLDivElement>) {
     if (e.button !== 0) return; // left button only
+    if (isForeignPointer(e)) return;
     
     // Pass through to DocumentArea for panning
     if (interactionTool === 'hand') return;
@@ -569,10 +705,15 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
 
     const { screenX, screenY } = getPagePoint(e);
     const pdfPt = screenToPdfPoint(screenX, screenY);
+    // The preview layer multiplies only while a highlighter is drawn.
+    if (drawingCanvasRef.current) {
+      drawingCanvasRef.current.style.mixBlendMode = interactionTool === 'highlighter' ? 'multiply' : 'normal';
+    }
 
     // ── Pen / Highlighter ──
     if (interactionTool === 'pen' || interactionTool === 'highlighter') {
       mode.current = 'drawing';
+      predictedPoints.current = [];
       activePoints.current = [{ x: screenX, y: screenY, pressure: e.pressure > 0 ? e.pressure : 0.5, timestamp: e.timeStamp }];
       schedulePreviewRender();
       return;
@@ -759,6 +900,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
   // ── Pointer move ──────────────────────────────────────────────────────────
 
   function onPointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    if (isForeignPointer(e)) return;
     shiftKeyRef.current = e.shiftKey;
     const m = mode.current;
     if (m === 'idle') return;
@@ -779,6 +921,13 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
           timestamp: ev.timeStamp,
         });
       }
+      // Predicted points shorten the visible lag; they are preview-only.
+      predictedPoints.current = (e.nativeEvent.getPredictedEvents?.() ?? []).slice(0, 2).map((ev) => ({
+        x: ev.clientX - rect.left,
+        y: ev.clientY - rect.top,
+        pressure: ev.pressure > 0 ? ev.pressure : 0.5,
+        timestamp: ev.timeStamp,
+      }));
       schedulePreviewRender();
       return;
     }
@@ -866,7 +1015,9 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
   // ── Pointer up ────────────────────────────────────────────────────────────
 
   function onPointerUp(e: React.PointerEvent<HTMLDivElement>) {
+    if (activePointerIdRef.current !== null && e.pointerId !== activePointerIdRef.current) return;
     const m = mode.current;
+    predictedPoints.current = [];
     if (interactionRef.current?.hasPointerCapture(e.pointerId)) {
       interactionRef.current.releasePointerCapture(e.pointerId);
     }
@@ -935,38 +1086,11 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
   // ── Stroke commit ─────────────────────────────────────────────────────────
 
   function commitStroke() {
-    const screenPts = activePoints.current;
-    if (screenPts.length < 2) return;
-
-    const pdfPts = screenPointsToPdf(screenPts, transform);
-    const id = nanoid();
-    const now = Date.now();
-
-    if (gestureToolRef.current === 'highlighter') {
-      const ann = {
-        id, pageIndex, type: 'highlight' as const,
-        points: pdfPts,
-        color: toolOptions.highlighter.color,
-        width: toolOptions.highlighter.width,
-        opacity: toolOptions.highlighter.opacity,
-        locked: false, createdAt: now, updatedAt: now,
-      };
-      addAnnotation(docId, ann);
-      pushHistory(makeAddAction(docId, ann));
-    } else {
-      const ann = {
-        id, pageIndex, type: 'stroke' as const,
-        points: pdfPts,
-        color: toolOptions.pen.color,
-        width: toolOptions.pen.width,
-        opacity: toolOptions.pen.opacity,
-        smooth: toolOptions.pen.smooth,
-        pressure: toolOptions.pen.pressureSensitive,
-        locked: false, createdAt: now, updatedAt: now,
-      };
-      addAnnotation(docId, ann);
-      pushHistory(makeAddAction(docId, ann));
-    }
+    // A single tap with the pen leaves a dot; the highlighter needs a drag.
+    const ann = buildInkAnnotation(activePoints.current, gestureToolRef.current, true);
+    if (!ann) return;
+    addAnnotation(docId, ann);
+    pushHistory(makeAddAction(docId, ann));
   }
 
   // ── Freeform commit ───────────────────────────────────────────────────────
@@ -1045,6 +1169,11 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     // We only mutate eraserHitsRef based on originalEraserSnapshotRef, 
     // ensuring we don't double-split or lose track of original annotations.
     let changed = false;
+    let dirty: PdfRect | null = null;
+    const markDirty = (ann: Annotation) => {
+      const bounds = getCachedBounds(ann);
+      dirty = dirty ? unionRects(dirty, bounds) : bounds;
+    };
 
     const sweepMinX = Math.min(prevPdfPt.x, currentPdfPt.x);
     const sweepMaxX = Math.max(prevPdfPt.x, currentPdfPt.x);
@@ -1070,6 +1199,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
       if (toolOptions.eraser.mode === 'object') {
         if (objectHits.has(ann.id)) {
            eraserHitsRef.current.set(ann.id, { type: 'delete' });
+           markDirty(ann);
            changed = true;
         }
       } else if (toolOptions.eraser.mode === 'stroke' && (ann.type === 'stroke' || ann.type === 'highlight')) {
@@ -1097,8 +1227,13 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
           if (newSegments.length === 0) {
              eraserHitsRef.current.set(ann.id, { type: 'delete' });
           } else {
-             eraserHitsRef.current.set(ann.id, { type: 'split', segments: newSegments });
+             eraserHitsRef.current.set(ann.id, {
+               type: 'split',
+               segments: newSegments,
+               pieces: newSegments.map((points) => ({ ...ann, points } as Annotation)),
+             });
           }
+          markDirty(ann);
           changed = true;
         }
       }
@@ -1107,7 +1242,8 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     lastEraserPointRef.current = currentPdfPt;
     
     if (changed) {
-      redrawAnnotationLayer(); // re-render main layer to apply transient effect
+      // Repaint only the touched area, at most once per frame.
+      scheduleLayerRedraw(dirty ?? undefined);
     }
     schedulePreviewRender(); // update the eraser cursor
   }
@@ -1619,6 +1755,16 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
         pointerEvents: 'none',
       }}
     >
+      <canvas
+        ref={highlightCanvasRef}
+        style={{
+          position: 'absolute',
+          left: 0,
+          top: 0,
+          pointerEvents: 'none',
+          mixBlendMode: 'multiply',
+        }}
+      />
       <canvas
         ref={annotationCanvasRef}
         style={{

@@ -35,58 +35,8 @@ import type { DocumentIdentity } from '../types/documentSession';
 import { getCachedDecodedImage, requestImageDecode } from './imageRenderCache';
 import { cssFont, layoutTextLines, LINE_HEIGHT, TEXT_PADDING } from './textLayout';
 import { useAssetStore } from '../store/assetStore';
+import { commandsToPath2D, highlightShape, penShape, type InkShape } from './inkGeometry';
 
-
-// ─── Smoothing helper ─────────────────────────────────────────────────────────
-
-/**
- * Apply Catmull-Rom spline smoothing to a sequence of points.
- * Returns a new array with interpolated points.
- */
-function catmullRomPoints(points: InputPoint[], tension: number = 0.5): InputPoint[] {
-  if (points.length < 3) return points;
-
-  const result: InputPoint[] = [points[0]];
-
-  for (let i = 0; i < points.length - 1; i++) {
-    const p0 = points[Math.max(i - 1, 0)];
-    const p1 = points[i];
-    const p2 = points[i + 1];
-    const p3 = points[Math.min(i + 2, points.length - 1)];
-
-    // Generate intermediate points
-    const steps = 8;
-    for (let t = 1; t <= steps; t++) {
-      const s = t / steps;
-      const s2 = s * s;
-      const s3 = s2 * s;
-
-      const x =
-        0.5 * (
-          (2 * p1.x) +
-          (-p0.x + p2.x) * s +
-          (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * s2 +
-          (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * s3
-        );
-
-      const y =
-        0.5 * (
-          (2 * p1.y) +
-          (-p0.y + p2.y) * s +
-          (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * s2 +
-          (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * s3
-        );
-
-      // Interpolate pressure
-      const pressure = p1.pressure + (p2.pressure - p1.pressure) * s;
-
-      result.push({ x, y, pressure, timestamp: p1.timestamp });
-    }
-  }
-
-  result.push(points[points.length - 1]);
-  return result;
-}
 
 // ─── Main render functions ────────────────────────────────────────────────────
 
@@ -185,87 +135,75 @@ export function renderImage(
   ctx.restore();
 }
 
-// ─── Stroke ───────────────────────────────────────────────────────────────────
+// ─── Ink (pen / highlighter) ─────────────────────────────────────────────────
+//
+// Geometry comes from inkGeometry.ts (shared with the exporter) and is cached
+// as a Path2D per annotation object and page transform. Annotation objects are
+// immutable in the store, so a redraw of an unchanged page only replays paths.
+
+interface CachedInk {
+  transform: PageTransform;
+  mode: InkShape['mode'];
+  path: Path2D;
+}
+
+const inkCache = new WeakMap<Annotation, CachedInk>();
+
+function inkPath(annotation: StrokeAnnotation | HighlightAnnotation, transform: PageTransform): CachedInk {
+  const cached = inkCache.get(annotation);
+  if (cached && cached.transform === transform) return cached;
+  const screenPoints = pdfPointsToScreen(annotation.points, transform);
+  const shape = annotation.type === 'stroke'
+    ? penShape(screenPoints, annotation.width * transform.scale, annotation.smooth, annotation.pressure)
+    : highlightShape(screenPoints);
+  const entry = { transform, mode: shape.mode, path: commandsToPath2D(shape.commands) };
+  inkCache.set(annotation, entry);
+  return entry;
+}
 
 export function renderStroke(
   ctx: CanvasRenderingContext2D,
   annotation: StrokeAnnotation,
   transform: PageTransform,
 ): void {
-  if (annotation.points.length < 2) return;
-
-  // Convert PDF space → screen space
-  const screenPoints = pdfPointsToScreen(annotation.points, transform);
-
-  // Apply smoothing
-  const pts = annotation.smooth ? catmullRomPoints(screenPoints) : screenPoints;
-
+  if (annotation.points.length === 0) return;
+  const { mode, path } = inkPath(annotation, transform);
+  ctx.save();
   ctx.globalAlpha = annotation.opacity;
-  ctx.strokeStyle = annotation.color;
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-
-  if (annotation.pressure && pts.some((p) => p.pressure !== 0.5)) {
-    // Variable-width stroke using pressure
-    renderVariableWidthStroke(ctx, pts, annotation.width * transform.scale);
+  if (mode === 'fill') {
+    ctx.fillStyle = annotation.color;
+    ctx.fill(path);
   } else {
-    // Uniform width stroke
+    ctx.strokeStyle = annotation.color;
     ctx.lineWidth = annotation.width * transform.scale;
-    ctx.beginPath();
-    ctx.moveTo(pts[0].x, pts[0].y);
-    for (let i = 1; i < pts.length; i++) {
-      ctx.lineTo(pts[i].x, pts[i].y);
-    }
-    ctx.stroke();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.stroke(path);
   }
+  ctx.restore();
 }
 
-function renderVariableWidthStroke(
-  ctx: CanvasRenderingContext2D,
-  pts: InputPoint[],
-  baseWidth: number,
-): void {
-  for (let i = 1; i < pts.length; i++) {
-    const p0 = pts[i - 1];
-    const p1 = pts[i];
-    const width = baseWidth * (0.3 + p0.pressure * 1.4);
-
-    ctx.beginPath();
-    ctx.lineWidth = width;
-    ctx.moveTo(p0.x, p0.y);
-    ctx.lineTo(p1.x, p1.y);
-    ctx.stroke();
-  }
-}
-
-// ─── Highlight ────────────────────────────────────────────────────────────────
-
+/**
+ * Highlights use "multiply" among themselves. On screen they are drawn on
+ * their own canvas layer with CSS mix-blend-mode: multiply, so text below stays
+ * dark — the same result as the Multiply blend mode in the saved PDF.
+ */
 export function renderHighlight(
   ctx: CanvasRenderingContext2D,
   annotation: HighlightAnnotation,
   transform: PageTransform,
 ): void {
   if (annotation.points.length < 2) return;
-
-  const screenPoints = pdfPointsToScreen(annotation.points, transform);
-  const pts = catmullRomPoints(screenPoints, 0.3);
-
+  const { path } = inkPath(annotation, transform);
+  ctx.save();
   ctx.globalAlpha = annotation.opacity;
   ctx.globalCompositeOperation = 'multiply';
   ctx.strokeStyle = annotation.color;
   ctx.lineWidth = annotation.width * transform.scale;
   ctx.lineCap = 'butt';
   ctx.lineJoin = 'round';
-
-  ctx.beginPath();
-  ctx.moveTo(pts[0].x, pts[0].y);
-  for (let i = 1; i < pts.length; i++) {
-    ctx.lineTo(pts[i].x, pts[i].y);
-  }
-  ctx.stroke();
-
-  // Reset composite operation
-  ctx.globalCompositeOperation = 'source-over';
+  ctx.stroke(path);
+  ctx.restore();
 }
 
 // ─── Text ─────────────────────────────────────────────────────────────────────
@@ -473,71 +411,6 @@ function drawArrow(
     toY - headLength * Math.sin(angle + Math.PI / 6),
   );
   ctx.stroke();
-}
-
-// ─── In-progress stroke renderer ─────────────────────────────────────────────
-
-/**
- * Render an in-progress stroke on the drawing canvas.
- * Points are already in screen space (raw from pointer events).
- *
- * This is called at pointer event frequency and must be fast.
- * It does NOT go through pdf.js viewport transform — input is already screen coords.
- */
-export function renderActiveStroke(
-  ctx: CanvasRenderingContext2D,
-  points: InputPoint[],
-  color: string,
-  width: number,
-  opacity: number,
-  isHighlight: boolean,
-  dpr: number,
-): void {
-  if (points.length < 2) return;
-
-  ctx.save();
-  ctx.scale(dpr, dpr);
-
-  ctx.globalAlpha = opacity;
-  ctx.strokeStyle = color;
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-
-  if (isHighlight) {
-    ctx.globalCompositeOperation = 'multiply';
-    ctx.lineWidth = width;
-
-    ctx.beginPath();
-    ctx.moveTo(points[0].x, points[0].y);
-    for (let i = 1; i < points.length; i++) {
-      ctx.lineTo(points[i].x, points[i].y);
-    }
-    ctx.stroke();
-    ctx.globalCompositeOperation = 'source-over';
-  } else {
-    // Pressure-sensitive or uniform
-    const hasPressure = points.some((p) => p.pressure !== 0.5);
-    if (hasPressure) {
-      for (let i = 1; i < points.length; i++) {
-        const p = points[i - 1];
-        ctx.lineWidth = width * (0.3 + p.pressure * 1.4);
-        ctx.beginPath();
-        ctx.moveTo(points[i - 1].x, points[i - 1].y);
-        ctx.lineTo(points[i].x, points[i].y);
-        ctx.stroke();
-      }
-    } else {
-      ctx.lineWidth = width;
-      ctx.beginPath();
-      ctx.moveTo(points[0].x, points[0].y);
-      for (let i = 1; i < points.length; i++) {
-        ctx.lineTo(points[i].x, points[i].y);
-      }
-      ctx.stroke();
-    }
-  }
-
-  ctx.restore();
 }
 
 // ─── Shape live preview renderer ──────────────────────────────────────────────

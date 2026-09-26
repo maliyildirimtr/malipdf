@@ -123,13 +123,19 @@ describe('annotation exporter annotation types', () => {
     expect(operators.gStates.length).toBeGreaterThan(0);
   });
 
-  it('exports pressure pen as variable-width PDF segments', async () => {
+  it('exports a pressure pen as one filled variable-width outline', async () => {
     const annotation = stroke(true);
     const result = await exportAnnotatedPdf(await createSource({ intrinsicRotation: 180 }), mapOf(annotation));
     const operators = await interpretedOperators(await (await reopen(result.data)).getPage(1));
-    expect(operators.lineWidths).toEqual(expect.arrayContaining([1.5, 8.5]));
-    expect(operators.segments).toContainEqualSegment(anchor, { x: 185, y: 270 });
-    expect(operators.segments).toContainEqualSegment({ x: 185, y: 270 }, end);
+    expect(operators.pathBounds).toHaveLength(1); // one path, not one per segment
+    expect(operators.fillColors.length).toBeGreaterThan(0);
+    const [bounds] = operators.pathBounds;
+    // Covers the whole stroke plus its (pressure-dependent) half width.
+    expect(bounds.x).toBeLessThan(anchor.x);
+    expect(bounds.y).toBeLessThan(anchor.y);
+    expect(bounds.x + bounds.width).toBeGreaterThan(end.x);
+    expect(bounds.y + bounds.height).toBeGreaterThan(end.y);
+    expect(bounds.width).toBeLessThan(end.x - anchor.x + 9);
   });
 
   it('preserves smooth pen endpoints while exporting interpolated segments', async () => {
@@ -139,9 +145,10 @@ describe('annotation exporter annotation types', () => {
     };
     const result = await exportAnnotatedPdf(await createSource({ intrinsicRotation: 90 }), mapOf(annotation));
     const operators = await interpretedOperators(await (await reopen(result.data)).getPage(1));
-    expect(operators.segments.length).toBeGreaterThan(2);
+    expect(operators.segments).toHaveLength(1); // the whole stroke is one path
+    expect(operators.pathPointCount).toBeGreaterThan(3); // includes curve control points
     expect(operators.segments[0].start).toSatisfy((value: Point) => closePoint(value, anchor));
-    expect(operators.segments.at(-1)?.end).toSatisfy((value: Point) => closePoint(value, end));
+    expect(operators.segments[0].end).toSatisfy((value: Point) => closePoint(value, end));
   });
 
   it('exports a 2-point smooth pen without crashing and matches endpoints', async () => {
@@ -169,9 +176,10 @@ describe('annotation exporter annotation types', () => {
     };
     const result = await exportAnnotatedPdf(await createSource({ intrinsicRotation: 90 }), mapOf(annotation));
     const operators = await interpretedOperators(await (await reopen(result.data)).getPage(1));
-    expect(operators.segments.length).toBeGreaterThan(2);
+    expect(operators.segments).toHaveLength(1);
+    expect(operators.pathPointCount).toBeGreaterThan(3);
     expect(operators.segments[0].start).toSatisfy((value: Point) => closePoint(value, anchor));
-    expect(operators.segments.at(-1)?.end).toSatisfy((value: Point) => closePoint(value, end));
+    expect(operators.segments[0].end).toSatisfy((value: Point) => closePoint(value, end));
     expect(operators.lineWidths).toContain(18);
     expect(JSON.stringify(operators.gStates)).toContain('["BM","multiply"]');
   });
