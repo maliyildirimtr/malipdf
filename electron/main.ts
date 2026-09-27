@@ -32,7 +32,7 @@ import { setupOcrIpc } from './services/ocr/ocrIpc';
 import { FolderGrants, outputExtension, writeFilesToFolder } from './services/files/folderWrite';
 import { setupRecoveryIpc } from './services/recovery';
 import { setupUpdates } from './services/updates';
-import { logCrash, setupAppInfo } from './services/appInfo';
+import { appIconPath, applyAppIcon, logCrash, setupAppInfo } from './services/appInfo';
 import { pdfPathsFromArgv } from './services/openPaths';
 import {
   FileAccessGrants,
@@ -241,6 +241,8 @@ function createWindow(options: { restoreId?: string } = {}): BrowserWindow {
     minWidth: 900,
     minHeight: 600,
     title: 'MaliPDF',
+    // Windows / Linux taskbar icon (macOS uses the app bundle or the Dock icon).
+    ...(process.platform !== 'darwin' && appIconPath() ? { icon: appIconPath() } : {}),
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 16, y: 14 },
     backgroundColor: '#1a1a1a',
@@ -1005,6 +1007,7 @@ handleTrusted('screenshot:captureRegion', isDev, async () => {
 app.whenReady().then(() => {
   // Until the renderer reports the saved choice, follow the system language.
   setLanguage(languageFromLocale(app.getLocale?.()));
+  applyAppIcon();
   createWindow();
 
   app.on('activate', () => {

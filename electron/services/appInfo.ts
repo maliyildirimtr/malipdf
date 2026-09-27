@@ -85,6 +85,28 @@ export async function showAbout(): Promise<void> {
   await showMessageBox(window, options);
 }
 
+/** The MaliPDF icon: next to the app when packaged, in build/ in development. */
+export function appIconPath(): string | undefined {
+  try {
+    const file = app.isPackaged
+      ? path.join(process.resourcesPath, 'icon.png')
+      : path.join(app.getAppPath(), 'build', 'icon.png');
+    return fs.existsSync(file) ? file : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Shows the MaliPDF icon instead of Electron's. A packaged Mac app already
+ * has it in its bundle; in development the Dock would show Electron's.
+ */
+export function applyAppIcon(): void {
+  const icon = appIconPath();
+  if (!icon) return;
+  if (process.platform === 'darwin' && !app.isPackaged) app.dock?.setIcon(icon);
+}
+
 export function setupAppInfo(isDev: boolean): void {
   const info = getBuildInfo();
   crashReporter.start({ productName: 'MaliPDF', uploadToServer: false, compress: true });
@@ -95,6 +117,7 @@ export function setupAppInfo(isDev: boolean): void {
     version: `Build ${info.build} · ${info.commit}`,
     copyright: `© ${new Date().getFullYear()} Mehmet Ali Yıldırım`,
     credits: 'Professional PDF annotation & document workspace.',
+    iconPath: appIconPath(),
   });
 
   process.on('uncaughtException', (error) => {
