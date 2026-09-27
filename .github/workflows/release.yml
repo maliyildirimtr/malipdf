@@ -217,9 +217,28 @@ jobs:
           path: release-files
           merge-multiple: true
 
+      - name: Checkout release notes
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          path: source
+          sparse-checkout: release-notes
+
+      - name: Prepare release notes
+        # release-notes/<tag>.md (from the tagged commit, or main) becomes the
+        # release description; GitHub's generated changelog is added below it.
+        run: |
+          NOTES="release-notes/${RELEASE_TAG}.md"
+          cd source
+          if [[ ! -f "$NOTES" ]]; then
+            git fetch --depth=1 origin main && git checkout FETCH_HEAD -- "$NOTES" 2>/dev/null || true
+          fi
+          if [[ -f "$NOTES" ]]; then cp "$NOTES" ../release-body.md; else : > ../release-body.md; fi
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
+          body_path: release-body.md
           tag_name: ${{ env.RELEASE_TAG }}
           name: MaliPDF ${{ env.RELEASE_TAG }}
           prerelease: ${{ contains(env.RELEASE_TAG, '-') }}
