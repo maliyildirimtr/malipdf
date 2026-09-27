@@ -1,3 +1,4 @@
+import React from 'react';
 import styles from './MainRibbon.module.css';
 
 export interface StrokeWidthControlProps {
@@ -38,7 +39,18 @@ export interface OpacityControlProps {
 }
 
 export function OpacityControl({ value, onChange, onCommit, onCancel }: OpacityControlProps) {
-  const percentage = Math.round(value * 100);
+  // While dragging, the slider shows its own value. For a selected
+  // annotation the store only changes on commit, so a slider bound to
+  // `value` alone would snap back and never move.
+  const [draft, setDraft] = React.useState<number | null>(null);
+  const shown = draft ?? value;
+  const percentage = Math.round(shown * 100);
+
+  const commit = (next: number) => {
+    setDraft(null);
+    if (Math.abs(next - value) > 1e-6) onCommit?.(next);
+    else onCancel?.();
+  };
 
   return (
     <label className={`${styles.compactControl} ${styles.opacityControl}`}>
@@ -49,13 +61,18 @@ export function OpacityControl({ value, onChange, onCommit, onCancel }: OpacityC
         min={0.1}
         max={1}
         step={0.05}
-        value={value}
+        value={shown}
         aria-label="Opacity"
         aria-valuetext={`${percentage} percent`}
-        onChange={(event) => onChange(Number(event.target.value))}
-        onPointerUp={(event) => onCommit?.(Number((event.target as HTMLInputElement).value))}
-        onPointerCancel={() => onCancel?.()}
-        onBlur={(event) => onCommit?.(Number(event.target.value))}
+        onChange={(event) => {
+          const next = Number(event.target.value);
+          setDraft(next);
+          onChange(next);
+        }}
+        onPointerUp={(event) => commit(Number((event.target as HTMLInputElement).value))}
+        onKeyUp={(event) => commit(Number((event.target as HTMLInputElement).value))}
+        onPointerCancel={() => { setDraft(null); onCancel?.(); }}
+        onBlur={() => { if (draft !== null) commit(draft); }}
       />
       <span className={styles.opacityValue} aria-hidden="true">{percentage}%</span>
     </label>
