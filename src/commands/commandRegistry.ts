@@ -120,7 +120,7 @@ export const APP_COMMANDS = {
   'insert.signature': command('insert.signature', 'Signature & Stamps…', 'insert', 'action', 'document', { icon: 'pen', shortcut: '⌥⌘S', menuPlacements: ['edit'], toolbarPlacements: ['primary.insert'] }),
   'insert.screenshot': command('insert.screenshot', 'Capture Screen', 'insert', 'action', 'document', { icon: 'screenshot', menuPlacements: ['edit'], toolbarPlacements: ['primary.insert'] }),
   'insert.regionScreenshot': command('insert.regionScreenshot', 'Capture Region', 'insert', 'action', 'document', { icon: 'regionScreenshot', menuPlacements: ['edit'], toolbarPlacements: ['primary.insert'] }),
-  'insert.printoutPdf': command('insert.printoutPdf', 'Insert PDF Printout…', 'insert', 'action', 'document', { icon: 'newDocument', menuPlacements: ['edit'], toolbarPlacements: ['primary.insert'] }),
+  'insert.printoutPdf': command('insert.printoutPdf', 'Insert PDF…', 'insert', 'action', 'document', { icon: 'newDocument', menuPlacements: ['edit'], toolbarPlacements: ['primary.insert'] }),
   'insert.printoutPptx': command('insert.printoutPptx', 'Insert PowerPoint Printout…', 'insert', 'action', 'document', { icon: 'newDocument', menuPlacements: ['edit'], toolbarPlacements: ['primary.insert'] }),
   'view.sidebar': command('view.sidebar', 'Show Sidebar', 'view', 'toggle', 'document', { icon: 'sidebar', shortcut: '⌘B', checkedState: 'sidebarOpen', menuPlacements: ['view.sidebar'], toolbarPlacements: ['primary.view'] }),
   'view.sidebarPages': command('view.sidebarPages', 'Pages', 'view', 'radio', 'document', { icon: 'sidebar', menuPlacements: ['view.sidebar'] }),

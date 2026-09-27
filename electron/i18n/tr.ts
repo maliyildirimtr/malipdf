@@ -623,7 +623,7 @@ export const TR: Readonly<Record<string, string>> = {
 
   // ── Document area, sidebar ──────────────────────────────────────────────
   'Drop a PDF or PowerPoint file to open': 'Açmak için bir PDF veya PowerPoint dosyası bırakın',
-  'Drop a PDF or PowerPoint file to insert it as printout pages': 'Çıktı sayfaları olarak eklemek için bir PDF veya PowerPoint dosyası bırakın',
+  'Drop a PDF to add its pages, or a PowerPoint file to add its slides as printout pages': 'Sayfalarını eklemek için bir PDF, slaytlarını çıktı sayfası olarak eklemek için bir PowerPoint dosyası bırakın',
   'Open a PDF file to start annotating. You can also drag and drop a PDF or PowerPoint file anywhere in this window.':
     'Not almaya başlamak için bir PDF dosyası açın. PDF veya PowerPoint dosyasını bu pencerede herhangi bir yere sürükleyip de bırakabilirsiniz.',
   'Open PDF': 'PDF Aç',

@@ -100,7 +100,6 @@ export function createNativeMenuSchema(isMac: boolean, isDev: boolean): readonly
         command('insert.screenshot', 'Capture Screen', { enabled: false }),
         command('insert.regionScreenshot', 'Capture Region', { enabled: false }),
         separator(),
-        command('insert.printoutPdf', 'Insert PDF Printout…', { enabled: false }),
         command('insert.printoutPptx', 'Insert PowerPoint Printout…', { enabled: false }),
       ],
     },

@@ -172,8 +172,9 @@ export function DocumentArea() {
     );
     for (const file of files) {
       if (activeDoc) {
-        const { insertPdfPrintout } = await import('../../commands/printoutCommands');
-        await insertPdfPrintout(activeDoc.id, new Uint8Array(await file.arrayBuffer()));
+        // A PDF comes in as real pages; only presentations become printouts.
+        const { insertPdfPages } = await import('../../commands/pageCommands');
+        await insertPdfPages(new Uint8Array(await file.arrayBuffer()), file.name);
       } else {
         await loadFile(file.name, null, await file.arrayBuffer());
       }
@@ -618,7 +619,7 @@ export function DocumentArea() {
     >
       {isDragOver && (
         <div className="drop-overlay">
-          <div className="drop-overlay__text">Drop a PDF or PowerPoint file to insert it as printout pages</div>
+          <div className="drop-overlay__text">Drop a PDF to add its pages, or a PowerPoint file to add its slides as printout pages</div>
         </div>
       )}
 

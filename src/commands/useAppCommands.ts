@@ -309,7 +309,8 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
         void insertImageFromFile();
         return;
       case 'insert.printoutPdf':
-        import('./printoutCommands').then(m => m.insertPrintoutFromFile());
+        // A PDF is inserted as real pages (PowerPoint stays a printout).
+        void import('./pageCommands').then((m) => m.insertPagesFromPdf());
         return;
       case 'insert.printoutPptx':
         import('./printoutCommands').then(m => m.insertPptxPrintoutFromFile());

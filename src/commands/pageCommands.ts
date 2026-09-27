@@ -205,6 +205,7 @@ export async function movePages(pages: number[], targetIndex: number): Promise<b
   return applyPagePlan(doc, plan, { activePageAfter: newPositions[0], selectAfter: newPositions });
 }
 
+/** Pick a PDF and insert its real pages after the current page. */
 export async function insertPagesFromPdf(): Promise<boolean> {
   const doc = activeDocument();
   if (!doc || !window.electronAPI?.openFile) return false;
@@ -213,8 +214,17 @@ export async function insertPagesFromPdf(): Promise<boolean> {
   if (!file?.data) return false;
   const latest = useDocumentStore.getState().documents.get(doc.id);
   if (!latest || latest.instanceId !== doc.instanceId) return false;
+  return insertPdfPages(new Uint8Array(file.data), file.name);
+}
 
-  const bytes = new Uint8Array(file.data);
+/**
+ * Insert every page of a PDF after the current page, as real pages (with
+ * their own text, links and quality) — not as a picture on a page.
+ */
+export async function insertPdfPages(bytes: Uint8Array, name: string): Promise<boolean> {
+  const latest = activeDocument();
+  if (!latest) return false;
+  const file = { name };
   let count = 0;
   try {
     const { PDFDocument } = await import('pdf-lib');
