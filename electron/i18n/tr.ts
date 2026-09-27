@@ -148,6 +148,7 @@ export const TR: Readonly<Record<string, string>> = {
   'Insert menu': 'Ekle menüsü',
   'View menu': 'Görünüm menüsü',
   Menus: 'Menüler',
+  Layout: 'Yerleşim',
   'Image…': 'Görsel…',
   On: 'Açık',
   'Insert PDF Printout': 'PDF Çıktısı Ekle',

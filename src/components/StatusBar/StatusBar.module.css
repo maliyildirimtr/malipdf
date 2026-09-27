@@ -77,3 +77,15 @@
   color: var(--color-text-tertiary);
   opacity: 0.72;
 }
+
+/* Fit and layout buttons (right side). */
+.viewControls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.iconButtonOn {
+  color: var(--color-toolbar-control-selected-fg);
+  background: var(--color-toolbar-control-selected-bg);
+}

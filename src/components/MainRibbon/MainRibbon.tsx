@@ -383,10 +383,6 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
             onCommand={runCommand}
             alignEnd
             items={[
-              { commandId: 'view.actualSize', label: 'Actual Size', shortcut: '⌘0', enabled: isEnabled('view.actualSize'), icon: Scan },
-              { commandId: 'view.fitWidth', label: 'Fit Width', shortcut: '⌘6', enabled: isEnabled('view.fitWidth'), icon: Maximize2 },
-              { commandId: 'view.fitPage', label: 'Fit Page', shortcut: '⌘5', enabled: isEnabled('view.fitPage'), icon: Square },
-              'separator',
               { commandId: 'view.rotateCCW', label: 'Rotate View Left', shortcut: '⌘[', enabled: isEnabled('view.rotateCCW'), icon: RotateCcw },
               { commandId: 'view.rotateCW', label: 'Rotate View Right', shortcut: '⌘]', enabled: isEnabled('view.rotateCW'), icon: RotateCw },
               'separator',
@@ -395,16 +391,6 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
             ]}
           />
           <CommandButton commandId="view.nightMode" label="Night Mode" shortcut="⌥⌘D" icon={Moon} onCommand={runCommand} enabled pressed={pageTheme === 'dark'} />
-          <CommandButton commandId="view.splitView" label="Side by Side" shortcut={"⌥⌘\\"} icon={Columns2} onCommand={runCommand} enabled={isEnabled('view.splitView')} pressed={splitOpen} />
-          <CommandButton
-            commandId="view.focusMode"
-            label="Focus / Teaching Mode"
-            shortcut="⌥⌘F"
-            icon={Focus}
-            onCommand={runCommand}
-            enabled={isEnabled('view.focusMode')}
-            pressed={workspaceMode === 'focus'}
-          />
           <CommandButton commandId="app.settings" label="Settings" shortcut="⌘," icon={Settings} onCommand={runCommand} enabled />
         </ToolbarGroup>
       </div>

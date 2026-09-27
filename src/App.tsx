@@ -255,7 +255,7 @@ export default function App() {
         <SplitView />
       </div>
       <div className="app-status-chrome">
-        <StatusBar />
+        <StatusBar onCommand={executeCommand} canExecute={canExecute} />
       </div>
       <FocusToolbar onCommand={executeCommand} canExecute={canExecute} />
       
