@@ -15,8 +15,20 @@ describe('text selection', () => {
     expect(glyphAt(layout, { x: 400, y: 400 })).toBe(-1);          // far away
   });
 
-  it('snaps to whole words on one line', () => {
-    const sel = selectText(layout, { x: 133, y: 703 }, { x: 136, y: 703 })!;
+  it('selects letter by letter when dragging', () => {
+    // From the left edge of "w" (130) to the middle of "r" (142.5 → caret after "r").
+    const sel = selectText(layout, { x: 130.5, y: 703 }, { x: 143, y: 703 })!;
+    expect(sel.text).toBe('wor');
+    expect(sel.quads[0][0].x).toBeCloseTo(130);
+    expect(sel.quads[0][1].x).toBeCloseTo(145);
+    // Inside one word, part of it.
+    expect(selectText(layout, { x: 101, y: 703 }, { x: 111, y: 703 })!.text).toBe('He');
+    // Not yet past the middle of a letter: nothing.
+    expect(selectText(layout, { x: 100.5, y: 703 }, { x: 102, y: 703 })).toBeNull();
+  });
+
+  it('a click selects the whole word', () => {
+    const sel = selectText(layout, { x: 133, y: 703 }, { x: 133.5, y: 703 })!;
     expect(sel.text).toBe('world');
     expect(sel.quads).toHaveLength(1);
     const [bl, br, tr, tl] = sel.quads[0];
@@ -28,8 +40,8 @@ describe('text selection', () => {
   });
 
   it('spans lines in reading order, also when dragged backwards', () => {
-    const forward = selectText(layout, { x: 133, y: 703 }, { x: 103, y: 683 })!;
-    const backward = selectText(layout, { x: 103, y: 683 }, { x: 133, y: 703 })!;
+    const forward = selectText(layout, { x: 130.5, y: 703 }, { x: 129.5, y: 683 })!;
+    const backward = selectText(layout, { x: 129.5, y: 683 }, { x: 130.5, y: 703 })!;
     expect(forward.text).toBe('world\nsecond');
     expect(backward.text).toBe(forward.text);
     expect(forward.quads).toHaveLength(2);

@@ -15,6 +15,8 @@ export interface SearchTextItem {
   width: number;
   height: number;
   hasEOL?: boolean;
+  /** CSS font family from pdf.js (serif, sans-serif, monospace…), for letter widths. */
+  fontFamily?: string;
 }
 
 interface CharRef {

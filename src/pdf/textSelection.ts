@@ -5,8 +5,8 @@
  * pdf.js gives one item per text run with its transform and total advance
  * width, but no per-glyph positions. Glyph positions are estimated from the
  * item width, split by measured character widths when a canvas is available
- * (proportional fonts), else evenly. Selections snap to whole words, which
- * also hides the small estimation error at word edges.
+ * (proportional fonts), else evenly. A drag selects letter by letter, like
+ * in a text editor; a plain click selects the word under it.
  *
  * Everything is in PDF user space, like annotations.
  */
@@ -30,7 +30,7 @@ export interface PageTextLayout {
   glyphs: Glyph[];
 }
 
-type MeasureFn = (text: string) => number;
+type MeasureFn = (text: string, fontFamily?: string) => number;
 
 let sharedMeasure: MeasureFn | null | undefined;
 
@@ -45,7 +45,16 @@ function defaultMeasure(): MeasureFn | null {
     if (ctx && typeof ctx.measureText === 'function') {
       ctx.font = '100px sans-serif';
       const probe = ctx.measureText('abc').width;
-      if (probe > 0) sharedMeasure = (text: string) => ctx.measureText(text).width;
+      let current = 'sans-serif';
+      // Measure in the PDF font's family (serif / sans / monospace), so the
+      // letter edges of a highlight land close to the real ones.
+      if (probe > 0) sharedMeasure = (text: string, fontFamily = 'sans-serif') => {
+        if (fontFamily !== current) {
+          current = fontFamily;
+          ctx.font = `100px ${/^[\w\s-]+$/.test(fontFamily) ? fontFamily : 'sans-serif'}, sans-serif`;
+        }
+        return ctx.measureText(text).width;
+      };
     }
   } catch {
     sharedMeasure = null;
@@ -59,7 +68,7 @@ export function buildTextLayout(items: SearchTextItem[], measure: MeasureFn | nu
     const chars = Array.from(item.str);
     if (chars.length === 0 || !(item.width > 0)) return;
     // Prefix advances of each character, scaled to the item's real width.
-    const widths = chars.map((ch) => (measure ? Math.max(0, measure(ch)) : 1));
+    const widths = chars.map((ch) => (measure ? Math.max(0, measure(ch, item.fontFamily)) : 1));
     const total = widths.reduce((a, b) => a + b, 0);
     const scale = total > 0 ? item.width / total : 0;
     let along = 0;
@@ -132,6 +141,22 @@ export function glyphAt(layout: PageTextLayout, p: PdfPoint, maxDistance = 12): 
   return bestScore <= maxDistance ? best : -1;
 }
 
+/**
+ * Caret position for a point: the boundary before glyph k, as in a text
+ * editor. A point on the right half of a glyph puts the caret after it.
+ * -1 when no text is within `maxDistance`.
+ */
+export function caretAt(layout: PageTextLayout, p: PdfPoint, maxDistance = 12): number {
+  const index = glyphAt(layout, p, maxDistance);
+  if (index < 0) return -1;
+  const glyph = layout.glyphs[index];
+  const local = localPoint(frameOf(layout.items[glyph.item]), p);
+  return local.along > (glyph.from + glyph.to) / 2 ? index + 1 : index;
+}
+
+/** Below this drag distance (points) the tool takes it as a click on a word. */
+const CLICK_DISTANCE = 1.5;
+
 /** Expand [start, end] (glyph indices, inclusive) to whole words. */
 function snapToWords(layout: PageTextLayout, start: number, end: number): [number, number] {
   const { glyphs } = layout;
@@ -153,15 +178,30 @@ export interface TextSelection {
 }
 
 /**
- * Text between two points in reading order, snapped to words. `null` when
- * there is no text near the start point.
+ * Text between two points in reading order, letter by letter (a click takes
+ * the whole word). `null` when there is no text near the start point or
+ * nothing is covered yet.
  */
 export function selectText(layout: PageTextLayout, from: PdfPoint, to: PdfPoint): TextSelection | null {
-  const a = glyphAt(layout, from);
-  if (a < 0) return null;
-  const bRaw = glyphAt(layout, to, Infinity);
-  const b = bRaw < 0 ? a : bRaw;
-  const [s, e] = snapToWords(layout, Math.min(a, b), Math.max(a, b));
+  let s: number;
+  let e: number;
+  if (Math.hypot(to.x - from.x, to.y - from.y) < CLICK_DISTANCE) {
+    // A click: the whole word under the pointer.
+    const a = glyphAt(layout, from);
+    if (a < 0) return null;
+    [s, e] = snapToWords(layout, a, a);
+  } else {
+    // A drag: exactly the letters between the two carets.
+    const a = caretAt(layout, from);
+    if (a < 0) return null;
+    const bRaw = caretAt(layout, to, Infinity);
+    const b = bRaw < 0 ? a : bRaw;
+    s = Math.min(a, b);
+    e = Math.max(a, b) - 1;
+    while (s <= e && layout.glyphs[s].isSpace) s++;
+    while (e >= s && layout.glyphs[e].isSpace) e--;
+    if (e < s) return null;
+  }
   if (layout.glyphs[s]?.isSpace) return null;
 
   const quads: Quad[] = [];

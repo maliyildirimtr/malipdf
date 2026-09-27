@@ -36,6 +36,7 @@ export function loadPageTextLayout(identity: DocumentIdentity, pageIndex: number
       width: item.width,
       height: item.height,
       hasEOL: item.hasEOL,
+      fontFamily: content.styles?.[item.fontName]?.fontFamily,
     }] : []));
     const layout = buildTextLayout(items);
     if (cache.size >= MAX_CACHED) cache.delete(cache.keys().next().value as string);
