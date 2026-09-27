@@ -13,12 +13,19 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Existing v* tag to build and publish"
+        required: true
+        type: string
 
 permissions:
   contents: write
 
 env:
   ELECTRON_BUILDER: electron-builder@25.1.8
+  RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
 
 jobs:
   build-macos-arm64:
@@ -26,10 +33,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -38,10 +47,11 @@ jobs:
         run: npm ci
 
       - name: Use tag as app version
-        run: npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version
+        run: npm version "${RELEASE_TAG#v}" --no-git-tag-version --allow-same-version
 
       - name: Build application
-        run: npm run build
+        shell: bash
+        run: GITHUB_SHA="$(git rev-parse HEAD)" npm run build
 
       - name: Package Apple Silicon DMG
         env:
@@ -51,7 +61,19 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: npx --yes "$ELECTRON_BUILDER" --mac dmg --arm64 --publish never
+        run: |
+          # An empty (or blank) secret must not reach electron-builder: it
+          # reads CSC_LINK="" as the project folder and fails with
+          # "<project> not a file". Without a certificate, build unsigned.
+          if [[ -z "$(printf '%s' "${CSC_LINK:-}" | tr -d '[:space:]')" ]]; then
+            unset CSC_LINK CSC_KEY_PASSWORD
+            export CSC_IDENTITY_AUTO_DISCOVERY=false
+            echo "No signing certificate: building an unsigned DMG."
+          fi
+          if [[ -z "$(printf '%s' "${APPLE_ID:-}" | tr -d '[:space:]')" ]]; then
+            unset APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID
+          fi
+          npx --yes "$ELECTRON_BUILDER" --mac dmg --arm64 --publish never
 
       - name: Collect artifact
         run: |
@@ -70,10 +92,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -82,10 +106,11 @@ jobs:
         run: npm ci
 
       - name: Use tag as app version
-        run: npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version
+        run: npm version "${RELEASE_TAG#v}" --no-git-tag-version --allow-same-version
 
       - name: Build application
-        run: npm run build
+        shell: bash
+        run: GITHUB_SHA="$(git rev-parse HEAD)" npm run build
 
       - name: Package Intel DMG
         env:
@@ -95,7 +120,19 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: npx --yes "$ELECTRON_BUILDER" --mac dmg --x64 --publish never
+        run: |
+          # An empty (or blank) secret must not reach electron-builder: it
+          # reads CSC_LINK="" as the project folder and fails with
+          # "<project> not a file". Without a certificate, build unsigned.
+          if [[ -z "$(printf '%s' "${CSC_LINK:-}" | tr -d '[:space:]')" ]]; then
+            unset CSC_LINK CSC_KEY_PASSWORD
+            export CSC_IDENTITY_AUTO_DISCOVERY=false
+            echo "No signing certificate: building an unsigned DMG."
+          fi
+          if [[ -z "$(printf '%s' "${APPLE_ID:-}" | tr -d '[:space:]')" ]]; then
+            unset APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID
+          fi
+          npx --yes "$ELECTRON_BUILDER" --mac dmg --x64 --publish never
 
       - name: Collect artifact
         run: |
@@ -114,10 +151,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -127,16 +166,22 @@ jobs:
 
       - name: Use tag as app version
         shell: bash
-        run: npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version
+        run: npm version "${RELEASE_TAG#v}" --no-git-tag-version --allow-same-version
 
       - name: Build application
-        run: npm run build
+        shell: bash
+        run: GITHUB_SHA="$(git rev-parse HEAD)" npm run build
 
       - name: Package Windows installer
         env:
           CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-        run: npx --yes ${{ env.ELECTRON_BUILDER }} --win nsis --x64 --publish never
+        shell: bash
+        run: |
+          if [[ -z "$(printf '%s' "${CSC_LINK:-}" | tr -d '[:space:]')" ]]; then
+            unset CSC_LINK CSC_KEY_PASSWORD
+          fi
+          npx --yes "$ELECTRON_BUILDER" --win nsis --x64 --publish never
 
       - name: Collect artifact
         shell: pwsh
@@ -173,10 +218,11 @@ jobs:
           merge-multiple: true
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
-          name: MaliPDF ${{ github.ref_name }}
-          prerelease: ${{ contains(github.ref_name, '-') }}
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: MaliPDF ${{ env.RELEASE_TAG }}
+          prerelease: ${{ contains(env.RELEASE_TAG, '-') }}
           generate_release_notes: true
           files: |
             release-files/MaliPDF-macOS-Apple-Silicon.dmg
