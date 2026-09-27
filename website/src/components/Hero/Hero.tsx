@@ -59,7 +59,7 @@ export function Hero() {
             </a>
           </div>
           <p className="hero__notice">
-            Version {downloads.version} · Free during early access. No account required.
+            Version {downloads.version} · Free. No account required.
           </p>
         </div>
 

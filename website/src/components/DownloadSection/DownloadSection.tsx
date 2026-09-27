@@ -64,7 +64,7 @@ export function DownloadSection() {
             </div>
 
             <p className="download__version">
-              Version {downloads.version} · Early access beta
+              Version {downloads.version}
             </p>
 
             {/* Trust indicators */}
@@ -73,7 +73,7 @@ export function DownloadSection() {
                 'No account required',
                 'Works offline',
                 'Files stay on your machine',
-                'Free during early access',
+                'Free',
               ].map((item) => (
                 <span className="download__trust-item" key={item}>
                   <span className="download__trust-dot" aria-hidden="true" />
