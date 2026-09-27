@@ -8,6 +8,7 @@ import {
   screen,
   desktopCapturer,
   clipboard,
+  ClipboardItem,
   nativeImage,
   systemPreferences,
   shell,
@@ -642,24 +643,28 @@ handleTrusted('dialog:openImages', isDev, async () => {
 
 // Read Clipboard Image
 handleTrusted('clipboard:readImage', isDev, async () => {
-  const image = clipboard.readImage();
-  if (image.isEmpty()) return null;
-  const pngBuffer = image.toPNG();
-  return {
-    mimeType: 'image/png',
-    data: pngBuffer.buffer.slice(
-      pngBuffer.byteOffset,
-      pngBuffer.byteOffset + pngBuffer.byteLength,
-    ) as ArrayBuffer,
-  };
+  const allowedTypes = ['image/png', 'image/jpeg', 'image/webp'];
+  const items = await clipboard.read();
+  for (const item of items) {
+    const mimeType = allowedTypes.find((type) => item.types.includes(type));
+    if (!mimeType) continue;
+    const payload = await item.getType(mimeType);
+    if (!(payload instanceof Blob)) continue;
+    if (payload.size > 120 * 1024 * 1024) throw new RangeError('Clipboard image exceeds 120 MB.');
+    return { mimeType, data: await payload.arrayBuffer() };
+  }
+  return null;
 });
 
 // Write a PNG to the clipboard (Snapshot tool)
 handleTrusted('clipboard:writeImage', isDev, async (_event, raw: unknown) => {
   const png = requireBinary(raw, 'Image', 120 * 1024 * 1024);
-  const image = nativeImage.createFromBuffer(Buffer.from(png));
+  const data = png.buffer.slice(png.byteOffset, png.byteOffset + png.byteLength) as ArrayBuffer;
+  const image = nativeImage.createFromBuffer(Buffer.from(data));
   if (image.isEmpty()) throw new Error('The image could not be copied.');
-  clipboard.writeImage(image);
+  await clipboard.write([new ClipboardItem({
+    'image/png': new Blob([data], { type: 'image/png' }),
+  })]);
   return true;
 });
 

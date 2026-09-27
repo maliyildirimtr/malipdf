@@ -176,7 +176,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           name: MaliPDF ${{ github.ref_name }}
-          prerelease: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
           generate_release_notes: true
           files: |
             release-files/MaliPDF-macOS-Apple-Silicon.dmg
