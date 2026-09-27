@@ -217,7 +217,7 @@
 
 .menuItem {
   display: grid;
-  grid-template-columns: 18px 1fr auto;
+  grid-template-columns: 18px 1fr auto auto;
   align-items: center;
   min-height: 32px;
   padding: 0 8px;
@@ -757,4 +757,54 @@
 .shelfButton:disabled {
   opacity: 0.45;
   cursor: default;
+}
+
+/* ── Word menus (File, Page, Insert, PDF, View) ─────────────────── */
+
+.textMenuButton {
+  flex: 0 0 auto;
+  width: auto;
+  padding: 0 7px 0 9px;
+  gap: 3px;
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+}
+
+.textMenuButton svg {
+  color: var(--color-text-tertiary);
+}
+
+.textMenuLabel {
+  line-height: 1;
+}
+
+.menuSeparator {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--color-border-subtle, var(--color-border));
+}
+
+.menuItemCheck {
+  color: var(--color-accent);
+}
+
+/* ── Shapes: one button plus a small arrow for the list ─────────── */
+
+.splitButton {
+  display: inline-flex;
+  align-items: center;
+}
+
+.splitButton > .commandButton {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.splitChevron {
+  flex: 0 0 16px;
+  width: 16px;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
 }

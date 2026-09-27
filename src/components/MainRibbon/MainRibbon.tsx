@@ -30,7 +30,13 @@ import {
   Moon,
   Sigma,
   MousePointer2,
-  Pointer as LaserIcon,
+  Target as LaserIcon,
+  ChevronDown,
+  Eye,
+  ImagePlus,
+  PenLine,
+  Split,
+  SquareDashedMousePointer,
   Pen,
   Presentation,
   RectangleHorizontal,
@@ -224,16 +230,19 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
         aria-label="Document and annotation tools"
         onKeyDown={handleToolbarArrowNavigation}
       >
-        <ToolbarGroup label="File">
+        {/* Menus first, like a menu bar: each is a word, so none looks like a tool. */}
+        <ToolbarGroup label="Menus">
           <ToolbarMenu
             label="File menu"
+            text="File"
             icon={FolderOpen}
             onCommand={runCommand}
             items={[
               item('file.new', FilePlus2),
-              item('file.fromImages', ImageIcon),
               item('file.open', FolderOpen, 'Open PDF…'),
+              item('file.fromImages', ImageIcon),
               item('file.combine', Files),
+              'separator',
               item('file.save', Save),
               item('file.saveAs', Save),
               item('file.saveAll', Save),
@@ -241,22 +250,20 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
               item('file.exportImages', ImageIcon),
               item('file.reduceSize', Minimize2),
               item('file.print', Printer),
+              'separator',
               item('view.moveTabToNewWindow', AppWindow),
               item('file.recoveredDocuments', History),
               item('file.close', X),
               item('file.closeAll', X),
+              'separator',
               item('app.settings', Settings, 'Settings…'),
               item('help.checkForUpdates', RefreshCw),
               item('help.about', Info),
             ]}
           />
-        </ToolbarGroup>
-
-        <ToolbarSeparator />
-
-        <ToolbarGroup label="Pages">
           <ToolbarMenu
             label="Page menu"
+            text="Page"
             icon={FileStack}
             onCommand={runCommand}
             items={[
@@ -267,13 +274,51 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
               item('page.delete', Trash2),
               item('page.rotateLeft', RotateCcw),
               item('page.rotateRight', RotateCw),
+              'separator',
               item('page.addBookmark', Bookmark),
-              item('page.split', Scissors),
               item('page.exportSelected', FileOutput),
+              item('page.split', Split),
+              'separator',
               item('page.ocrPage', ScanText),
               item('page.ocrAll', ScanText),
               item('edit.inkToText', Wand2),
               item('edit.find', Search),
+            ]}
+          />
+          <ToolbarMenu
+            label="Insert menu"
+            text="Insert"
+            icon={ImagePlus}
+            onCommand={runCommand}
+            items={[
+              item('insert.image', ImageIcon, 'Image…'),
+              item('insert.formula', Sigma, 'Formula…'),
+              item('insert.signature', PenLine, 'Signature & Stamps…'),
+              'separator',
+              item('insert.screenshot', Monitor, 'Display Screenshot'),
+              item('insert.regionScreenshot', SquareDashedMousePointer, 'Capture Region'),
+              'separator',
+              item('insert.printoutPdf', FileText, 'Insert PDF…'),
+              item('insert.printoutPptx', Presentation, 'Insert PowerPoint…'),
+            ]}
+          />
+          <ToolbarMenu
+            label="PDF tools"
+            text="PDF"
+            icon={Wrench}
+            onCommand={runCommand}
+            items={[
+              item('tool.editText', TextCursorInput, 'Edit PDF Text'),
+              item('insert.headerFooter', Hash),
+              'separator',
+              item('tool.crop', Crop, 'Crop Pages'),
+              item('page.removeCrop', Crop),
+              'separator',
+              item('file.reduceSize', Minimize2),
+              item('file.exportImages', ImageIcon),
+              item('file.fromImages', ImageIcon),
+              item('file.combine', Files),
+              item('page.split', Split),
             ]}
           />
         </ToolbarGroup>
@@ -294,8 +339,6 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
           <ToolButton tool="snapshot" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.snapshot')} />
         </ToolbarGroup>
 
-        <ToolbarSeparator />
-
         <ToolbarGroup label="Ink tools" segmented>
           <ToolButton tool="pen" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.pen')} />
           <ToolButton tool="highlighter" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.highlighter')} />
@@ -303,89 +346,26 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
           <ToolButton tool="eraser" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.eraser')} />
         </ToolbarGroup>
 
-        <ToolbarSeparator />
-
         <ToolbarGroup label="Annotation tools" segmented>
           <ToolButton tool="text" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.text')} />
           <ToolButton tool="note" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.note')} />
-          <ToolButton tool="line" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.line')} />
-          <ToolButton tool="arrow" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.arrow')} />
-          <ToolButton tool="rectangle" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.rectangle')} />
-          <ToolButton tool="ellipse" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.ellipse')} />
-          <ToolButton tool="freeform" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.freeform')} />
+          <ShapeSplitButton activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.rectangle')} />
           <ToolButton tool="measure" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.measure')} />
-          <CommandButton commandId="view.ruler" label="Ruler" shortcut="⌥⌘R" icon={RulerIcon} onCommand={runCommand} enabled={isEnabled('view.ruler')} pressed={rulerVisible} />
-          <CommandButton commandId="view.replayInk" label="Replay Ink" icon={CirclePlay} onCommand={runCommand} enabled={isEnabled('view.replayInk')} />
-          <CommandButton commandId="view.nightMode" label="Night Mode" shortcut="⌥⌘D" icon={Moon} onCommand={runCommand} enabled pressed={pageTheme === 'dark'} />
-          <CommandButton commandId="view.presentation" label="Present" shortcut="⌥⌘P" icon={MonitorPlay} onCommand={runCommand} enabled={isEnabled('view.presentation')} />
-          <ToolButton tool="laserPointer" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.laserPointer')} />
-          <ToolbarCustomizeMenu />
         </ToolbarGroup>
 
         <ToolbarSeparator />
 
         <ToolbarGroup label="Insert">
-          <CommandButton
-            commandId="insert.image"
-            label="Insert Image…"
-            shortcut="⌘I"
-            icon={ImageIcon}
-            onCommand={runCommand}
-            enabled={isEnabled('insert.image')}
-          />
           <SignStampMenu enabled={isEnabled('insert.signature')} />
-          <CommandButton
-            commandId="insert.formula"
-            label="Formula…"
-            shortcut="⌥⌘E"
-            icon={Sigma}
-            onCommand={runCommand}
-            enabled={isEnabled('insert.formula')}
-          />
-          <CommandButton
-            commandId="insert.printoutPdf"
-            label="Insert PDF…"
-            icon={FileText}
-            onCommand={runCommand}
-            enabled={isEnabled('insert.printoutPdf')}
-          />
-          <CommandButton
-            commandId="insert.printoutPptx"
-            label="Insert PowerPoint…"
-            icon={Presentation}
-            onCommand={runCommand}
-            enabled={isEnabled('insert.printoutPptx')}
-          />
-          <CommandButton
-            commandId="insert.screenshot"
-            label="Display Screenshot"
-            icon={Monitor}
-            onCommand={runCommand}
-            enabled={isEnabled('insert.screenshot')}
-          />
-          <CommandButton
-            commandId="insert.regionScreenshot"
-            label="Capture Region"
-            icon={Crop}
-            onCommand={runCommand}
-            enabled={isEnabled('insert.regionScreenshot')}
-          />
-          <ToolbarMenu
-            label="PDF tools"
-            icon={Wrench}
-            onCommand={runCommand}
-            items={[
-              { commandId: 'tool.editText', label: 'Edit PDF Text', enabled: isEnabled('tool.editText'), icon: TextCursorInput },
-              { commandId: 'insert.headerFooter', label: 'Header, Footer & Page Numbers…', enabled: isEnabled('insert.headerFooter'), icon: Hash },
-              { commandId: 'tool.crop', label: 'Crop Pages', enabled: isEnabled('tool.crop'), icon: Crop },
-              { commandId: 'page.removeCrop', label: 'Remove Crop from This Page', enabled: isEnabled('page.removeCrop'), icon: Crop },
-              { commandId: 'file.reduceSize', label: 'Reduce File Size…', enabled: isEnabled('file.reduceSize'), icon: Minimize2 },
-              { commandId: 'file.exportImages', label: 'Export Pages as Images…', enabled: isEnabled('file.exportImages'), icon: ImageIcon },
-              { commandId: 'file.fromImages', label: 'New PDF from Images…', enabled: isEnabled('file.fromImages'), icon: FileText },
-              { commandId: 'file.combine', label: 'Combine Files…', enabled: isEnabled('file.combine'), icon: FileText },
-              { commandId: 'page.split', label: 'Split Document…', enabled: isEnabled('page.split'), icon: FileText },
-            ]}
-          />
+          <CommandButton commandId="insert.formula" label="Formula…" shortcut="⌥⌘E" icon={Sigma} onCommand={runCommand} enabled={isEnabled('insert.formula')} />
+        </ToolbarGroup>
+
+        <ToolbarSeparator />
+
+        <ToolbarGroup label="Presentation">
+          <CommandButton commandId="view.presentation" label="Present" shortcut="⌥⌘P" icon={MonitorPlay} onCommand={runCommand} enabled={isEnabled('view.presentation')} />
+          <ToolButton tool="laserPointer" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.laserPointer')} />
+          <ToolbarCustomizeMenu />
         </ToolbarGroup>
 
         <div className={styles.primarySpacer} />
@@ -397,31 +377,25 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
             <CommandButton commandId="view.zoomIn" label="Zoom In" shortcut="⌘+" icon={ZoomIn} onCommand={runCommand} enabled={isEnabled('view.zoomIn')} />
           </div>
           <ToolbarMenu
-            label="Page fit"
-            icon={Maximize2}
+            label="View menu"
+            text="View"
+            icon={Eye}
             onCommand={runCommand}
+            alignEnd
             items={[
               { commandId: 'view.actualSize', label: 'Actual Size', shortcut: '⌘0', enabled: isEnabled('view.actualSize'), icon: Scan },
               { commandId: 'view.fitWidth', label: 'Fit Width', shortcut: '⌘6', enabled: isEnabled('view.fitWidth'), icon: Maximize2 },
               { commandId: 'view.fitPage', label: 'Fit Page', shortcut: '⌘5', enabled: isEnabled('view.fitPage'), icon: Square },
-            ]}
-            alignEnd
-          />
-          <span className={styles.wideViewControls}>
-            <CommandButton commandId="view.rotateCCW" label="Rotate View Left" shortcut="⌘[" icon={RotateCcw} onCommand={runCommand} enabled={isEnabled('view.rotateCCW')} />
-            <CommandButton commandId="view.rotateCW" label="Rotate View Right" shortcut="⌘]" icon={RotateCw} onCommand={runCommand} enabled={isEnabled('view.rotateCW')} />
-          </span>
-          <ToolbarMenu
-            label="More view actions"
-            icon={MoreHorizontal}
-            onCommand={runCommand}
-            className={styles.compactViewMenu}
-            alignEnd
-            items={[
+              'separator',
               { commandId: 'view.rotateCCW', label: 'Rotate View Left', shortcut: '⌘[', enabled: isEnabled('view.rotateCCW'), icon: RotateCcw },
               { commandId: 'view.rotateCW', label: 'Rotate View Right', shortcut: '⌘]', enabled: isEnabled('view.rotateCW'), icon: RotateCw },
+              'separator',
+              { commandId: 'view.ruler', label: 'Ruler', shortcut: '⌥⌘R', enabled: isEnabled('view.ruler'), icon: RulerIcon, checked: rulerVisible },
+              { commandId: 'view.replayInk', label: 'Replay Ink', enabled: isEnabled('view.replayInk'), icon: CirclePlay },
             ]}
           />
+          <CommandButton commandId="view.nightMode" label="Night Mode" shortcut="⌥⌘D" icon={Moon} onCommand={runCommand} enabled pressed={pageTheme === 'dark'} />
+          <CommandButton commandId="view.splitView" label="Side by Side" shortcut={"⌥⌘\\"} icon={Columns2} onCommand={runCommand} enabled={isEnabled('view.splitView')} pressed={splitOpen} />
           <CommandButton
             commandId="view.focusMode"
             label="Focus / Teaching Mode"
@@ -431,7 +405,6 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
             enabled={isEnabled('view.focusMode')}
             pressed={workspaceMode === 'focus'}
           />
-          <CommandButton commandId="view.splitView" label="Side by Side" shortcut={"⌥⌘\\"} icon={Columns2} onCommand={runCommand} enabled={isEnabled('view.splitView')} pressed={splitOpen} />
           <CommandButton commandId="app.settings" label="Settings" shortcut="⌘," icon={Settings} onCommand={runCommand} enabled />
         </ToolbarGroup>
       </div>
@@ -761,25 +734,101 @@ function ToolButton({ tool, activeTool, onCommand, enabled }: { tool: ToolType; 
   );
 }
 
+const RIBBON_SHAPES: readonly ToolType[] = ['line', 'arrow', 'rectangle', 'ellipse', 'freeform'];
+
+/**
+ * One button for all shapes: it draws the last shape used, and the arrow
+ * next to it picks another (line, arrow, rectangle, ellipse, polygon).
+ */
+function ShapeSplitButton({ activeTool, onCommand, enabled }: { activeTool: ToolType; onCommand: (commandId: AppCommandId) => void; enabled: boolean }) {
+  const lastShapeTool = useUIStore((state) => state.lastShapeTool);
+  const detailsRef = React.useRef<HTMLDetailsElement>(null);
+  const [open, setOpen] = React.useState(false);
+  useDismissableDetails(detailsRef);
+  const current: ToolType = RIBBON_SHAPES.includes(activeTool) ? activeTool : lastShapeTool;
+  const definition = TOOL_DEFINITIONS[current];
+  const command = APP_COMMANDS[definition.commandId];
+  const Icon = definition.icon;
+  const selected = RIBBON_SHAPES.includes(activeTool);
+  const title = command.shortcut ? `${command.shortLabel} (${command.shortcut})` : command.shortLabel;
+  return (
+    <div className={styles.splitButton}>
+      <button
+        type="button"
+        className={`${styles.commandButton} ${selected ? styles.toolButtonActive : ''} ${!enabled ? styles.commandButtonDisabled : ''}`}
+        onClick={() => { if (enabled) onCommand(definition.commandId); }}
+        title={title}
+        aria-label={title}
+        aria-pressed={selected}
+        aria-disabled={!enabled}
+        data-toolbar-control="true"
+      >
+        <Icon size={18} strokeWidth={1.9} aria-hidden="true" />
+      </button>
+      <details className={styles.toolbarMenu} ref={detailsRef} onToggle={(event) => setOpen(event.currentTarget.open)}>
+        <summary className={`${styles.commandButton} ${styles.splitChevron} ${!enabled ? styles.commandButtonDisabled : ''}`} title="Shapes" aria-label="Shapes" role="button" aria-haspopup="menu" aria-expanded={open} data-toolbar-control="true">
+          <ChevronDown size={12} strokeWidth={2} aria-hidden="true" />
+        </summary>
+        <div className={styles.menuPopover} role="menu" aria-label="Shapes">
+          {RIBBON_SHAPES.map((tool) => {
+            const shape = TOOL_DEFINITIONS[tool];
+            const shapeCommand = APP_COMMANDS[shape.commandId];
+            const ShapeIcon = shape.icon;
+            return (
+              <button
+                key={tool}
+                type="button"
+                className={`${styles.menuItem} ${!enabled ? styles.menuItemDisabled : ''}`}
+                role="menuitemradio"
+                aria-checked={activeTool === tool}
+                onClick={() => {
+                  detailsRef.current?.removeAttribute('open');
+                  if (enabled) onCommand(shape.commandId);
+                }}
+              >
+                <ShapeIcon size={15} aria-hidden="true" />
+                <span>{shapeCommand.shortLabel}</span>
+                {activeTool === tool && <Check size={14} className={styles.menuItemCheck} aria-label="On" />}
+                {shapeCommand.shortcut && <kbd>{shapeCommand.shortcut}</kbd>}
+              </button>
+            );
+          })}
+        </div>
+      </details>
+    </div>
+  );
+}
+
 interface ToolbarMenuItem {
   commandId: AppCommandId;
   label: string;
   shortcut?: string;
   enabled: boolean;
   icon?: LucideIcon;
+  /** A toggle that is on (shows a tick). */
+  checked?: boolean;
 }
 
-function ToolbarMenu({ label, icon: Icon, items, onCommand, alignEnd = false, className = '' }: { label: string; icon: LucideIcon; items: readonly ToolbarMenuItem[]; onCommand: (commandId: AppCommandId) => void; alignEnd?: boolean; className?: string }) {
+/** A menu row, or 'separator' for a thin line between sections. */
+type ToolbarMenuEntry = ToolbarMenuItem | 'separator';
+
+function ToolbarMenu({ label, text, icon: Icon, items, onCommand, alignEnd = false, className = '' }: { label: string; /** Word shown next to the icon (menus that hold many commands). */ text?: string; icon: LucideIcon; items: readonly ToolbarMenuEntry[]; onCommand: (commandId: AppCommandId) => void; alignEnd?: boolean; className?: string }) {
   const detailsRef = React.useRef<HTMLDetailsElement>(null);
   const [open, setOpen] = React.useState(false);
   useDismissableDetails(detailsRef);
   return (
     <details className={`${styles.toolbarMenu} ${className}`} ref={detailsRef} onToggle={(event) => setOpen(event.currentTarget.open)}>
-      <summary className={styles.commandButton} title={label} aria-label={label} role="button" aria-haspopup="menu" aria-expanded={open} data-toolbar-control="true">
-        <Icon size={18} strokeWidth={1.8} aria-hidden="true" />
+      <summary className={`${styles.commandButton} ${text ? styles.textMenuButton : ''}`} title={label} aria-label={label} role="button" aria-haspopup="menu" aria-expanded={open} data-toolbar-control="true">
+        {text ? (
+          <>
+            <span className={styles.textMenuLabel}>{text}</span>
+            <ChevronDown size={13} strokeWidth={2} aria-hidden="true" />
+          </>
+        ) : <Icon size={18} strokeWidth={1.8} aria-hidden="true" />}
       </summary>
       <div className={`${styles.menuPopover} ${alignEnd ? styles.menuPopoverEnd : ''}`} role="menu" aria-label={label}>
-        {items.map((item) => {
+        {items.map((item, index) => {
+          if (item === 'separator') return <div key={`separator-${index}`} className={styles.menuSeparator} role="separator" />;
           const ItemIcon = item.icon;
           return (
             <button
@@ -797,6 +846,7 @@ function ToolbarMenu({ label, icon: Icon, items, onCommand, alignEnd = false, cl
             >
               {ItemIcon ? <ItemIcon size={15} aria-hidden="true" /> : <span className={styles.menuItemIcon} />}
               <span>{item.label}</span>
+              {item.checked && <Check size={14} className={styles.menuItemCheck} aria-label="On" />}
               {item.shortcut && <kbd>{item.shortcut}</kbd>}
             </button>
           );
