@@ -872,6 +872,7 @@ export const TR_PATTERNS: readonly Pattern[] = [
  */
 export const TR_WRAPPERS: readonly Pattern[] = [
   [/^Active tool: (.+)$/, (tool) => `Etkin araç: ${tool}`],
+  [/^(.+) × (\d+)$/, (label, count) => `${label} × ${count}`],
   [/^(.+) is not available yet$/s, (label) => `${label} henüz kullanılamıyor`],
   [/^(.+) properties$/, (tool) => `${tool} özellikleri`],
   [/^Symbols: (.+)$/, (group) => `Semboller: ${group}`],

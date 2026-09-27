@@ -435,3 +435,43 @@
   background: var(--color-bg-surface);
   color: var(--color-text-primary);
 }
+
+/* A run of same-colour strokes shown as one row ("Pen × 8"). */
+.groupToggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-right: -2px;
+  padding: 0;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.groupToggle:hover {
+  background: var(--color-bg-hover, rgba(0, 0, 0, 0.06));
+}
+
+.groupChildren {
+  margin-left: 14px;
+  padding-left: 4px;
+  border-left: 1px solid var(--color-border-subtle);
+}
+
+/* Row actions appear on hover so the name has room; a hidden or locked
+   annotation keeps its eye / lock icon visible. */
+.annotationRow .rowButton {
+  display: none;
+}
+
+.annotationRow:hover .rowButton,
+.annotationRow:focus-visible .rowButton,
+.annotationRow:has(:focus-visible) .rowButton,
+.annotationRow .rowButtonOn {
+  display: flex;
+}
