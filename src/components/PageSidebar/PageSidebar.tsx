@@ -282,8 +282,6 @@ function PagesPanel({
         <PageToolButton label="Insert note page (lined / grid)… ⌥⌘N" icon={<NotebookPen size={15} />} onClick={() => useUIStore.getState().setNotePageDialogOpen(true)} />
         <PageToolButton label="Insert pages from PDF…" icon={<FileInput size={15} />} onClick={() => void insertPagesFromPdf()} />
         <PageToolButton label={`Duplicate ${selectionLabel}`} icon={<Copy size={15} />} onClick={() => void duplicatePages()} />
-        <PageToolButton label={`Rotate ${selectionLabel} left`} icon={<RotateCcw size={15} />} onClick={() => void rotatePages(-90)} />
-        <PageToolButton label={`Rotate ${selectionLabel} right`} icon={<RotateCw size={15} />} onClick={() => void rotatePages(90)} />
         <PageToolButton label={`Export ${selectionLabel}…`} icon={<Download size={15} />} onClick={() => void exportSelectedPages()} />
         <PageToolButton label={`Delete ${selectionLabel}`} icon={<Trash2 size={15} />} onClick={() => void deletePages()} danger />
       </div>

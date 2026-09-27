@@ -184,11 +184,8 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
 
   const activeDoc = activeDocId ? documents.get(activeDocId) : undefined;
   const hasDocument = Boolean(activeDoc);
-  const zoomLabel = activeDoc?.zoomMode === 'fitWidth'
-    ? 'FIT W'
-    : activeDoc?.zoomMode === 'fitPage'
-      ? 'FIT P'
-      : `${Math.round((activeDoc?.zoom ?? 1) * 100)}%`;
+  // Always the real percentage; the status bar shows which fit is on.
+  const zoomLabel = `${Math.round((activeDoc?.zoom ?? 1) * 100)}%`;
 
   const rulerVisible = useRulerStore((s) => s.visible);
   const isEnabled = React.useCallback((commandId: AppCommandId) => {
@@ -351,6 +348,7 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
           <ToolButton tool="note" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.note')} />
           <ShapeSplitButton activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.rectangle')} />
           <ToolButton tool="measure" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.measure')} />
+          <CommandButton commandId="view.ruler" label="Ruler" shortcut="⌥⌘R" icon={RulerIcon} onCommand={runCommand} enabled={isEnabled('view.ruler')} pressed={rulerVisible} />
         </ToolbarGroup>
 
         <ToolbarSeparator />
@@ -365,6 +363,7 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
         <ToolbarGroup label="Presentation">
           <CommandButton commandId="view.presentation" label="Present" shortcut="⌥⌘P" icon={MonitorPlay} onCommand={runCommand} enabled={isEnabled('view.presentation')} />
           <ToolButton tool="laserPointer" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.laserPointer')} />
+          <CommandButton commandId="view.replayInk" label="Replay Ink" icon={CirclePlay} onCommand={runCommand} enabled={isEnabled('view.replayInk')} />
           <ToolbarCustomizeMenu />
         </ToolbarGroup>
 
@@ -376,20 +375,8 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
             <output className={styles.zoomValue} aria-label={`Current zoom ${zoomLabel}`}>{zoomLabel}</output>
             <CommandButton commandId="view.zoomIn" label="Zoom In" shortcut="⌘+" icon={ZoomIn} onCommand={runCommand} enabled={isEnabled('view.zoomIn')} />
           </div>
-          <ToolbarMenu
-            label="View menu"
-            text="View"
-            icon={Eye}
-            onCommand={runCommand}
-            alignEnd
-            items={[
-              { commandId: 'view.rotateCCW', label: 'Rotate View Left', shortcut: '⌘[', enabled: isEnabled('view.rotateCCW'), icon: RotateCcw },
-              { commandId: 'view.rotateCW', label: 'Rotate View Right', shortcut: '⌘]', enabled: isEnabled('view.rotateCW'), icon: RotateCw },
-              'separator',
-              { commandId: 'view.ruler', label: 'Ruler', shortcut: '⌥⌘R', enabled: isEnabled('view.ruler'), icon: RulerIcon, checked: rulerVisible },
-              { commandId: 'view.replayInk', label: 'Replay Ink', enabled: isEnabled('view.replayInk'), icon: CirclePlay },
-            ]}
-          />
+          <CommandButton commandId="view.rotateCCW" label="Rotate View Left" shortcut="⌘[" icon={RotateCcw} onCommand={runCommand} enabled={isEnabled('view.rotateCCW')} />
+          <CommandButton commandId="view.rotateCW" label="Rotate View Right" shortcut="⌘]" icon={RotateCw} onCommand={runCommand} enabled={isEnabled('view.rotateCW')} />
           <CommandButton commandId="view.nightMode" label="Night Mode" shortcut="⌥⌘D" icon={Moon} onCommand={runCommand} enabled pressed={pageTheme === 'dark'} />
           <CommandButton commandId="app.settings" label="Settings" shortcut="⌘," icon={Settings} onCommand={runCommand} enabled />
         </ToolbarGroup>
