@@ -91,6 +91,7 @@ import {
   hitTestResizeHandle,
   getResizeHandles,
   eraserHitTest,
+  isErasable,
   rectsIntersect,
   hitTestMarquee,
 } from '../../pdf/annotationHitTest';
@@ -1937,7 +1938,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     }
 
     for (const ann of originalEraserSnapshotRef.current) {
-      if (ann.locked || ann.hidden) continue;
+      if (ann.locked || ann.hidden || !isErasable(ann)) continue;
       
       // If already deleted in this sweep, skip
       const existingHit = eraserHitsRef.current.get(ann.id);

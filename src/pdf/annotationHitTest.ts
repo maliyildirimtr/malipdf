@@ -308,6 +308,16 @@ function hitTestFreeform(
 // ─── Eraser hit test ──────────────────────────────────────────────────────────
 
 /**
+ * The eraser works on ink and drawings only. Pictures, inserted PDF /
+ * PowerPoint pages and formulas are images: erasing across them must not
+ * wipe out the page, so they are removed only by selecting them and
+ * pressing Delete.
+ */
+export function isErasable(annotation: Annotation): boolean {
+  return annotation.type !== 'image';
+}
+
+/**
  * Eraser hit test: given the eraser center in PDF User Space,
  * return all annotations that intersect the eraser.
  *
@@ -325,7 +335,7 @@ export function eraserHitTest(
 ): Annotation[] {
   const hit: Annotation[] = [];
   for (const ann of annotations) {
-    if (ann.locked || ann.hidden) continue;
+    if (ann.locked || ann.hidden || !isErasable(ann)) continue;
     if (hitTestAnnotation(pdfPoint, ann, eraserSizePdf)) {
       hit.push(ann);
     }

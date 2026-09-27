@@ -180,3 +180,14 @@ describe('annotationHitTest', () => {
     });
   });
 });
+
+describe('eraser and pictures', () => {
+  it('never erases images (pictures, inserted PDF pages, formulas)', async () => {
+    const { eraserHitTest, isErasable } = await import('../annotationHitTest');
+    const image = { id: 'img', type: 'image', pageIndex: 0, x: 0, y: 0, width: 200, height: 200, opacity: 1, color: '#000', assetId: 'a' } as never;
+    const stroke = { id: 's', type: 'stroke', pageIndex: 0, color: '#000', opacity: 1, width: 2, points: [{ x: 90, y: 100, pressure: 0.5 }, { x: 110, y: 100, pressure: 0.5 }] } as never;
+    expect(isErasable(image)).toBe(false);
+    expect(isErasable(stroke)).toBe(true);
+    expect(eraserHitTest({ x: 100, y: 100 }, [image, stroke], 5).map((a) => a.id)).toEqual(['s']);
+  });
+});
