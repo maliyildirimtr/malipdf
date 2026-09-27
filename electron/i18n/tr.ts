@@ -778,6 +778,12 @@ export const TR: Readonly<Record<string, string>> = {
   Images: 'Görseller',
   'Choose Images': 'Görselleri Seçin',
   'PowerPoint Presentations': 'PowerPoint Sunuları',
+  'MaliPDF needs Screen Recording permission to take screenshots.': 'Ekran görüntüsü almak için MaliPDF’in Ekran Kaydı izni gerekiyor.',
+  'In System Settings ▸ Privacy & Security ▸ Screen & System Audio Recording, turn on MaliPDF. Then quit and reopen MaliPDF.':
+    'Sistem Ayarları ▸ Gizlilik ve Güvenlik ▸ Ekran ve Sistem Sesi Kaydı bölümünde MaliPDF’i açın. Sonra MaliPDF’ten çıkıp yeniden açın.',
+  'In System Settings ▸ Privacy & Security ▸ Screen & System Audio Recording, turn on Electron and the Terminal app you ran npm run dev from. Then quit and restart npm run dev.':
+    'Sistem Ayarları ▸ Gizlilik ve Güvenlik ▸ Ekran ve Sistem Sesi Kaydı bölümünde Electron’u ve npm run dev komutunu çalıştırdığınız Terminal uygulamasını açın. Sonra npm run dev’i kapatıp yeniden başlatın.',
+  'Open System Settings': 'Sistem Ayarlarını Aç',
   'MaliPDF is up to date.': 'MaliPDF güncel.',
   'Could not check for updates.': 'Güncellemeler denetlenemedi.',
   'Update Available': 'Güncelleme Var',

@@ -10,6 +10,7 @@ import {
   clipboard,
   nativeImage,
   systemPreferences,
+  shell,
 } from 'electron';
 import path from 'path';
 import fs from 'fs';
@@ -662,6 +663,38 @@ handleTrusted('clipboard:writeImage', isDev, async (_event, raw: unknown) => {
   return true;
 });
 
+/**
+ * macOS only lets an app see other windows once it has Screen Recording
+ * permission. Without it a capture shows just the desktop background, or
+ * nothing. Explain where to turn it on instead of failing silently.
+ */
+async function ensureScreenCapturePermission(): Promise<boolean> {
+  if (process.platform !== 'darwin') return true;
+  const status = systemPreferences.getMediaAccessStatus('screen');
+  if (status === 'granted') return true;
+  if (status === 'not-determined') {
+    // The first request makes macOS show its own permission prompt.
+    await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1, height: 1 } }).catch(() => []);
+    if (systemPreferences.getMediaAccessStatus('screen') === 'granted') return true;
+  }
+  const window = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+  const { response } = await showMessageBox(window, {
+    type: 'info',
+    title: 'MaliPDF',
+    message: 'MaliPDF needs Screen Recording permission to take screenshots.',
+    detail: app.isPackaged
+      ? 'In System Settings ▸ Privacy & Security ▸ Screen & System Audio Recording, turn on MaliPDF. Then quit and reopen MaliPDF.'
+      : 'In System Settings ▸ Privacy & Security ▸ Screen & System Audio Recording, turn on Electron and the Terminal app you ran npm run dev from. Then quit and restart npm run dev.',
+    buttons: ['Open System Settings', 'Cancel'],
+    defaultId: 0,
+    cancelId: 1,
+  });
+  if (response === 0) {
+    await shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture').catch(() => {});
+  }
+  return false;
+}
+
 // Capture Display Screenshot
 handleTrusted('screenshot:captureDisplay', isDev, async () => {
   if (isCapturingSession) {
@@ -669,12 +702,9 @@ handleTrusted('screenshot:captureDisplay', isDev, async () => {
   }
   isCapturingSession = true;
 
-  if (process.platform === 'darwin') {
-    const status = systemPreferences.getMediaAccessStatus('screen');
-    if (status === 'denied' || status === 'restricted') {
-      isCapturingSession = false;
-      return { success: false, error: 'Screen recording permission denied in macOS System Settings.' };
-    }
+  if (!(await ensureScreenCapturePermission())) {
+    isCapturingSession = false;
+    return { success: false, canceled: true };
   }
 
   const targetDisplay = getTargetDisplay();
@@ -735,12 +765,9 @@ handleTrusted('screenshot:captureRegion', isDev, async () => {
   }
   isCapturingSession = true;
 
-  if (process.platform === 'darwin') {
-    const status = systemPreferences.getMediaAccessStatus('screen');
-    if (status === 'denied' || status === 'restricted') {
-      isCapturingSession = false;
-      return { success: false, error: 'Screen recording permission denied in macOS System Settings.' };
-    }
+  if (!(await ensureScreenCapturePermission())) {
+    isCapturingSession = false;
+    return { success: false, canceled: true };
   }
 
   const targetDisplay = getTargetDisplay();
