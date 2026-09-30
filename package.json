@@ -12,6 +12,8 @@
     "build:vite": "tsc && vite build",
     "build:electron": "tsc -p tsconfig.electron.json && node scripts/writeBuildInfo.mjs && node scripts/buildVisionHelper.mjs",
     "build:ocr": "node scripts/buildVisionHelper.mjs --force",
+    "dist:mac": "npm run build && electron-builder --mac",
+    "dist:win": "npm run build && electron-builder --win --x64",
     "preview": "vite preview",
     "lint": "eslint src --ext ts,tsx",
     "test": "vitest run",
@@ -36,6 +38,7 @@
     "concurrently": "^9.0.1",
     "cross-env": "^7.0.3",
     "electron": "^44.4.5",
+    "electron-builder": "^26.0.12",
     "typescript": "^5.5.4",
     "vite": "^5.4.4",
     "vitest": "^2.1.9",
@@ -51,41 +54,47 @@
     "url": "https://github.com/maliyildirimtr/malipdf.git"
   },
   "build": {
-    "appId": "com.maliyildirim.malipdf",
+    "appId": "com.maliyildirimtr.malipdf",
     "productName": "MaliPDF",
     "copyright": "© Mehmet Ali Yıldırım",
     "directories": {
       "output": "release",
       "buildResources": "build"
     },
-    "extraResources": [
-      {
-        "from": "build/icon.png",
-        "to": "icon.png"
-      }
-    ],
     "files": [
       "dist/**/*",
       "dist-electron/**/*",
       "package.json",
       "!**/*.map"
     ],
+    "extraResources": [
+      {
+        "from": "build/icon.png",
+        "to": "icon.png"
+      }
+    ],
     "asar": true,
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
       "category": "public.app-category.productivity",
+      "icon": "build/icon.png",
+      "hardenedRuntime": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "notarize": true,
       "extraResources": [
         {
           "from": "build/native",
           "to": "native",
-          "filter": ["malipdf-vision"]
+          "filter": [
+            "malipdf-vision"
+          ]
         }
       ],
-      "icon": "build/icon.png",
-      "hardenedRuntime": true,
-      "gatekeeperAssess": false,
-      "entitlements": "build/entitlements.mac.plist",
-      "entitlementsInherit": "build/entitlements.mac.plist",
       "extendInfo": {
         "NSScreenCaptureUsageDescription": "MaliPDF uses screen capture to insert screenshots into your PDF."
       }
