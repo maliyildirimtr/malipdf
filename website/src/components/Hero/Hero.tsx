@@ -1,5 +1,4 @@
-import { downloads, windowsInstaller } from '../../config/downloads';
-import { DownloadMenu } from '../DownloadMenu/DownloadMenu';
+import { downloads, macosInstaller } from '../../config/downloads';
 import './Hero.css';
 
 const lineWidths = ['82%', '66%', '91%', '74%', '86%', '58%', '78%', '92%', '69%'];
@@ -31,35 +30,25 @@ export function Hero() {
           <p className="hero__description">
             Annotate documents, teach from lecture slides, organize visual
             notes, and work directly on PDFs — with a fast, focused desktop
-            workflow built for macOS and Windows.
+            workflow built for Apple silicon Macs.
           </p>
 
           <div className="hero__actions">
-            <DownloadMenu
-              platform={downloads.macos}
-              buttonClassName="btn btn--primary btn--lg hero__btn-primary"
-              ariaLabel={`${downloads.macos.label} — choose Apple Silicon or Intel`}
+            <a
+              href={macosInstaller.url}
+              download={macosInstaller.fileName}
+              className="btn btn--primary btn--lg hero__btn-primary"
+              aria-label={`${downloads.macos.label}, version ${downloads.version}, Apple Silicon`}
             >
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" />
                 <path d="M14.5 8.5c0-1.38-1.12-2.5-2.5-2.5S9.5 7.12 9.5 8.5c0 .74.32 1.4.83 1.87L7 14h10l-3.33-3.63c.51-.47.83-1.13.83-1.87z" />
               </svg>
               {downloads.macos.label}
-            </DownloadMenu>
-            <a
-              href={windowsInstaller.url}
-              download={windowsInstaller.fileName}
-              className="btn btn--outline btn--lg hero__btn-secondary"
-              aria-label={`${downloads.windows.label} (${windowsInstaller.label}, ${windowsInstaller.sizeLabel})`}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                <path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801" />
-              </svg>
-              {downloads.windows.label}
             </a>
           </div>
           <p className="hero__notice">
-            Version {downloads.version} · Free. No account required.
+            Version {downloads.version} · Apple Silicon · Developer ID signed and Apple notarized.
           </p>
         </div>
 

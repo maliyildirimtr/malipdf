@@ -38,7 +38,6 @@ export interface DownloadConfig {
   tag: string;
   releaseNotesUrl: string;
   macos: PlatformDownloads;
-  windows: PlatformDownloads;
 }
 
 export const downloads: DownloadConfig = {
@@ -53,38 +52,14 @@ export const downloads: DownloadConfig = {
         id: 'macos-apple-silicon',
         label: 'Apple Silicon',
         description: 'M1, M2, M3, M4 and later',
-        fileName: 'MaliPDF-macOS-Apple-Silicon.dmg',
-        url: assetUrl('MaliPDF-macOS-Apple-Silicon.dmg'),
+        fileName: 'MaliPDF-1.0.0-mac-arm64.dmg',
+        url: assetUrl('MaliPDF-1.0.0-mac-arm64.dmg'),
         arch: 'arm64',
-        sizeLabel: '~161 MB',
-      },
-      {
-        id: 'macos-intel',
-        label: 'Intel Mac',
-        description: 'Macs with Intel processors',
-        fileName: 'MaliPDF-macOS-Intel.dmg',
-        url: assetUrl('MaliPDF-macOS-Intel.dmg'),
-        arch: 'x64',
-        sizeLabel: '~165 MB',
-      },
-    ],
-  },
-
-  windows: {
-    label: 'Download for Windows',
-    assets: [
-      {
-        id: 'windows-x64',
-        label: 'Windows x64',
-        description: '64-bit installer (.exe)',
-        fileName: 'MaliPDF-Windows-x64-Setup.exe',
-        url: assetUrl('MaliPDF-Windows-x64-Setup.exe'),
-        arch: 'x64',
-        sizeLabel: '~136 MB',
+        sizeLabel: '~170 MB',
       },
     ],
   },
 };
 
-/** The single Windows installer (convenience accessor). */
-export const windowsInstaller = downloads.windows.assets[0];
+/** The public macOS installer. */
+export const macosInstaller = downloads.macos.assets[0];

@@ -36,8 +36,8 @@ export function Footer() {
               PDF annotation for serious work.
             </p>
             <p className="footer__desc">
-              A native desktop application for macOS and Windows, built
-              for students, lecturers, engineers and researchers.
+              A native desktop application for Apple silicon Macs, built
+              for students, lecturers, engineers and researchers. Windows is in development.
             </p>
           </div>
 
@@ -62,14 +62,6 @@ export function Footer() {
                   <a href={href} className="footer__link">{label}</a>
                 </li>
               ))}
-              {/* GitHub placeholder — uncomment when ready */}
-              {/*
-              <li>
-                <a href="https://github.com/malipdf" className="footer__link" target="_blank" rel="noopener noreferrer">
-                  GitHub
-                </a>
-              </li>
-              */}
             </ul>
           </div>
         </div>
