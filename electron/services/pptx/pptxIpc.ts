@@ -1,5 +1,5 @@
 import { BrowserWindow, app, shell } from 'electron';
-import { showOpenDialog } from '../../i18n/mainLanguage';
+import { showMessageBox, showOpenDialog } from '../../i18n/mainLanguage';
 import fs from 'fs';
 import path from 'path';
 import { randomUUID } from 'crypto';
@@ -17,6 +17,12 @@ const MAX_CONVERTED_PDF_BYTES = 500 * 1024 * 1024;
 
 const TEMP_DIR_PREFIX = 'malipdf-pptx-';
 const PRESENTATION_EXTENSIONS = ['.pptx', '.ppt', '.odp'];
+/** Everything LibreOffice can turn into a PDF for MaliPDF (presentations, text documents, spreadsheets). */
+export const OFFICE_EXTENSIONS = [
+  ...PRESENTATION_EXTENSIONS,
+  '.docx', '.doc', '.odt', '.rtf',
+  '.xlsx', '.xls', '.ods',
+];
 export const LIBREOFFICE_DOWNLOAD_URL = 'https://www.libreoffice.org/download/download-libreoffice/';
 /** Temp folders older than this are leftovers of a crash and are removed at startup. */
 const STALE_TEMP_AGE_MS = 24 * 60 * 60 * 1000;
@@ -108,6 +114,21 @@ export function setupPptxIpc(isDev: boolean) {
     return true;
   });
 
+  // LibreOffice is missing: explain and offer the (fixed) download page.
+  handleTrusted('office:promptLibreOffice', isDev, async (event) => {
+    const window = BrowserWindow.fromWebContents(event.sender);
+    const { response } = await showMessageBox(window, {
+      type: 'info',
+      buttons: ['Download LibreOffice', 'Cancel'],
+      defaultId: 0,
+      cancelId: 1,
+      message: 'LibreOffice is needed for this conversion',
+      detail: 'MaliPDF uses the free LibreOffice suite to convert Word, Excel and PowerPoint files. Install it, then try again — no restart needed.',
+    });
+    if (response === 0) await shell.openExternal(LIBREOFFICE_DOWNLOAD_URL);
+    return response === 0;
+  });
+
   handleTrusted('pptx:isAvailable', isDev, async () => {
     return await provider.isAvailable();
   });
@@ -151,11 +172,11 @@ export function setupPptxIpc(isDev: boolean) {
     const data = requireBinary(rawData, 'Presentation', MAX_INPUT_PPTX_BYTES);
     const name = typeof rawName === 'string' ? path.basename(rawName).slice(0, 255) : 'Presentation.pptx';
     const extension = path.extname(name).toLowerCase();
-    if (!PRESENTATION_EXTENSIONS.includes(extension)) {
-      throw new Error('Only PowerPoint (.pptx, .ppt) and OpenDocument (.odp) presentations can be converted.');
+    if (!OFFICE_EXTENSIONS.includes(extension)) {
+      throw new Error('Only Word, Excel, PowerPoint and OpenDocument files can be converted.');
     }
     if (!(await provider.isAvailable())) {
-      throw new Error('PowerPoint to PDF conversion is not available on this system (LibreOffice not found).');
+      throw new Error('Converting Office files to PDF is not available on this system (LibreOffice not found).');
     }
     return convertJob(jobId, extension, name, (target) => fs.promises.writeFile(target, data, { mode: 0o600 }));
   });

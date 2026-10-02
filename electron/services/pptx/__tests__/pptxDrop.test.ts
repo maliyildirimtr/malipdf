@@ -44,7 +44,13 @@ describe('pptx drag & drop conversion', () => {
     expect(fs.readdirSync(temp).filter((n) => n.startsWith('malipdf-pptx-'))).toEqual([]);
   });
 
-  it('rejects other file types', async () => {
-    await expect(handlers.get('pptx:convertBytes')!(trusted, 'job2', new Uint8Array([1]), 'notes.docx')).rejects.toThrow('Only PowerPoint');
+  it('rejects files LibreOffice is not used for', async () => {
+    await expect(handlers.get('pptx:convertBytes')!(trusted, 'job2', new Uint8Array([1]), 'notes.txt')).rejects.toThrow('Only Word, Excel, PowerPoint');
+    await expect(handlers.get('pptx:convertBytes')!(trusted, 'job3', new Uint8Array([1]), 'run.exe')).rejects.toThrow('Only Word, Excel, PowerPoint');
+  });
+
+  it('converts Word and Excel files too', async () => {
+    await expect(handlers.get('pptx:convertBytes')!(trusted, 'job4', new Uint8Array([1]), 'notes.docx')).resolves.toMatchObject({ name: 'notes.docx' });
+    await expect(handlers.get('pptx:convertBytes')!(trusted, 'job5', new Uint8Array([1]), 'table.xlsx')).resolves.toMatchObject({ name: 'table.xlsx' });
   });
 });

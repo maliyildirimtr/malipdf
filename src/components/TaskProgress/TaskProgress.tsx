@@ -19,10 +19,11 @@ export function TaskProgressPanel() {
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
         <span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.label}</span>
-        <span style={{ opacity: 0.7, fontVariantNumeric: 'tabular-nums' }}>{task.done} / {task.total}</span>
+        {task.total > 0 && <span style={{ opacity: 0.7, fontVariantNumeric: 'tabular-nums' }}>{task.done} / {task.total}</span>}
       </div>
       <div style={{ height: 4, borderRadius: 2, background: 'rgba(127,127,127,0.25)', overflow: 'hidden' }}>
-        <div style={{ width: `${pct}%`, height: '100%', background: 'var(--color-accent, #0a84ff)', transition: 'width 200ms' }} />
+        {/* No total: a steady half-bright bar (the length of the step is unknown). */}
+        <div style={{ width: task.total > 0 ? `${pct}%` : '100%', opacity: task.total > 0 ? 1 : 0.45, height: '100%', background: 'var(--color-accent, #0a84ff)', transition: 'width 200ms' }} />
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
         <button

@@ -41,6 +41,7 @@ import { HeaderFooterDialog } from './components/NewDocumentDialog/HeaderFooterD
 import { CompressDialog } from './components/NewDocumentDialog/CompressDialog';
 import { ExportImagesDialog } from './components/NewDocumentDialog/ExportImagesDialog';
 import { ImagesToPdfDialog } from './components/NewDocumentDialog/ImagesToPdfDialog';
+import { ExportWordDialog } from './components/NewDocumentDialog/ExportWordDialog';
 import { PresentationView } from './components/Presentation/PresentationView';
 import { FormulaDialog } from './components/Formula/FormulaDialog';
 import { TaskProgressPanel } from './components/TaskProgress/TaskProgress';
@@ -267,6 +268,7 @@ export default function App() {
       <CompressDialog />
       <ExportImagesDialog />
       <ImagesToPdfDialog />
+      <ExportWordDialog />
       <LaserOverlay />
       <PresentationView />
       <FormulaDialog />

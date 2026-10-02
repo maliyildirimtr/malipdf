@@ -37,8 +37,8 @@ export interface RecoveryEntry {
 
 export interface ElectronAPI {
   // File operations
-  openFile: () => Promise<OpenedFile[] | null>;
-  saveFile: (defaultName: string) => Promise<string | null>;
+  openFile: (kind?: 'pdf' | 'any' | 'office') => Promise<OpenedFile[] | null>;
+  saveFile: (defaultName: string, kind?: 'pdf' | 'docx') => Promise<string | null>;
   /** Only paths chosen in an Open/Save dialog this session are writable. */
   writeFile: (filePath: string, data: ArrayBuffer) => Promise<boolean>;
 
@@ -87,13 +87,14 @@ export interface ElectronAPI {
   pptxStartConversion: (jobId: string) => Promise<{ buffer: ArrayBuffer; name: string } | null>;
   pptxConvertBytes: (jobId: string, data: ArrayBuffer, name: string) => Promise<{ buffer: ArrayBuffer; name: string }>;
   pptxCancelConversion: (jobId: string) => Promise<void>;
+  officePromptLibreOffice: () => Promise<boolean>;
   ocrIsAvailable: () => Promise<boolean>;
   ocrRecognize: (png: ArrayBuffer, languages?: string[]) => Promise<OcrLine[]>;
 }
 
 const electronAPI: ElectronAPI = {
-  openFile: () => ipcRenderer.invoke('dialog:openFile'),
-  saveFile: (defaultName) => ipcRenderer.invoke('dialog:saveFile', defaultName),
+  openFile: (kind) => ipcRenderer.invoke('dialog:openFile', kind),
+  saveFile: (defaultName, kind) => ipcRenderer.invoke('dialog:saveFile', defaultName, kind),
   writeFile: (filePath, data) => ipcRenderer.invoke('fs:writeFile', filePath, data),
   getVersion: () => ipcRenderer.invoke('app:getVersion'),
 
@@ -142,6 +143,7 @@ const electronAPI: ElectronAPI = {
   pptxStartConversion: (jobId) => ipcRenderer.invoke('pptx:startConversion', jobId),
   pptxConvertBytes: (jobId, data, name) => ipcRenderer.invoke('pptx:convertBytes', jobId, data, name),
   pptxCancelConversion: (jobId) => ipcRenderer.invoke('pptx:cancelConversion', jobId),
+  officePromptLibreOffice: () => ipcRenderer.invoke('office:promptLibreOffice'),
   ocrIsAvailable: () => ipcRenderer.invoke('ocr:isAvailable'),
   ocrRecognize: (png, languages) => ipcRenderer.invoke('ocr:recognize', png, languages),
 };

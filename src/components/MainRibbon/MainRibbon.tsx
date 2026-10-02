@@ -239,6 +239,7 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
             items={[
               item('file.new', FilePlus2),
               item('file.open', FolderOpen, 'Open PDF…'),
+              item('file.openOffice', FileInput),
               item('file.fromImages', ImageIcon),
               item('file.combine', Files),
               'separator',
@@ -246,6 +247,7 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
               item('file.saveAs', Save),
               item('file.saveAll', Save),
               item('file.export', FileOutput),
+              item('file.exportWord', FileText),
               item('file.exportImages', ImageIcon),
               item('file.reduceSize', Minimize2),
               item('file.print', Printer),
@@ -318,6 +320,10 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
               item('file.fromImages', ImageIcon),
               item('file.combine', Files),
               item('page.split', Split),
+              'separator',
+              item('file.openOffice', FileInput, 'Word / Excel / PowerPoint ▸ PDF…'),
+              item('file.exportWord', FileText, 'PDF ▸ Word…'),
+              item('file.imagesToWord', ImageIcon, 'Images ▸ Word…'),
             ]}
           />
         </ToolbarGroup>

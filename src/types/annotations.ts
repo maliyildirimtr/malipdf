@@ -500,8 +500,8 @@ export type ResizeHandle =
 declare global {
   interface Window {
     electronAPI: {
-      openFile: () => Promise<Array<{ filePath: string; name: string; data: ArrayBuffer }> | null>;
-      saveFile: (defaultName: string) => Promise<string | null>;
+      openFile: (kind?: 'pdf' | 'any' | 'office') => Promise<Array<{ filePath: string; name: string; data: ArrayBuffer }> | null>;
+      saveFile: (defaultName: string, kind?: 'pdf' | 'docx') => Promise<string | null>;
       writeFile: (filePath: string, data: ArrayBuffer) => Promise<boolean>;
       getVersion: () => Promise<string>;
       onCommand: (callback: (commandId: unknown, payload?: unknown) => void) => () => void;
@@ -543,6 +543,7 @@ declare global {
       pptxStartConversion: (jobId: string) => Promise<{ buffer: ArrayBuffer; name: string } | null>;
       pptxConvertBytes?: (jobId: string, data: ArrayBuffer, name: string) => Promise<{ buffer: ArrayBuffer; name: string }>;
       pptxCancelConversion: (jobId: string) => Promise<void>;
+      officePromptLibreOffice?: () => Promise<boolean>;
       ocrIsAvailable?: () => Promise<boolean>;
       ocrRecognize?: (png: ArrayBuffer, languages?: string[]) => Promise<import('../pdf/ocr').OcrLine[]>;
     };

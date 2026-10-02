@@ -23,7 +23,7 @@ export type AppCommandId =
   | 'view.rotateCW' | 'view.annotations' | 'view.primaryToolbar'
   | 'view.propertyShelf' | 'view.statusBar' | 'view.nativeFullscreen'
   | 'view.focusMode' | 'extras.favorites' | 'extras.toolStyles' | 'help.open'
-  | 'app.requestQuit' | 'app.requestCloseWindow' | 'app.settings' | 'view.splitView' | 'view.moveTabToNewWindow' | 'insert.headerFooter' | 'page.removeCrop' | 'file.reduceSize' | 'file.exportImages' | 'file.fromImages'
+  | 'app.requestQuit' | 'app.requestCloseWindow' | 'app.settings' | 'view.splitView' | 'view.moveTabToNewWindow' | 'insert.headerFooter' | 'page.removeCrop' | 'file.reduceSize' | 'file.exportImages' | 'file.fromImages' | 'file.openOffice' | 'file.exportWord' | 'file.imagesToWord'
   | 'file.recoveredDocuments' | 'help.checkForUpdates' | 'help.about' | 'help.crashReports'
   | 'page.insertBlank' | 'page.insertNotePage' | 'page.duplicate' | 'page.delete' | 'page.rotateLeft' | 'page.rotateRight'
   | 'page.insertFromPdf' | 'page.exportSelected' | 'page.addBookmark'
@@ -169,6 +169,9 @@ export const APP_COMMANDS = {
   'file.reduceSize': command('file.reduceSize', 'Reduce File Size…', 'file', 'action', 'document', { icon: 'export', menuPlacements: ['file'] }),
   'file.exportImages': command('file.exportImages', 'Export Pages as Images…', 'file', 'action', 'document', { icon: 'image', menuPlacements: ['file'] }),
   'file.fromImages': command('file.fromImages', 'New PDF from Images…', 'file', 'action', 'always', { icon: 'image', menuPlacements: ['file'] }),
+  'file.openOffice': command('file.openOffice', 'Open Word, Excel or PowerPoint File…', 'file', 'action', 'always', { icon: 'open', menuPlacements: ['file'] }),
+  'file.exportWord': command('file.exportWord', 'Export to Word (.docx)…', 'file', 'action', 'document', { icon: 'export', menuPlacements: ['file'] }),
+  'file.imagesToWord': command('file.imagesToWord', 'Word Document from Images…', 'file', 'action', 'always', { icon: 'image', menuPlacements: ['file'] }),
   'app.settings': command('app.settings', 'Settings…', 'extras', 'action', 'always', { icon: 'toolStyles', shortcut: '⌘,', menuPlacements: ['app'] }),
   'page.split': command('page.split', 'Split Document…', 'page', 'action', 'document', { icon: 'export', menuPlacements: ['page'] }),
   'page.exportSelected': command('page.exportSelected', 'Export Selected Pages…', 'page', 'action', 'document', { icon: 'export', menuPlacements: ['page'] }),

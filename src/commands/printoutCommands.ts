@@ -1,3 +1,4 @@
+import { useTaskProgressStore } from '../store/taskProgressStore';
 import { useDocumentStore } from '../store/documentStore';
 import { notifyUser } from '../utils/notify';
 import { useAnnotationStore } from '../store/annotationStore';
@@ -244,24 +245,74 @@ export function insertPptxPrintoutFromBytes(data: ArrayBuffer, name: string): Pr
   });
 }
 
-/** No document open: convert a dropped presentation and open it as a new PDF. */
-export async function openPresentationAsDocument(data: ArrayBuffer, name: string): Promise<void> {
+/** Word, Excel, PowerPoint and OpenDocument files LibreOffice can turn into PDF. */
+export function isOfficeFile(name: string): boolean {
+  return /\.(pptx|ppt|odp|docx|doc|odt|rtf|xlsx|xls|ods)$/i.test(name);
+}
+
+/** Convert an Office file to PDF bytes with LibreOffice; null when LibreOffice is missing (the user was told). */
+export async function convertOfficeToPdf(data: ArrayBuffer, name: string): Promise<ArrayBuffer | null> {
   const api = window.electronAPI;
+  if (!api?.pptxConvertBytes || !api.pptxIsAvailable) {
+    throw new Error('Converting Office files needs the desktop app.');
+  }
+  if (data.byteLength > MAX_DROPPED_PRESENTATION_BYTES) throw new Error('The file is larger than 300 MB.');
+  if (!(await api.pptxIsAvailable())) {
+    if (api.officePromptLibreOffice) await api.officePromptLibreOffice();
+    else notifyUser('error', LIBREOFFICE_MISSING_MESSAGE);
+    return null;
+  }
+  const jobId = `office-${Date.now().toString(36)}`;
+  const taskId = useTaskProgressStore.getState().start(`Converting "${name}" to PDF…`, 0);
+  // Cancel in the progress panel stops LibreOffice.
+  const stop = useTaskProgressStore.subscribe((state) => {
+    if (state.task?.id === taskId && state.task.cancelled) void api.pptxCancelConversion?.(jobId).catch(() => {});
+  });
   try {
-    if (!api?.pptxConvertBytes || !api.pptxIsAvailable) {
-      throw new Error('PowerPoint import needs the desktop app.');
-    }
-    if (data.byteLength > MAX_DROPPED_PRESENTATION_BYTES) throw new Error('The presentation is larger than 300 MB.');
-    if (!(await api.pptxIsAvailable())) {
-      throw new Error(LIBREOFFICE_MISSING_MESSAGE);
-    }
-    notifyUser('info', `Converting "${name}" to PDF…`);
-    const result = await api.pptxConvertBytes(`open-${Date.now().toString(36)}`, data, name);
+    const result = await api.pptxConvertBytes(jobId, data, name);
+    if (useTaskProgressStore.getState().isCancelled(taskId)) return null;
+    return result.buffer;
+  } catch (error) {
+    if (useTaskProgressStore.getState().isCancelled(taskId)) return null;
+    throw error;
+  } finally {
+    stop();
+    useTaskProgressStore.getState().finish(taskId);
+  }
+}
+
+/** Convert an Office file and open it as a new PDF document. */
+export async function openOfficeAsDocument(data: ArrayBuffer, name: string): Promise<void> {
+  try {
+    const pdf = await convertOfficeToPdf(data, name);
+    if (!pdf) return;
     const { openDocumentBytes } = await import('../document/openDocumentBytes');
-    await openDocumentBytes(name.replace(/\.(pptx|ppt|odp)$/i, '.pdf'), null, result.buffer);
+    await openDocumentBytes(name.replace(/\.[^.]+$/, '.pdf'), null, pdf);
   } catch (error) {
     notifyUser('error', `"${name}" could not be converted: ${error instanceof Error ? error.message : String(error)}`);
   }
+}
+
+/** No document open: convert a dropped presentation and open it as a new PDF. */
+export const openPresentationAsDocument = openOfficeAsDocument;
+
+/** A document is open: convert a Word/Excel file and insert its pages (real pages, like a PDF). */
+export async function insertOfficePagesFromBytes(data: ArrayBuffer, name: string): Promise<void> {
+  try {
+    const pdf = await convertOfficeToPdf(data, name);
+    if (!pdf) return;
+    const { insertPdfPages } = await import('./pageCommands');
+    await insertPdfPages(new Uint8Array(pdf), name.replace(/\.[^.]+$/, '.pdf'));
+  } catch (error) {
+    notifyUser('error', `"${name}" could not be converted: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+/** File ▸ Open Word, Excel or PowerPoint File… */
+export async function openOfficeFileDialog(): Promise<void> {
+  const files = await window.electronAPI?.openFile?.('office');
+  if (!files) return;
+  for (const file of files) await openOfficeAsDocument(file.data, file.name);
 }
 
 async function runPptxImport(

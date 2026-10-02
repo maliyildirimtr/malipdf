@@ -27,7 +27,7 @@ import {
   createNativeMenuSchema,
   type NativeMenuNode,
 } from './nativeMenuSchema';
-import { setupPptxIpc } from './services/pptx/pptxIpc';
+import { OFFICE_EXTENSIONS, setupPptxIpc } from './services/pptx/pptxIpc';
 import { getLanguage, setLanguage, showMessageBox, showOpenDialog, showSaveDialog, t } from './i18n/mainLanguage';
 import { isLanguage, languageFromLocale } from './i18n';
 import { setupOcrIpc } from './services/ocr/ocrIpc';
@@ -452,11 +452,20 @@ handleTrusted(FULLSCREEN_TOGGLE_CHANNEL, isDev, () => {
 });
 
 // Open PDF dialog
-handleTrusted('dialog:openFile', isDev, async () => {
+// kind: 'pdf' (default) — PDFs only; 'any' — PDFs and Office files (the
+// renderer converts those with LibreOffice); 'office' — Office files only.
+handleTrusted('dialog:openFile', isDev, async (_event, rawKind: unknown) => {
   if (!mainWindow) return null;
+  const kind = rawKind === 'any' || rawKind === 'office' ? rawKind : 'pdf';
+  const office = OFFICE_EXTENSIONS.map((ext) => ext.slice(1));
+  const filters = kind === 'office'
+    ? [{ name: 'Word, Excel and PowerPoint Files', extensions: office }]
+    : kind === 'any'
+      ? [{ name: 'PDF and Office Documents', extensions: ['pdf', ...office] }, { name: 'PDF Documents', extensions: ['pdf'] }, { name: 'Word, Excel and PowerPoint Files', extensions: office }]
+      : [{ name: 'PDF Documents', extensions: ['pdf'] }];
   const result = await showOpenDialog(mainWindow, {
-    title: 'Open PDF',
-    filters: [{ name: 'PDF Documents', extensions: ['pdf'] }],
+    title: kind === 'office' ? 'Open Word, Excel or PowerPoint File' : 'Open PDF',
+    filters,
     properties: ['openFile', 'multiSelections'],
   });
 
@@ -468,9 +477,12 @@ handleTrusted('dialog:openFile', isDev, async () => {
   const files = await Promise.all(
     result.filePaths.map(async (filePath) => {
       const buffer = await fs.promises.readFile(filePath);
-      // The user chose this file: Save may write back to it.
-      fileGrants.grantWrite(filePath);
-      app.addRecentDocument(filePath);
+      // The user chose this PDF: Save may write back to it. Office files are
+      // converted to a new PDF and never written back.
+      if (path.extname(filePath).toLowerCase() === '.pdf') {
+        fileGrants.grantWrite(filePath);
+        app.addRecentDocument(filePath);
+      }
       return {
         filePath,
         name: path.basename(filePath),
@@ -486,13 +498,14 @@ handleTrusted('dialog:openFile', isDev, async () => {
 });
 
 // Save dialog (for export)
-handleTrusted('dialog:saveFile', isDev, async (_event, defaultName: unknown) => {
+handleTrusted('dialog:saveFile', isDev, async (_event, defaultName: unknown, rawKind: unknown) => {
   if (!mainWindow) return null;
-  const suggested = typeof defaultName === 'string' ? defaultName.slice(0, 1024) : 'Untitled.pdf';
+  const word = rawKind === 'docx';
+  const suggested = typeof defaultName === 'string' ? defaultName.slice(0, 1024) : word ? 'Untitled.docx' : 'Untitled.pdf';
   const result = await showSaveDialog(mainWindow, {
-    title: 'Export Annotated PDF',
+    title: word ? 'Export to Word' : 'Export Annotated PDF',
     defaultPath: suggested,
-    filters: [{ name: 'PDF Documents', extensions: ['pdf'] }],
+    filters: word ? [{ name: 'Word Documents', extensions: ['docx'] }] : [{ name: 'PDF Documents', extensions: ['pdf'] }],
   });
 
   if (result.canceled || !result.filePath) return null;

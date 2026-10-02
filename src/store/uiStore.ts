@@ -99,6 +99,11 @@ interface UIStore {
   headerFooterOpen: boolean;
   compressOpen: boolean;
   imagesToPdfOpen: boolean;
+  /** What the pictures dialog makes. */
+  imagesDialogTarget: 'pdf' | 'word';
+  setImagesDialogTarget: (target: 'pdf' | 'word') => void;
+  exportWordOpen: boolean;
+  setExportWordOpen: (open: boolean) => void;
   setImagesToPdfOpen: (open: boolean) => void;
   exportImagesOpen: boolean;
   setExportImagesOpen: (open: boolean) => void;
@@ -438,6 +443,10 @@ export const useUIStore = create<UIStore>()(
         exportImagesOpen: false,
         setExportImagesOpen: (exportImagesOpen) => set({ exportImagesOpen }),
         imagesToPdfOpen: false,
+        imagesDialogTarget: 'pdf',
+        setImagesDialogTarget: (imagesDialogTarget) => set({ imagesDialogTarget }),
+        exportWordOpen: false,
+        setExportWordOpen: (exportWordOpen) => set({ exportWordOpen }),
         setImagesToPdfOpen: (imagesToPdfOpen) => set({ imagesToPdfOpen }),
         compressOpen: false,
         setCompressOpen: (compressOpen) => set({ compressOpen }),

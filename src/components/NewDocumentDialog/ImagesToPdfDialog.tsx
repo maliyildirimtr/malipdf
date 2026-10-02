@@ -17,6 +17,14 @@ export function ImagesToPdfDialog() {
   const [size, setSize] = useState<ImagePageSize>('a4');
   const [margin, setMargin] = useState(0);
   const [busy, setBusy] = useState(false);
+  const target = useUIStore((s) => s.imagesDialogTarget);
+  const setTarget = useUIStore((s) => s.setImagesDialogTarget);
+  const [wordText, setWordText] = useState(false);
+  const [ocr, setOcr] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    void import('../../commands/convertCommands').then((m) => m.wordOcrAvailable()).then(setOcr, () => setOcr(false));
+  }, [open]);
 
   const addImages = async () => {
     const files = await window.electronAPI?.openImages?.();
@@ -63,6 +71,13 @@ export function ImagesToPdfDialog() {
   const create = async () => {
     if (busy || items.length === 0) return;
     setBusy(true);
+    if (target === 'word') {
+      const { exportPicturesToWord } = await import('../../commands/convertCommands');
+      const ok = await exportPicturesToWord(items.map((i) => ({ name: i.name, ...i.image })), wordText && ocr);
+      setBusy(false);
+      if (ok) setOpen(false);
+      return;
+    }
     try {
       const bytes = await imagesToPdf(items.map((i) => i.image), size, margin);
       const name = items.length === 1 ? items[0].name.replace(/\.[^.]+$/, '') : 'Images';
@@ -82,8 +97,8 @@ export function ImagesToPdfDialog() {
   return (
     <div className={styles.overlay} onMouseDown={(e) => { if (e.target === e.currentTarget && !busy) setOpen(false); }}
       onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape' && !busy) setOpen(false); }}>
-      <div className={styles.dialog} role="dialog" aria-label="New PDF from Images" style={{ width: 620 }}>
-        <div className={styles.header}><h2>New PDF from Images</h2></div>
+      <div className={styles.dialog} role="dialog" aria-label={target === 'word' ? 'Word Document from Images' : 'New PDF from Images'} style={{ width: 620 }}>
+        <div className={styles.header}><h2>{target === 'word' ? 'Word Document from Images' : 'New PDF from Images'}</h2></div>
         <div className={styles.content}>
           <div className={styles.section}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(104px, 1fr))', gap: 10, maxHeight: 300, overflow: 'auto' }} aria-label="Pages">
@@ -108,6 +123,28 @@ export function ImagesToPdfDialog() {
             </div>
           </div>
           <div className={styles.section}>
+            <div className={styles.sectionHeader}>MAKE</div>
+            <div className={styles.chipGroup} role="radiogroup" aria-label="Output">
+              {chip(target === 'pdf', 'PDF', () => setTarget('pdf'))}
+              {chip(target === 'word', 'Word (.docx)', () => setTarget('word'))}
+            </div>
+          </div>
+          {target === 'word' && (
+            <div className={styles.section}>
+              <div className={styles.sectionHeader}>WORD CONTENT</div>
+              <div className={styles.chipGroup} role="radiogroup" aria-label="Word content">
+                {chip(!wordText || !ocr, 'Pictures (one per page)', () => setWordText(false))}
+                {ocr && chip(wordText, 'Text (recognized)', () => setWordText(true))}
+              </div>
+              <div style={{ fontSize: 12, marginTop: 8, color: 'var(--color-text-secondary, #666)' }}>
+                {ocr
+                  ? (wordText ? 'The writing in each picture becomes editable text.' : 'Each picture goes on its own A4 page.')
+                  : 'Each picture goes on its own A4 page. Turning pictures into text needs text recognition (macOS).'}
+              </div>
+            </div>
+          )}
+          {target === 'pdf' && <>
+          <div className={styles.section}>
             <div className={styles.sectionHeader}>PAGE SIZE</div>
             <div className={styles.chipGroup} role="radiogroup" aria-label="Page size">
               {chip(size === 'a4', 'A4', () => setSize('a4'))}
@@ -123,11 +160,14 @@ export function ImagesToPdfDialog() {
               {chip(margin === 36, 'Normal', () => setMargin(36))}
             </div>
           </div>
+          </>}
         </div>
         <div className={styles.footer}>
           <button className={styles.cancelButton} onClick={() => setOpen(false)} disabled={busy}>Cancel</button>
           <button className={styles.createButton} onClick={() => void create()} disabled={busy || items.length === 0}>
-            {busy ? 'Working…' : `Create PDF (${items.length} page${items.length === 1 ? '' : 's'})`}
+            {busy ? 'Working…' : target === 'word'
+              ? `Save Word File (${items.length} picture${items.length === 1 ? '' : 's'})…`
+              : `Create PDF (${items.length} page${items.length === 1 ? '' : 's'})`}
           </button>
         </div>
       </div>

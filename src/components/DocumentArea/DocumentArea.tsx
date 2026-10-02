@@ -91,6 +91,14 @@ export function DocumentArea() {
 
   const loadFile = useCallback(
     async (name: string, filePath: string | null, data: ArrayBuffer) => {
+      // Word / Excel / PowerPoint: converted to a new PDF with LibreOffice.
+      if (!/\.pdf$/i.test(name)) {
+        const printouts = await import('../../commands/printoutCommands');
+        if (printouts.isOfficeFile(name)) {
+          await printouts.openOfficeAsDocument(data, name);
+          return;
+        }
+      }
       const run = async () => {
         // The same file is already open: just show its tab.
         const existing = filePath
@@ -116,7 +124,7 @@ export function DocumentArea() {
 
   const openFileDialog = useCallback(async () => {
     if (window.electronAPI?.openFile) {
-      const files = await window.electronAPI.openFile();
+      const files = await window.electronAPI.openFile('any');
       if (!files) return;
       for (const file of files) {
         await loadFile(file.name, file.filePath, file.data);
@@ -161,11 +169,13 @@ export function DocumentArea() {
     setIsDragOver(false);
     const all = Array.from(event.dataTransfer.files);
     const printouts = await import('../../commands/printoutCommands');
-    // PowerPoint and OpenDocument presentations are converted to PDF with LibreOffice.
-    for (const file of all.filter((f) => printouts.isPresentationFile(f.name))) {
+    // Office files are converted to PDF with LibreOffice. Into an open
+    // document, presentations come in as printouts and Word/Excel as pages.
+    for (const file of all.filter((f) => printouts.isOfficeFile(f.name))) {
       const data = await file.arrayBuffer();
-      if (activeDoc) await printouts.insertPptxPrintoutFromBytes(data, file.name);
-      else await printouts.openPresentationAsDocument(data, file.name);
+      if (!activeDoc) await printouts.openOfficeAsDocument(data, file.name);
+      else if (printouts.isPresentationFile(file.name)) await printouts.insertPptxPrintoutFromBytes(data, file.name);
+      else await printouts.insertOfficePagesFromBytes(data, file.name);
     }
     const files = all.filter(
       (file) => file.type === 'application/pdf' || /\.pdf$/i.test(file.name),

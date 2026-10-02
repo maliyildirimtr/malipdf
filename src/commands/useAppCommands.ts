@@ -197,7 +197,18 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
         if (docId) void import('./cropCommands').then((m) => m.cropPages([documents.documents.get(docId)?.activePageIndex ?? 0], null));
         return;
       case 'file.fromImages':
+        ui.setImagesDialogTarget('pdf');
         ui.setImagesToPdfOpen(true);
+        return;
+      case 'file.imagesToWord':
+        ui.setImagesDialogTarget('word');
+        ui.setImagesToPdfOpen(true);
+        return;
+      case 'file.exportWord':
+        if (docId) ui.setExportWordOpen(true);
+        return;
+      case 'file.openOffice':
+        void import('./printoutCommands').then((m) => m.openOfficeFileDialog()).catch((error) => notifyUser('error', errorMessage(error)));
         return;
       case 'file.exportImages':
         ui.setExportImagesOpen(true);
