@@ -400,6 +400,28 @@ function buildNativeMenuItem(node: NativeMenuNode): MenuItemConstructorOptions {
 
 // ─── IPC Handlers ────────────────────────────────────────────────────────────
 
+// Title bar fallback: move the window when the native drag area is ignored.
+onTrusted('window:dragBy', isDev, (event, dx: unknown, dy: unknown) => {
+  const window = BrowserWindow.fromWebContents?.(event.sender);
+  if (!window || window.isDestroyed() || window.isFullScreen() || window.isMaximized()) return;
+  if (typeof dx !== 'number' || typeof dy !== 'number' || !Number.isFinite(dx) || !Number.isFinite(dy)) return;
+  const [x, y] = window.getPosition();
+  window.setPosition(Math.round(x + dx), Math.round(y + dy));
+});
+
+// Double-click on the title bar: what macOS is set to do (zoom or minimize).
+onTrusted('window:titleDoubleClick', isDev, (event) => {
+  const window = BrowserWindow.fromWebContents?.(event.sender);
+  if (!window || window.isDestroyed()) return;
+  const action = process.platform === 'darwin'
+    ? systemPreferences.getUserDefault?.('AppleActionOnDoubleClick', 'string')
+    : 'Maximize';
+  if (action === 'Minimize') window.minimize();
+  else if (action === 'None') return;
+  else if (window.isMaximized()) window.unmaximize();
+  else window.maximize();
+});
+
 // Settings ▸ Language. The menu and native dialogs follow it.
 onTrusted('app:setLanguage', isDev, (_event, language: unknown) => {
   if (!isLanguage(language)) return;

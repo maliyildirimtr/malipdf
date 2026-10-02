@@ -20,6 +20,54 @@ import styles from './TopBar.module.css';
 
 const OVERFLOW_MEASUREMENT_TOLERANCE = 1;
 
+/** Empty title-bar space (not a tab, button or menu). */
+function isTitleBarSpace(target: EventTarget | null): boolean {
+  const element = target instanceof Element ? target : null;
+  return !!element && !element.closest('button, a, input, select, [role="tab"], [role="menu"], [draggable="true"]');
+}
+
+/**
+ * The title bar is a native drag area (-webkit-app-region: drag). When the
+ * system does not honour it, the pointer events reach the page instead, and
+ * the window is moved here so the title bar always works.
+ */
+function startWindowDrag(event: React.PointerEvent<HTMLDivElement>) {
+  const api = window.electronAPI;
+  if (event.button !== 0 || !api?.windowDragBy || !isTitleBarSpace(event.target)) return;
+  const element = event.currentTarget;
+  element.setPointerCapture(event.pointerId);
+  let lastX = event.screenX;
+  let lastY = event.screenY;
+  let pending = { dx: 0, dy: 0 };
+  let frame: number | null = null;
+  const flush = () => {
+    frame = null;
+    if (pending.dx || pending.dy) api.windowDragBy?.(pending.dx, pending.dy);
+    pending = { dx: 0, dy: 0 };
+  };
+  const move = (e: PointerEvent) => {
+    pending.dx += e.screenX - lastX;
+    pending.dy += e.screenY - lastY;
+    lastX = e.screenX;
+    lastY = e.screenY;
+    if (frame === null) frame = requestAnimationFrame(flush);
+  };
+  const end = () => {
+    element.removeEventListener('pointermove', move);
+    element.removeEventListener('pointerup', end);
+    element.removeEventListener('pointercancel', end);
+    if (frame !== null) cancelAnimationFrame(frame);
+    flush();
+  };
+  element.addEventListener('pointermove', move);
+  element.addEventListener('pointerup', end);
+  element.addEventListener('pointercancel', end);
+}
+
+function titleDoubleClick(event: React.MouseEvent<HTMLDivElement>) {
+  if (isTitleBarSpace(event.target)) window.electronAPI?.windowTitleDoubleClick?.();
+}
+
 export function TopBar() {
   const { documents, activeDocId, tabOrder, setActiveDocument } = useDocumentStore();
 
@@ -177,7 +225,7 @@ export function TopBar() {
   }
 
   return (
-    <div className={styles.topBar} ref={topBarRef}>
+    <div className={styles.topBar} ref={topBarRef} onPointerDown={startWindowDrag} onDoubleClick={titleDoubleClick}>
       <div className={styles.tabs} ref={tabsRef} role="tablist" aria-label="Open documents">
         {tabOrder.map((docId) => {
           const doc = documents.get(docId);

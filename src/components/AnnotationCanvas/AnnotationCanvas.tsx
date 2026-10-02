@@ -90,7 +90,7 @@ import {
   hitTestSelectedBounds,
   hitTestResizeHandle,
   getResizeHandles,
-  eraserHitTest,
+  hitTestAnnotation,
   isErasable,
   rectsIntersect,
   hitTestMarquee,
@@ -353,6 +353,8 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
   // Eraser gesture state
   const eraserHitsRef = useRef<Map<string, { type: 'delete' } | { type: 'split', segments: InputPoint[][]; pieces: Annotation[] }>>(new Map());
   const lastEraserPointRef = useRef<PdfPoint | null>(null);
+  /** Last screen point the eraser was applied at (moves are thinned out). */
+  const lastEraserScreenRef = useRef<{ x: number; y: number } | null>(null);
   const originalEraserSnapshotRef = useRef<Annotation[]>([]);
 
   // React state only for text overlay (needs DOM update)
@@ -1158,6 +1160,15 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
   }
 
   function onPointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    if (textEditingRef.current && textOverlay && document.activeElement !== textareaRef.current) {
+      // The text box lost focus to the toolbar (style change): a click on the
+      // page finishes it, like clicking away from a focused box does.
+      e.preventDefault();
+      commitText(textareaRef.current?.value ?? '', textOverlay);
+      suppressTextBlurCommitRef.current = true;
+      endTextEditing();
+      return;
+    }
     if (replayRef.current) {
       // Any click ends the replay.
       e.preventDefault();
@@ -1267,6 +1278,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
       
       eraserHitsRef.current.clear();
       lastEraserPointRef.current = pdfPt;
+      lastEraserScreenRef.current = { x: screenX, y: screenY };
       originalEraserSnapshotRef.current = structuredClone(getPageAnnotations(docId, pageIndex));
       
       // We don't push into activePoints; eraser doesn't draw a stroke, it just draws a cursor
@@ -1592,18 +1604,20 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
 
     if (m === 'erasing') {
       // Use coalesced events to avoid gaps
+      // The sweep between two points is a capsule, so points closer than a
+      // fraction of the eraser are skipped: fewer passes, no gaps.
       const events = e.nativeEvent.getCoalescedEvents?.() ?? [e.nativeEvent];
       const rect = interactionRef.current!.getBoundingClientRect();
+      const minStep = Math.max(1.5, toolOptions.eraser.size / 4);
       for (const ev of events) {
-        activePoints.current.push({
-          x: ev.clientX - rect.left,
-          y: ev.clientY - rect.top,
-          pressure: 0.5,
-          timestamp: ev.timeStamp,
-        });
-        const intermediatePdfPt = screenToPdfPoint(ev.clientX - rect.left, ev.clientY - rect.top);
-        doEraseSweptPath(intermediatePdfPt);
+        const point = { x: ev.clientX - rect.left, y: ev.clientY - rect.top, pressure: 0.5, timestamp: ev.timeStamp };
+        activePoints.current = [point]; // only the cursor position is needed
+        const last = lastEraserScreenRef.current;
+        if (last && Math.hypot(point.x - last.x, point.y - last.y) < minStep) continue;
+        lastEraserScreenRef.current = point;
+        doEraseSweptPath(screenToPdfPoint(point.x, point.y));
       }
+      schedulePreviewRender();
       return;
     }
 
@@ -1705,6 +1719,10 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     } else if (m === 'shapeHold') {
       commitHeldShape();
     } else if (m === 'erasing') {
+      // Moves are thinned out; make sure the last stretch is erased too.
+      const last = activePoints.current[activePoints.current.length - 1];
+      const done = lastEraserScreenRef.current;
+      if (last && (!done || last.x !== done.x || last.y !== done.y)) doEraseSweptPath(screenToPdfPoint(last.x, last.y));
       commitEraser();
     } else if (m === 'shapeDrawing') {
       commitShape();
@@ -1928,15 +1946,25 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     const sweepMinY = Math.min(prevPdfPt.y, currentPdfPt.y);
     const sweepMaxY = Math.max(prevPdfPt.y, currentPdfPt.y);
 
-    // For object erasing, we can use the existing eraserHitTest on current and prev points
+    // Whole-object hits: everything in object mode, otherwise everything that
+    // is not ink (text, shapes, arrows, notes, measurements, text markup).
+    // Only annotations whose box is near the sweep are tested, at points
+    // along the sweep no further apart than the eraser radius.
     const objectHits = new Set<string>();
-    // Ink is cut where the eraser passes; everything else it touches (text,
-    // shapes, arrows, notes, measurements, text markup) is removed whole.
-    if (toolOptions.eraser.mode === 'object' || originalEraserSnapshotRef.current.some((a) => a.type !== 'stroke' && a.type !== 'highlight')) {
-      const hitsCurrent = eraserHitTest(currentPdfPt, originalEraserSnapshotRef.current, eraserRadiusPdf);
-      const hitsPrev = eraserHitTest(prevPdfPt, originalEraserSnapshotRef.current, eraserRadiusPdf);
-      hitsCurrent.forEach(h => objectHits.add(h.id));
-      hitsPrev.forEach(h => objectHits.add(h.id));
+    const wholeObjects = toolOptions.eraser.mode === 'object';
+    const reachBox = { x: sweepMinX - eraserRadiusPdf, y: sweepMinY - eraserRadiusPdf, width: sweepMaxX - sweepMinX + 2 * eraserRadiusPdf, height: sweepMaxY - sweepMinY + 2 * eraserRadiusPdf };
+    const sweepLength = Math.hypot(currentPdfPt.x - prevPdfPt.x, currentPdfPt.y - prevPdfPt.y);
+    const samples = Math.min(32, Math.max(1, Math.ceil(sweepLength / Math.max(eraserRadiusPdf, 0.5))));
+    for (const ann of originalEraserSnapshotRef.current) {
+      if (!wholeObjects && (ann.type === 'stroke' || ann.type === 'highlight')) continue;
+      if (ann.locked || ann.hidden || !isErasable(ann) || eraserHitsRef.current.has(ann.id)) continue;
+      const b = getCachedBounds(ann);
+      if (b.x > reachBox.x + reachBox.width || b.x + b.width < reachBox.x || b.y > reachBox.y + reachBox.height || b.y + b.height < reachBox.y) continue;
+      for (let i = 0; i <= samples; i++) {
+        const t = i / samples;
+        const p = { x: prevPdfPt.x + (currentPdfPt.x - prevPdfPt.x) * t, y: prevPdfPt.y + (currentPdfPt.y - prevPdfPt.y) * t };
+        if (hitTestAnnotation(p, ann, eraserRadiusPdf)) { objectHits.add(ann.id); break; }
+      }
     }
 
     for (const ann of originalEraserSnapshotRef.current) {
@@ -1961,7 +1989,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
         }
       } else if (toolOptions.eraser.mode === 'stroke' && (ann.type === 'stroke' || ann.type === 'highlight')) {
         // Cheap reject: skip strokes whose padded bounds miss the eraser capsule.
-        const bounds = getAnnotationBounds(ann);
+        const bounds = getCachedBounds(ann);
         const reach = eraserRadiusPdf;
         if (bounds.x - reach > sweepMaxX || bounds.x + bounds.width + reach < sweepMinX
           || bounds.y - reach > sweepMaxY || bounds.y + bounds.height + reach < sweepMinY) {
@@ -2287,6 +2315,28 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
 
   // ── Text overlay ──────────────────────────────────────────────────────────
 
+  // Text options changed in the toolbar while a text box is open: apply the
+  // changed ones to that box, then give it the keyboard back.
+  const lastTextOptionsRef = useRef(toolOptions.text);
+  useEffect(() => {
+    const before = lastTextOptionsRef.current;
+    const now = toolOptions.text;
+    lastTextOptionsRef.current = now;
+    if (!textEditingRef.current || before === now) return;
+    const changed: Partial<TextStyle> = {};
+    for (const key of Object.keys(now) as (keyof typeof now)[]) {
+      if (before[key] !== now[key]) (changed as Record<string, unknown>)[key] = now[key];
+    }
+    if (Object.keys(changed).length === 0) return;
+    setTextOverlay((overlay) => {
+      if (!overlay) return overlay;
+      const style = { ...overlay.style };
+      for (const [key, value] of Object.entries(changed)) if (key in style) (style as Record<string, unknown>)[key] = value;
+      return { ...overlay, style };
+    });
+    setTimeout(() => textareaRef.current?.focus(), 0);
+  }, [toolOptions.text]);
+
   function beginTextEditing(overlay: TextOverlay) {
     suppressTextBlurCommitRef.current = false;
     textEditingRef.current = true;
@@ -2373,8 +2423,9 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
         pushHistory(makeRemoveAction(docId, before, index));
         return;
       }
-      if (content === before.content) return;
-      const after: TextAnnotation = { ...before, content, bounds, updatedAt: now };
+      const styleChanged = (Object.keys(style) as (keyof TextStyle)[]).some((key) => (before as unknown as Record<string, unknown>)[key] !== style[key]);
+      if (content === before.content && !styleChanged) return;
+      const after: TextAnnotation = { ...before, ...style, content, bounds, updatedAt: now };
       replaceAnnotation(docId, pageIndex, after);
       pushHistory(makeUpdateAction(docId, before, after));
       return;
@@ -2426,6 +2477,10 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
 
   function onTextBlur(e: React.FocusEvent<HTMLTextAreaElement>) {
     if (suppressTextBlurCommitRef.current) return;
+    // Changing font, size, colour… in the toolbar keeps the text box open, so
+    // the change applies to the text being written.
+    const next = e.relatedTarget as Element | null;
+    if (next?.closest?.('[data-keeps-selection]')) return;
     const content = e.currentTarget.value;
     if (textOverlay) commitText(content, textOverlay);
     endTextEditing();

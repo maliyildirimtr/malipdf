@@ -8,7 +8,7 @@
   min-height: var(--titlebar-height);
   padding-left: 80px;
   padding-right: 8px;
-  background: var(--color-toolbar-bg);
+  background: var(--color-titlebar-bg, var(--color-toolbar-bg));
   border-bottom: 1px solid var(--color-toolbar-border);
   flex-shrink: 0;
   -webkit-app-region: drag;
@@ -64,7 +64,8 @@
 
 .tabItemActive {
   color: var(--color-text-primary);
-  background: var(--color-accent-subtle);
+  /* The active tab joins the toolbar below it. */
+  background: var(--color-toolbar-bg);
   border-bottom-color: var(--color-accent);
 }
 

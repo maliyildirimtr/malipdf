@@ -61,6 +61,8 @@ export interface ElectronAPI {
   chooseFolder: (title?: string) => Promise<string | null>;
   setLanguage: (language: string) => void;
   moveTabToNewWindow: (docId: string) => Promise<boolean>;
+  windowDragBy: (dx: number, dy: number) => void;
+  windowTitleDoubleClick: () => void;
   openImages: () => Promise<{ name: string; mimeType: string; data: ArrayBuffer }[] | null>;
   writeFilesToFolder: (folder: string, files: { name: string; data: ArrayBuffer; ext?: 'pdf' | 'png' | 'jpg' }[]) => Promise<string[]>;
 
@@ -114,6 +116,8 @@ const electronAPI: ElectronAPI = {
   chooseFolder: (title) => ipcRenderer.invoke('dialog:chooseFolder', title),
   setLanguage: (language) => ipcRenderer.send('app:setLanguage', language),
   moveTabToNewWindow: (docId) => ipcRenderer.invoke('window:moveTabToNewWindow', docId),
+  windowDragBy: (dx, dy) => ipcRenderer.send('window:dragBy', dx, dy),
+  windowTitleDoubleClick: () => ipcRenderer.send('window:titleDoubleClick'),
   openImages: () => ipcRenderer.invoke('dialog:openImages'),
   writeFilesToFolder: (folder, files) => ipcRenderer.invoke('fs:writeFilesToFolder', folder, files),
 

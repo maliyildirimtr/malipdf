@@ -24,8 +24,6 @@ body {
   -moz-osx-font-smoothing: grayscale;
   user-select: none;
   -webkit-user-select: none;
-  /* Disable default browser drag behavior */
-  -webkit-app-region: no-drag;
 }
 
 /* Allow text selection in text inputs */
