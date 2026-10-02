@@ -180,3 +180,21 @@
   --color-sidebar-bg:     #ffffff;
   --color-sidebar-border: rgba(0, 0, 0, 0.09);
 }
+
+/* Older names some components still use. Without these, light fallbacks
+   (white boxes with light text) showed in dark mode. */
+:root, [data-theme="dark"], [data-theme="light"] {
+  --color-surface: var(--color-bg-surface);
+  --color-hover: var(--color-bg-hover);
+  --color-bg-primary: var(--color-bg-surface);
+  --bg-primary: var(--color-bg-surface);
+  --bg-secondary: var(--color-bg-app);
+  --bg-hover: var(--color-bg-hover);
+  --border-color: var(--color-border);
+  --text-primary: var(--color-text-primary);
+  --text-secondary: var(--color-text-secondary);
+  --text-tertiary: var(--color-text-tertiary);
+  --accent: var(--color-accent);
+  --accent-color: var(--color-accent);
+  --accent-hover: var(--color-accent-hover);
+}
