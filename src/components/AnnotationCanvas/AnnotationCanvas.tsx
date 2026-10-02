@@ -1930,7 +1930,9 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
 
     // For object erasing, we can use the existing eraserHitTest on current and prev points
     const objectHits = new Set<string>();
-    if (toolOptions.eraser.mode === 'object' || originalEraserSnapshotRef.current.some((a) => a.type === 'markup')) {
+    // Ink is cut where the eraser passes; everything else it touches (text,
+    // shapes, arrows, notes, measurements, text markup) is removed whole.
+    if (toolOptions.eraser.mode === 'object' || originalEraserSnapshotRef.current.some((a) => a.type !== 'stroke' && a.type !== 'highlight')) {
       const hitsCurrent = eraserHitTest(currentPdfPt, originalEraserSnapshotRef.current, eraserRadiusPdf);
       const hitsPrev = eraserHitTest(prevPdfPt, originalEraserSnapshotRef.current, eraserRadiusPdf);
       hitsCurrent.forEach(h => objectHits.add(h.id));
@@ -1950,8 +1952,8 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
            markDirty(ann);
            changed = true;
         }
-      } else if (ann.type === 'markup') {
-        // Text markup has no stroke to split: the stroke eraser removes it whole.
+      } else if (ann.type !== 'stroke' && ann.type !== 'highlight') {
+        // Only ink can be cut; anything else the eraser touches goes whole.
         if (objectHits.has(ann.id)) {
           eraserHitsRef.current.set(ann.id, { type: 'delete' });
           markDirty(ann);

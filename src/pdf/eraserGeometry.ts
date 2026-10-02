@@ -216,8 +216,9 @@ export function splitStrokePath(
     segments.push(currentSegment);
   }
   
-  // Filter out microscopic fragments
-  const MIN_SEGMENT_LENGTH = 1.0; // 1 PDF point length threshold
+  // Drop leftover crumbs: with round caps even a 1 pt piece shows as a dot
+  // as wide as the stroke, so pieces shorter than half the stroke width go too.
+  const MIN_SEGMENT_LENGTH = Math.max(1.5, strokeWidth * 0.5);
   return segments.filter(seg => {
     let totalLength = 0;
     for (let i = 1; i < seg.length; i++) {

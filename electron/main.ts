@@ -374,16 +374,23 @@ function buildNativeMenuItem(node: NativeMenuNode): MenuItemConstructorOptions {
       return { label: t(node.label), enabled: false };
     case 'submenu':
       return { label: t(node.label), role: node.role, enabled: node.enabled, submenu: node.items.map(buildNativeMenuItem) };
-    case 'command':
+    case 'command': {
+      // macOS ignores registerAccelerator: a plain-letter key equivalent
+      // (P, T, E…) in the menu swallows that key everywhere, so typing in a
+      // text box switched tools instead of writing. There the key is shown in
+      // the label and the renderer handles it (it skips text fields).
+      const plainKey = typeof node.accelerator === 'string' && /^[A-Z0-9]$/.test(node.accelerator);
+      const macPlainKey = process.platform === 'darwin' && plainKey;
       return {
         id: node.commandId,
-        label: t(node.label),
-        accelerator: node.accelerator,
+        label: macPlainKey ? `${t(node.label)}    ${node.accelerator}` : t(node.label),
+        accelerator: macPlainKey ? undefined : node.accelerator,
         enabled: node.enabled ?? true,
         type: node.type,
         registerAccelerator: node.registerAccelerator,
         click: () => sendCommand(node.commandId),
       };
+    }
   }
 }
 

@@ -101,7 +101,22 @@ export function shouldIgnoreSingleKeyShortcut(event: ShortcutKeyboardEvent): boo
   );
 }
 
+/** A toolbar button keeps focus after a click; letter shortcuts still apply there. */
+function isToolbarControl(target: EventTarget | null): boolean {
+  let current = target as EditableTargetLike | null;
+  while (current) {
+    if (current.getAttribute?.('data-toolbar-control') === 'true') return true;
+    current = current.parentElement ?? null;
+  }
+  return false;
+}
+
 export function getToolForKeyboardEvent(event: ShortcutKeyboardEvent): CanonicalTool | null {
+  if (isToolbarControl(event.target) && !isEditableTarget(event.target)) {
+    const { target: _target, ...rest } = event;
+    if (shouldIgnoreSingleKeyShortcut({ ...rest, target: null })) return null;
+    return getToolShortcut(event.key)?.tool ?? null;
+  }
   if (shouldIgnoreSingleKeyShortcut(event)) return null;
   return getToolShortcut(event.key)?.tool ?? null;
 }
