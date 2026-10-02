@@ -826,7 +826,9 @@ export const TR: Readonly<Record<string, string>> = {
   'Not Now': 'Şimdi Değil',
   'MaliPDF ran into a problem last time.': 'MaliPDF geçen sefer bir sorunla karşılaştı.',
   'Report a problem': 'Sorun bildir',
-  'You can send the developer a report. It contains the app version, your system and the error details — never your documents. GitHub opens with the report filled in; you can read it before sending. "Copy Report" copies it so you can e-mail it instead.': 'Geliştiriciye bir rapor gönderebilirsiniz. Rapor uygulama sürümünü, sisteminizi ve hata ayrıntılarını içerir — belgeleriniz asla eklenmez. GitHub rapor doldurulmuş olarak açılır; göndermeden önce okuyabilirsiniz. "Raporu Kopyala" ile raporu kopyalayıp e-postayla da gönderebilirsiniz.',
+  'You can send the developer a report. It contains the app version, your system and the error details — never your documents. "Send by E-mail" opens a ready e-mail in your mail app; you can read it before sending. "Report on GitHub" needs a GitHub account. "Copy Report" copies it so you can send it another way.':
+    'Geliştiriciye bir rapor gönderebilirsiniz. Rapor uygulama sürümünü, sisteminizi ve hata ayrıntılarını içerir — belgeleriniz asla eklenmez. "E-postayla Gönder", e-posta uygulamanızda hazır bir e-posta açar; göndermeden önce okuyabilirsiniz. "GitHub’da Bildir" için GitHub hesabı gerekir. "Raporu Kopyala" ile raporu başka bir yolla da gönderebilirsiniz.',
+  'Send by E-mail': 'E-postayla Gönder',
   'Reading the scanned pages (text recognition)… The results update when it is done.': 'Taranmış sayfalar okunuyor (metin tanıma)… Bitince sonuçlar güncellenir.',
   'Some pages are scanned pictures without text. Searching them needs text recognition (macOS).': 'Bazı sayfalar metni olmayan taranmış görüntüler. Bu sayfalarda arama için metin tanıma (macOS) gerekir.',
   'Some pages are scanned pictures without text.': 'Bazı sayfalar metni olmayan taranmış görüntüler.',

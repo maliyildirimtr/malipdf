@@ -3,9 +3,9 @@
  *
  * Crashes are logged locally (appInfo.logCrash). After a crash, the next start
  * asks whether to report it; "Report a Problem…" in the Help menu does the
- * same at any time. A report opens a new GitHub issue in the browser with the
- * details filled in (the user sees and sends it), or is copied to the
- * clipboard for e-mail. Nothing is sent without the user doing so. Documents
+ * same at any time. A report opens a ready e-mail to SUPPORT_EMAIL in the
+ * user's mail app, or a new GitHub issue in the browser, with the details
+ * filled in (the user sees and sends it), or is copied to the clipboard. Nothing is sent without the user doing so. Documents
  * are never included; home-folder paths are shortened to "~".
  */
 import { app, BrowserWindow, clipboard, shell } from 'electron';
@@ -17,6 +17,10 @@ import { handleTrusted } from '../security';
 import { getBuildInfo, logCrash } from './appInfo';
 
 export const ISSUES_URL = 'https://github.com/maliyildirimtr/malipdf/issues/new';
+/** Where e-mailed problem reports go. Change it here (one place). */
+export const SUPPORT_EMAIL = 'mali@maliyildirimtr.com';
+/** Mail apps cut long mailto: links; keep the e-mail body shorter than the GitHub one. */
+const MAX_MAIL_BODY = 1800;
 const MAX_BODY = 6000;
 const MAX_ENTRIES = 5;
 
@@ -106,23 +110,32 @@ function markOffered(size: number): void {
   }
 }
 
+/** mailto: link with the report as subject and body. */
+export function reportMailto(report: { title: string; body: string }): string {
+  const body = report.body.length > MAX_MAIL_BODY ? `${report.body.slice(0, MAX_MAIL_BODY - 2)}\n…` : report.body;
+  // encodeURIComponent, not URLSearchParams: mail apps expect %20, not "+".
+  return `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(report.title)}&body=${encodeURIComponent(body)}`;
+}
+
 /** Ask and send. `entries` may be empty (Help ▸ Report a Problem). */
 export async function offerReport(window: BrowserWindow | null, entries: readonly CrashEntry[], afterCrash: boolean): Promise<void> {
   const { response } = await showMessageBox(window, {
     type: afterCrash ? 'warning' : 'info',
-    buttons: ['Report on GitHub', 'Copy Report', afterCrash ? 'Not Now' : 'Cancel'],
+    buttons: ['Send by E-mail', 'Report on GitHub', 'Copy Report', afterCrash ? 'Not Now' : 'Cancel'],
     defaultId: 0,
-    cancelId: 2,
+    cancelId: 3,
     message: afterCrash ? 'MaliPDF ran into a problem last time.' : 'Report a problem',
-    detail: 'You can send the developer a report. It contains the app version, your system and the error details — never your documents. GitHub opens with the report filled in; you can read it before sending. "Copy Report" copies it so you can e-mail it instead.',
+    detail: 'You can send the developer a report. It contains the app version, your system and the error details — never your documents. "Send by E-mail" opens a ready e-mail in your mail app; you can read it before sending. "Report on GitHub" needs a GitHub account. "Copy Report" copies it so you can send it another way.',
   });
-  if (response === 2) return;
+  if (response === 3) return;
   const report = buildReport(entries);
   if (response === 0) {
+    await shell.openExternal(reportMailto(report));
+  } else if (response === 1) {
     const url = `${ISSUES_URL}?${new URLSearchParams({ title: report.title, body: report.body, labels: 'crash' }).toString()}`;
     await shell.openExternal(url);
   } else {
-    clipboard.writeText(`${report.title}\n\n${report.body}`);
+    clipboard.writeText(`To: ${SUPPORT_EMAIL}\n${report.title}\n\n${report.body}`);
   }
 }
 

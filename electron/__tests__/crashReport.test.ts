@@ -34,3 +34,15 @@ describe('crash reports', () => {
     expect(report.body.length).toBeLessThanOrEqual(6000);
   });
 });
+
+describe('e-mail report', () => {
+  it('opens a mail to the support address with the report', async () => {
+    const { reportMailto, SUPPORT_EMAIL } = await import('../services/crashReport');
+    const link = reportMailto({ title: 'Crash report: renderer-gone (1.0.1)', body: 'Satır 1\nŞ & ? =' + 'x'.repeat(3000) });
+    expect(SUPPORT_EMAIL).toBe('mali@maliyildirimtr.com');
+    expect(link.startsWith('mailto:mali@maliyildirimtr.com?subject=Crash%20report')).toBe(true);
+    const body = decodeURIComponent(link.split('&body=')[1]);
+    expect(body.startsWith('Satır 1\nŞ & ? =')).toBe(true);
+    expect(body.length).toBeLessThanOrEqual(1800);
+  });
+});
