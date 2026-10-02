@@ -30,6 +30,9 @@ import {
 import { OFFICE_EXTENSIONS, setupPptxIpc } from './services/pptx/pptxIpc';
 import { getLanguage, setLanguage, showMessageBox, showOpenDialog, showSaveDialog, t } from './i18n/mainLanguage';
 import { isLanguage, languageFromLocale } from './i18n';
+import { safeExternalUrl } from './linkSafety';
+import { offerPendingCrashReport, setupCrashReporting } from './services/crashReport';
+let crashReportOffered = false;
 import { setupOcrIpc } from './services/ocr/ocrIpc';
 import { FolderGrants, outputExtension, writeFilesToFolder } from './services/files/folderWrite';
 import { setupRecoveryIpc } from './services/recovery';
@@ -77,6 +80,7 @@ setupPptxIpc(isDev);
 setupOcrIpc(isDev);
 setupRecoveryIpc(isDev);
 setupAppInfo(isDev);
+setupCrashReporting(isDev);
 setupUpdates(isDev);
 
 // One MaliPDF at a time: a second instance would fight over crash-recovery
@@ -281,6 +285,11 @@ function createWindow(options: { restoreId?: string } = {}): BrowserWindow {
 
   window.once('ready-to-show', () => {
     window.show();
+    // After a crash, offer (once) to report it — a moment after start-up.
+    if (!secondary && !crashReportOffered) {
+      crashReportOffered = true;
+      setTimeout(() => { void offerPendingCrashReport(window).catch(() => {}); }, 2500);
+    }
   });
 
   window.on('focus', () => {
@@ -592,6 +601,24 @@ handleTrusted('fs:writeFile', isDev, async (_event, filePath: unknown, data: unk
     await fs.promises.unlink(tempPath).catch(() => {});
     throw error;
   }
+});
+
+// Links in a PDF (outline entries, link areas on pages): web and mail links
+// only, and only after the user confirms where they lead.
+handleTrusted('shell:openLink', isDev, async (_event, raw: unknown) => {
+  const url = safeExternalUrl(raw);
+  if (!url) return false;
+  const { response } = await showMessageBox(mainWindow, {
+    type: 'question',
+    buttons: ['Open Link', 'Cancel'],
+    defaultId: 0,
+    cancelId: 1,
+    message: 'Open this link in your browser?',
+    detail: url.length > 300 ? `${url.slice(0, 300)}…` : url,
+  });
+  if (response !== 0) return false;
+  await shell.openExternal(url);
+  return true;
 });
 
 // Get app version

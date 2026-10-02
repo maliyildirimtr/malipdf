@@ -88,6 +88,9 @@ export interface ElectronAPI {
   pptxConvertBytes: (jobId: string, data: ArrayBuffer, name: string) => Promise<{ buffer: ArrayBuffer; name: string }>;
   pptxCancelConversion: (jobId: string) => Promise<void>;
   officePromptLibreOffice: () => Promise<boolean>;
+  openLink: (url: string) => Promise<boolean>;
+  reportProblem: () => Promise<boolean>;
+  logRendererError: (error: { message: string; stack?: string }) => Promise<boolean>;
   ocrIsAvailable: () => Promise<boolean>;
   ocrRecognize: (png: ArrayBuffer, languages?: string[]) => Promise<OcrLine[]>;
 }
@@ -144,6 +147,9 @@ const electronAPI: ElectronAPI = {
   pptxConvertBytes: (jobId, data, name) => ipcRenderer.invoke('pptx:convertBytes', jobId, data, name),
   pptxCancelConversion: (jobId) => ipcRenderer.invoke('pptx:cancelConversion', jobId),
   officePromptLibreOffice: () => ipcRenderer.invoke('office:promptLibreOffice'),
+  openLink: (url) => ipcRenderer.invoke('shell:openLink', url),
+  reportProblem: () => ipcRenderer.invoke('app:reportProblem'),
+  logRendererError: (error) => ipcRenderer.invoke('app:logRendererError', error),
   ocrIsAvailable: () => ipcRenderer.invoke('ocr:isAvailable'),
   ocrRecognize: (png, languages) => ipcRenderer.invoke('ocr:recognize', png, languages),
 };

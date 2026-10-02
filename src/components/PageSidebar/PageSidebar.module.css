@@ -475,3 +475,18 @@
 .annotationRow .rowButtonOn {
   display: flex;
 }
+
+.linkButton {
+  display: block;
+  margin-top: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-accent);
+  font: inherit;
+  cursor: pointer;
+}
+
+.linkButton:hover {
+  text-decoration: underline;
+}

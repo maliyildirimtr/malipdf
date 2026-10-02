@@ -14,6 +14,7 @@ import AnnotationCanvas from '../AnnotationCanvas/AnnotationCanvas';
 import { SearchHighlights } from './SearchHighlights';
 import { PdfDetailLayer } from './PdfDetailLayer';
 import { FormLayer } from './FormLayer';
+import { LinkLayer } from './LinkLayer';
 import { useUIStore } from '../../store/uiStore';
 import styles from './PDFPage.module.css';
 
@@ -147,6 +148,7 @@ const PDFPage = React.memo<PDFPageProps>(function PDFPage({
               transform={transform}
               onInteractionPinChange={handlePinChange}
             />
+            {page && !isLoading && <LinkLayer page={page} transform={transform} docId={docId} instanceId={instanceId} />}
             {page && !isLoading && <FormLayer page={page} transform={transform} docId={docId} />}
           </>
         )}

@@ -7,7 +7,8 @@ import { create } from 'zustand';
 import type { DocumentIdentity } from '../types/documentSession';
 import { documentIdentityKey, sameDocumentIdentity } from '../types/documentSession';
 import { getDocumentProxy, getLoadedRevision } from '../pdf/documentManager';
-import { buildPageTextIndex, findMatchesInPage, type PageMatch, type PageTextIndex } from '../pdf/textSearch';
+import { applyTextEdits, buildPageTextIndex, findMatchesInPage, type PageMatch, type PageTextIndex, type SearchTextEdit } from '../pdf/textSearch';
+import { useAnnotationStore } from './annotationStore';
 
 export type SearchStatus = 'idle' | 'searching' | 'done' | 'error';
 
@@ -19,6 +20,8 @@ interface SearchStore {
   status: SearchStatus;
   searchedPages: number;
   totalPages: number;
+  /** Pages searched so far that have no text layer (scans). */
+  textlessPages: number;
   /** Bumped to ask the search input to take focus (⌘F). */
   focusRequest: number;
 
@@ -31,10 +34,21 @@ interface SearchStore {
 }
 
 const textCache = new Map<string, PageTextIndex>();
+const textless = new Set<string>();
 let runToken = 0;
 
+const pageKey = (identity: DocumentIdentity, pageIndex: number) => `${documentIdentityKey(identity)}@${getLoadedRevision(identity)}:${pageIndex}`;
+
+/** Edited PDF lines on the page (they change what the page says). */
+function pageEdits(identity: DocumentIdentity, pageIndex: number): SearchTextEdit[] {
+  return useAnnotationStore.getState().getPageAnnotations(identity.docId, pageIndex)
+    .flatMap((a) => (a.type === 'textEdit' && !a.hidden ? [a] : []));
+}
+
 async function pageText(identity: DocumentIdentity, pageIndex: number): Promise<PageTextIndex | null> {
-  const key = `${documentIdentityKey(identity)}@${getLoadedRevision(identity)}:${pageIndex}`;
+  const edits = pageEdits(identity, pageIndex);
+  const editKey = edits.map((e) => `${e.origin.x},${e.origin.y}:${e.text}`).join('|');
+  const key = `${pageKey(identity, pageIndex)}${editKey ? `#${editKey}` : ''}`;
   const cached = textCache.get(key);
   if (cached) return cached;
   const proxy = getDocumentProxy(identity);
@@ -48,7 +62,8 @@ async function pageText(identity: DocumentIdentity, pageIndex: number): Promise<
     height: item.height,
     hasEOL: item.hasEOL,
   }] : []));
-  const index = buildPageTextIndex(items);
+  const index = buildPageTextIndex(applyTextEdits(items, edits));
+  if (!items.some((item) => /\S/.test(item.str))) textless.add(pageKey(identity, pageIndex));
   textCache.set(key, index);
   return index;
 }
@@ -61,6 +76,7 @@ export const useSearchStore = create<SearchStore>((set, get) => ({
   status: 'idle',
   searchedPages: 0,
   totalPages: 0,
+  textlessPages: 0,
   focusRequest: 0,
 
   requestFocus: () => set((state) => ({ focusRequest: state.focusRequest + 1 })),
@@ -74,7 +90,7 @@ export const useSearchStore = create<SearchStore>((set, get) => ({
     }
     const proxy = getDocumentProxy(identity);
     const totalPages = proxy?.numPages ?? 0;
-    set({ query, identity, results: [], currentIndex: -1, status: 'searching', searchedPages: 0, totalPages });
+    set({ query, identity, results: [], currentIndex: -1, status: 'searching', searchedPages: 0, totalPages, textlessPages: 0 });
     try {
       for (let pageIndex = 0; pageIndex < totalPages; pageIndex++) {
         const index = await pageText(identity, pageIndex);
@@ -84,6 +100,7 @@ export const useSearchStore = create<SearchStore>((set, get) => ({
           results: matches.length > 0 ? [...state.results, ...matches] : state.results,
           currentIndex: state.currentIndex < 0 && matches.length > 0 ? 0 : state.currentIndex,
           searchedPages: pageIndex + 1,
+          textlessPages: state.textlessPages + (textless.has(pageKey(identity, pageIndex)) ? 1 : 0),
         }));
       }
       if (token === runToken) set({ status: 'done' });

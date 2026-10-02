@@ -33,6 +33,8 @@ import {
   LineCapStyle,
   PDFName,
   PDFNumber,
+  PDFArray,
+  PDFRef,
   degrees,
 } from 'pdf-lib';
 import {
@@ -75,10 +77,12 @@ import { fontFamilyKey, fontGroup, fontStyleKey, type FontGroup, type FontStyleK
 import { layoutTextLines, LINE_HEIGHT, TEXT_PADDING } from './textLayout';
 import { captureEditableState, writeEditableData, type EditableAsset } from './editableData';
 import { appendBookmarksToOutline } from './outlineWriter';
-import { highlightShape, penShape, type InkShape, type PathCommand } from './inkGeometry';
+import { highlightShape, type InkShape, type PathCommand } from './inkGeometry';
+import { penStyleOpacity, styledPenShape } from './penStyles';
 import { markupShape } from './textSelection';
 import { addNoteAnnotation } from './noteExport';
 import { coverQuad, coverWidth } from './textEdit';
+import { removeTextInAreas } from './textRedaction';
 import { applyFormValues, type FormValue } from './formFields';
 import { labelAnchor, measureLabel, measureTicks, MEASURE_FONT } from './measure';
 
@@ -356,8 +360,8 @@ function exportStroke(
   annotation: StrokeAnnotation,
   info: PdfPageExportContext,
 ): void {
-  const shape = penShape(annotation.points, annotation.width, annotation.smooth, annotation.pressure);
-  drawInkShape(page, shape, info, { color: annotation.color, width: annotation.width, opacity: annotation.opacity, cap: 'round' });
+  const shape = styledPenShape(annotation.points, annotation.width, annotation.smooth, annotation.pressure, annotation.penStyle);
+  drawInkShape(page, shape, info, { color: annotation.color, width: annotation.width, opacity: annotation.opacity * penStyleOpacity(annotation.penStyle), cap: 'round' });
 }
 
 function exportHighlight(
@@ -1005,6 +1009,7 @@ export async function exportAnnotatedPdf(
     });
   }
   let measureFont: PDFFont | undefined;
+  const replacedContent: PDFRef[] = [];
 
   for (let pageIndex = 0; pageIndex < pages.length; pageIndex++) {
     const page = pages[pageIndex];
@@ -1019,6 +1024,16 @@ export async function exportAnnotatedPdf(
       ...visible.filter((annotation) => !isMultiply(annotation)),
     ];
     if (pageAnnotations.length === 0) continue;
+
+    // Edited PDF text: take the old words out of the page, not only cover them.
+    const edits = pageAnnotations.filter((a): a is TextEditAnnotation => a.type === 'textEdit');
+    if (edits.length > 0) {
+      try {
+        replacedContent.push(...removeTextInAreas(pdfDoc.context, page, edits.map((a) => coverQuad(a, a.originalWidth, 0.3))).replaced);
+      } catch (error) {
+        console.warn('[Export] Old text could not be removed; it stays covered.', error);
+      }
+    }
 
     for (const annotation of pageAnnotations) {
       try {
@@ -1099,6 +1114,15 @@ export async function exportAnnotatedPdf(
       writeEditableData(pdfDoc, editableCapture, all, assets, outlineChange ? bookmarks : [], outlineChange);
       keepEditable = true;
     }
+  }
+  // Without editable data nothing points at the original streams of edited
+  // pages any more: drop them so the old words are really gone from the file.
+  if (!keepEditable && replacedContent.length > 0) {
+    const stillUsed = new Set(pages.flatMap((page) => {
+      const contents = page.node.get(PDFName.of('Contents'));
+      return contents instanceof PDFArray ? contents.asArray() : [contents];
+    }));
+    for (const ref of replacedContent) if (!stillUsed.has(ref)) pdfDoc.context.delete(ref);
   }
   // Editable saves keep the catalog outside object streams so reopening can
   // detect MaliPDF data with a cheap byte search.

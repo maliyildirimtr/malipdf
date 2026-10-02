@@ -32,6 +32,8 @@ export interface InputPoint {
   y: number; // PDF space
   pressure: number; // 0–1, defaults to 0.5 for mouse
   timestamp: number;
+  /** Pen tilt: 0 upright … 1 lying flat (stylus only; absent for mouse/touch). */
+  tilt?: number;
 }
 
 export interface PdfRect {
@@ -94,7 +96,11 @@ export interface StrokeAnnotation extends BaseAnnotation {
   width: number;                   // Stroke width in PDF points
   smooth: boolean;
   pressure: boolean;               // Whether pressure data is meaningful
+  /** Nib type; absent means the classic ballpoint. */
+  penStyle?: PenStyle;
 }
+
+export type PenStyle = 'ballpoint' | 'fountain' | 'calligraphy' | 'pencil' | 'marker';
 
 // ─── Highlight annotation ─────────────────────────────────────────────────────
 
@@ -284,6 +290,10 @@ export interface PenOptions {
   stabilizer?: 'off' | 'basic' | 'soft' | 'silky' | 'fluid';
   /** Hold the pen still for a moment while drawing to turn the line into a shape. */
   holdToShape?: boolean;
+  /** Nib type (ballpoint, fountain pen, calligraphy, pencil, marker). */
+  penStyle?: PenStyle;
+  /** Endless page: writing near the bottom of a page adds room below it. */
+  endlessPage?: boolean;
 }
 
 export interface HighlighterOptions {
@@ -544,6 +554,9 @@ declare global {
       pptxConvertBytes?: (jobId: string, data: ArrayBuffer, name: string) => Promise<{ buffer: ArrayBuffer; name: string }>;
       pptxCancelConversion: (jobId: string) => Promise<void>;
       officePromptLibreOffice?: () => Promise<boolean>;
+      openLink?: (url: string) => Promise<boolean>;
+      reportProblem?: () => Promise<boolean>;
+      logRendererError?: (error: { message: string; stack?: string }) => Promise<boolean>;
       ocrIsAvailable?: () => Promise<boolean>;
       ocrRecognize?: (png: ArrayBuffer, languages?: string[]) => Promise<import('../pdf/ocr').OcrLine[]>;
     };

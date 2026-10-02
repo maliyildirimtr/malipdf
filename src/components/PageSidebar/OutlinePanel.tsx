@@ -1,6 +1,6 @@
 /** The PDF's own table of contents. Click an entry to go to its page. */
 import React, { useEffect, useState } from 'react';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, ExternalLink } from 'lucide-react';
 import { getDocumentProxy } from '../../pdf/documentManager';
 import { loadOutline, type OutlineNode } from '../../pdf/outline';
 import { goToPage } from '../../commands/bookmarkCommands';
@@ -55,11 +55,14 @@ export function OutlinePanel({ identity, revision }: { identity: DocumentIdentit
 
 function OutlineItem({ node, depth, docId }: { node: OutlineNode; depth: number; docId: string }) {
   const [open, setOpen] = useState(depth === 0 && node.children.length <= 30);
-  const go = () => node.pageIndex !== null && goToPage(docId, node.pageIndex);
+  const go = () => {
+    if (node.pageIndex !== null) goToPage(docId, node.pageIndex);
+    else if (node.url) void window.electronAPI?.openLink?.(node.url);
+  };
   return (
     <div role="treeitem" aria-expanded={node.children.length ? open : undefined}>
       <div
-        className={`${styles.annotationRow} ${node.pageIndex === null ? styles.outlineDisabled : ''}`}
+        className={`${styles.annotationRow} ${node.pageIndex === null && !node.url ? styles.outlineDisabled : ''}`}
         style={{ paddingLeft: 4 + depth * 12 }}
         tabIndex={0}
         onClick={go}
@@ -91,6 +94,7 @@ function OutlineItem({ node, depth, docId }: { node: OutlineNode; depth: number;
           {node.title}
         </span>
         {node.pageIndex !== null && <span className={styles.outlinePage}>{node.pageIndex + 1}</span>}
+        {node.pageIndex === null && node.url && <ExternalLink size={11} className={styles.outlinePage} aria-label="Web link" />}
       </div>
       {open && node.children.map((child) => <OutlineItem key={child.id} node={child} depth={depth + 1} docId={docId} />)}
     </div>

@@ -23,7 +23,7 @@ type RawItem = {
 
 export const MAX_OUTLINE_ITEMS = 5000;
 
-async function resolvePage(pdf: PDFDocumentProxy, dest: RawItem['dest']): Promise<number | null> {
+export async function resolvePage(pdf: PDFDocumentProxy, dest: RawItem['dest']): Promise<number | null> {
   try {
     const explicit = typeof dest === 'string' ? await pdf.getDestination(dest) : dest;
     if (!Array.isArray(explicit) || explicit.length === 0) return null;

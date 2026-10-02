@@ -144,6 +144,12 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
       case 'help.crashReports':
         void window.electronAPI?.openCrashReports?.();
         return;
+      case 'page.extend':
+        if (docId) void import('./extendPageCommands').then((m) => m.extendPage(documents.documents.get(docId)?.activePageIndex ?? 0));
+        return;
+      case 'help.reportProblem':
+        void window.electronAPI?.reportProblem?.();
+        return;
       case 'file.close':
         if (docId) void closeDocumentById(docId);
         return;

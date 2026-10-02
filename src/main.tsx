@@ -9,6 +9,14 @@ import './styles/global.css';
 window.addEventListener('dragover', (event) => event.preventDefault());
 window.addEventListener('drop', (event) => event.preventDefault());
 
+// Unexpected errors go into the local crash log, so a problem report has them.
+const logError = (error: unknown) => {
+  const err = error instanceof Error ? error : new Error(String(error));
+  void window.electronAPI?.logRendererError?.({ message: err.message, stack: err.stack })?.catch?.(() => {});
+};
+window.addEventListener('error', (event) => logError(event.error ?? event.message));
+window.addEventListener('unhandledrejection', (event) => logError(event.reason));
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <App />

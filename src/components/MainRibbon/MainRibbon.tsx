@@ -1,5 +1,6 @@
 import { MEASURE_UNITS } from '../../pdf/measure';
-import type { MeasureUnit } from '../../types/annotations';
+import type { MeasureUnit, PenStyle } from '../../types/annotations';
+import { PEN_STYLES } from '../../pdf/penStyles';
 import React from 'react';
 import { useSelectionStore } from '../../store/selectionStore';
 import { SelectionTagButton } from '../Tags/TagPicker';
@@ -70,6 +71,8 @@ import {
   X,
   RefreshCw,
   Info,
+  Bug,
+  FoldVertical,
   FileStack,
   NotebookPen,
   FileInput,
@@ -259,6 +262,7 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
               'separator',
               item('app.settings', Settings, 'Settings…'),
               item('help.checkForUpdates', RefreshCw),
+              item('help.reportProblem', Bug),
               item('help.about', Info),
             ]}
           />
@@ -271,6 +275,7 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
               item('page.insertBlank', FilePlus2),
               item('page.insertNotePage', NotebookPen),
               item('page.insertFromPdf', FileInput),
+              item('page.extend', FoldVertical),
               item('page.duplicate', Copy),
               item('page.delete', Trash2),
               item('page.rotateLeft', RotateCcw),
@@ -454,6 +459,12 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
               <PropertySeparator />
               <OpacityControl value={toolOptions.pen.opacity} onChange={(opacity) => updatePenOptions({ opacity })} />
               <PropertySeparator />
+              <label className={styles.compactControl} title="Pen type. Fountain pen and pencil also follow how far you tilt a stylus.">
+                <span className={styles.propertyLabel}>Nib</span>
+                <select className={styles.compactSelect} value={toolOptions.pen.penStyle ?? 'ballpoint'} aria-label="Pen type" onChange={(event) => updatePenOptions({ penStyle: event.target.value as PenStyle })}>
+                  {PEN_STYLES.map((style) => <option key={style.value} value={style.value}>{style.label}</option>)}
+                </select>
+              </label>
               <PropertyToggle label="Pressure" pressed={toolOptions.pen.pressureSensitive} onChange={(pressureSensitive) => updatePenOptions({ pressureSensitive })} />
               <label className={styles.compactControl} title="Smooths the line so it follows your hand, not every tremor">
                 <span className={styles.propertyLabel}>Stabilizer</span>
@@ -471,6 +482,7 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
                 items={[
                   { label: 'Smooth strokes', checked: toolOptions.pen.smooth, onSelect: () => updatePenOptions({ smooth: !toolOptions.pen.smooth }) },
                   { label: 'Hold still to make a shape', checked: toolOptions.pen.holdToShape !== false, onSelect: () => updatePenOptions({ holdToShape: toolOptions.pen.holdToShape === false }) },
+                  { label: 'Endless page (writing near the bottom adds room)', checked: toolOptions.pen.endlessPage === true, onSelect: () => updatePenOptions({ endlessPage: !toolOptions.pen.endlessPage }) },
                 ]}
               />
             </>

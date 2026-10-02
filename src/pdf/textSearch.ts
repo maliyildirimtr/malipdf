@@ -160,3 +160,49 @@ function originalText(index: PageTextIndex, start: number, end: number): string 
   }
   return out;
 }
+
+/** An edited PDF line (Edit PDF Text), as far as search needs it. */
+export interface SearchTextEdit {
+  origin: { x: number; y: number };
+  angle: number;
+  originalWidth: number;
+  ascent: number;
+  descent: number;
+  text: string;
+  textWidth: number;
+  fontSize: number;
+}
+
+/**
+ * The page text as it reads after edits: words under an edited line are left
+ * out (they are removed on save) and the new text takes their place.
+ */
+export function applyTextEdits(items: readonly SearchTextItem[], edits: readonly SearchTextEdit[]): SearchTextItem[] {
+  if (edits.length === 0) return [...items];
+  const covered = (item: SearchTextItem) => edits.some((edit) => {
+    const [, , , , e, f] = item.transform;
+    const dx = Math.cos(edit.angle);
+    const dy = Math.sin(edit.angle);
+    // A point just above the item's baseline start, in the edit's own axes.
+    const height = Math.hypot(item.transform[2], item.transform[3]) || item.height || 10;
+    const px = e - dy * height * 0.3 - edit.origin.x;
+    const py = f + dx * height * 0.3 - edit.origin.y;
+    const along = px * dx + py * dy;
+    const up = -px * dy + py * dx;
+    return along >= -1 && along <= edit.originalWidth + 1 && up >= -edit.descent - 1 && up <= edit.ascent + 1;
+  });
+  const kept = items.filter((item) => !covered(item));
+  for (const edit of edits) {
+    if (!edit.text.trim()) continue;
+    const c = Math.cos(edit.angle);
+    const s = Math.sin(edit.angle);
+    kept.push({
+      str: edit.text,
+      transform: [c * edit.fontSize, s * edit.fontSize, -s * edit.fontSize, c * edit.fontSize, edit.origin.x, edit.origin.y],
+      width: edit.textWidth,
+      height: edit.fontSize,
+      hasEOL: true,
+    });
+  }
+  return kept;
+}

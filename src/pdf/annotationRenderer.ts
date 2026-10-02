@@ -45,6 +45,7 @@ import { getCachedDecodedImage, requestImageDecode } from './imageRenderCache';
 import { cssFont, layoutTextLines, matchPdfText, LINE_HEIGHT, TEXT_PADDING } from './textLayout';
 import { useAssetStore } from '../store/assetStore';
 import { commandsToPath2D, highlightShape, penShape, type InkShape } from './inkGeometry';
+import { mapShape, penStyleOpacity, styledPenShape } from './penStyles';
 
 
 // ─── Main render functions ────────────────────────────────────────────────────
@@ -178,9 +179,13 @@ const inkCache = new WeakMap<Annotation, CachedInk>();
 function inkPath(annotation: StrokeAnnotation | HighlightAnnotation, transform: PageTransform): CachedInk {
   const cached = inkCache.get(annotation);
   if (cached && cached.transform === transform) return cached;
-  const screenPoints = pdfPointsToScreen(annotation.points, transform);
+  const styled = annotation.type === 'stroke' && annotation.penStyle && annotation.penStyle !== 'ballpoint';
+  const screenPoints = styled ? [] : pdfPointsToScreen(annotation.points, transform);
   const shape = annotation.type === 'stroke'
-    ? penShape(screenPoints, annotation.width * transform.scale, annotation.smooth, annotation.pressure)
+    ? (styled
+      // Nib styles are shaped in PDF space (as in the saved file), then mapped.
+      ? mapShape(styledPenShape(annotation.points, annotation.width, annotation.smooth, annotation.pressure, annotation.penStyle), (x, y) => pdfToScreen(x, y, transform))
+      : penShape(screenPoints, annotation.width * transform.scale, annotation.smooth, annotation.pressure))
     : highlightShape(screenPoints);
   const entry = { transform, mode: shape.mode, path: commandsToPath2D(shape.commands) };
   inkCache.set(annotation, entry);
@@ -195,7 +200,7 @@ export function renderStroke(
   if (annotation.points.length === 0) return;
   const { mode, path } = inkPath(annotation, transform);
   ctx.save();
-  ctx.globalAlpha = annotation.opacity;
+  ctx.globalAlpha = annotation.opacity * penStyleOpacity(annotation.penStyle);
   if (mode === 'fill') {
     ctx.fillStyle = annotation.color;
     ctx.fill(path);

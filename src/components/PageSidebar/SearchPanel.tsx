@@ -8,6 +8,13 @@ import styles from './PageSidebar.module.css';
 
 const SEARCH_DEBOUNCE_MS = 250;
 
+/** Documents whose scanned pages were already sent to OCR from a search. */
+const autoRecognized = new Set<string>();
+
+async function ocrAvailable(): Promise<boolean> {
+  try { return (await window.electronAPI?.ocrIsAvailable?.()) === true; } catch { return false; }
+}
+
 export function SearchPanel({ identity }: { identity: DocumentIdentity }) {
   const query = useSearchStore((s) => s.query);
   const results = useSearchStore((s) => s.results);
@@ -17,6 +24,10 @@ export function SearchPanel({ identity }: { identity: DocumentIdentity }) {
   const totalPages = useSearchStore((s) => s.totalPages);
   const searchIdentity = useSearchStore((s) => s.identity);
   const focusRequest = useSearchStore((s) => s.focusRequest);
+  const textlessPages = useSearchStore((s) => s.textlessPages);
+  const [ocrState, setOcrState] = useState<'idle' | 'running' | 'unavailable'>('idle');
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const { search, next, previous, select, clear } = useSearchStore.getState();
 
   const [draft, setDraft] = useState(query);
@@ -50,6 +61,26 @@ export function SearchPanel({ identity }: { identity: DocumentIdentity }) {
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft]);
+
+  // Scanned pages have no text to search: recognise them once (OCR, macOS),
+  // then the search runs again by itself on the new text layer.
+  useEffect(() => {
+    if (status !== 'done' || textlessPages === 0 || !query.trim()) return;
+    const key = `${identity.docId}:${identity.instanceId}`;
+    if (autoRecognized.has(key)) return;
+    autoRecognized.add(key);
+    void (async () => {
+      if (!(await ocrAvailable())) {
+        if (mounted.current) setOcrState('unavailable');
+        return;
+      }
+      if (mounted.current) setOcrState('running');
+      const { recognizeText } = await import('../../commands/ocrCommands');
+      await recognizeText('all');
+      if (mounted.current) setOcrState('idle');
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, textlessPages, identity.docId, identity.instanceId]);
 
   // Bring the current match into view.
   useEffect(() => {
@@ -131,10 +162,26 @@ export function SearchPanel({ identity }: { identity: DocumentIdentity }) {
             <span className={styles.searchResultSnippet} data-no-translate>{match.snippet}</span>
           </button>
         ))}
-        {query.trim() && status === 'done' && count === 0 && (
+        {query.trim() && ocrState === 'running' && (
           <p className={styles.annotationHint}>
-            No matches. Scanned PDFs without a text layer (no OCR) cannot be searched.
+            Reading the scanned pages (text recognition)… The results update when it is done.
           </p>
+        )}
+        {query.trim() && status === 'done' && textlessPages > 0 && ocrState !== 'running' && (
+          <p className={styles.annotationHint}>
+            {ocrState === 'unavailable'
+              ? 'Some pages are scanned pictures without text. Searching them needs text recognition (macOS).'
+              : 'Some pages are scanned pictures without text.'}
+            {ocrState !== 'unavailable' && (
+              <button type="button" className={styles.linkButton} onClick={() => {
+                setOcrState('running');
+                void import('../../commands/ocrCommands').then((m) => m.recognizeText('all')).finally(() => { if (mounted.current) setOcrState('idle'); });
+              }}>Recognize text</button>
+            )}
+          </p>
+        )}
+        {query.trim() && status === 'done' && count === 0 && textlessPages === 0 && (
+          <p className={styles.annotationHint}>No matches.</p>
         )}
       </div>
     </div>

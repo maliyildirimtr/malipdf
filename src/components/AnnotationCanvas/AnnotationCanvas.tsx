@@ -116,6 +116,7 @@ import type { TextEditAnnotation } from '../../types/annotations';
 import type { EditableLine } from '../../commands/textEditCommands';
 import { coverQuad, coverWidth } from '../../pdf/textEdit';
 import { FONTS_LOADED_EVENT } from '../../pdf/screenFonts';
+import { pointerTilt } from '../../pdf/penStyles';
 import { PDF_TEXT_CSS, autoSizeTextBox, canvasMeasure, cssFont, LINE_HEIGHT, MAX_AUTO_TEXT_WIDTH, TEXT_PADDING } from '../../pdf/textLayout';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -906,6 +907,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
       id: nanoid(), pageIndex, type: 'stroke',
       points: pdfPts, color: options.color, width: options.width, opacity: options.opacity,
       smooth: options.smooth, pressure: options.pressureSensitive,
+      ...(options.penStyle && options.penStyle !== 'ballpoint' ? { penStyle: options.penStyle } : {}),
       locked: false, createdAt: now, updatedAt: now,
     };
   }
@@ -932,7 +934,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
 
   function getInputPoint(e: React.PointerEvent<HTMLDivElement>): InputPoint {
     const { screenX, screenY } = getPagePoint(e);
-    return { x: screenX, y: screenY, pressure: e.pressure > 0 ? e.pressure : 0.5, timestamp: e.timeStamp };
+    return { x: screenX, y: screenY, pressure: e.pressure > 0 ? e.pressure : 0.5, timestamp: e.timeStamp, tilt: pointerTilt(e) };
   }
 
   function screenToPdfPoint(screenX: number, screenY: number): PdfPoint {
@@ -1242,7 +1244,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
       const inkWidth = (interactionTool === 'pen' ? toolOptions.pen.width : toolOptions.highlighter.width) * scale;
       rulerSnapRef.current = edge ? { edge, offset: inkWidth / 2 } : null;
       const start = toLocalInkPoint(e.clientX, e.clientY);
-      activePoints.current = [{ x: start.x, y: start.y, pressure: e.pressure > 0 ? e.pressure : 0.5, timestamp: e.timeStamp }];
+      activePoints.current = [{ x: start.x, y: start.y, pressure: e.pressure > 0 ? e.pressure : 0.5, timestamp: e.timeStamp, tilt: pointerTilt(e) }];
       holdShape.current = null;
       armHoldToShape(start.x, start.y, true);
       schedulePreviewRender();
@@ -1253,7 +1255,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     if (interactionTool === 'freeform' || (interactionTool === 'measure' && toolOptions.measure.mode === 'area')) {
       if (mode.current === 'idle') {
         mode.current = 'freeformDrawing';
-        activePoints.current = [{ x: screenX, y: screenY, pressure: e.pressure > 0 ? e.pressure : 0.5, timestamp: e.timeStamp }];
+        activePoints.current = [{ x: screenX, y: screenY, pressure: e.pressure > 0 ? e.pressure : 0.5, timestamp: e.timeStamp, tilt: pointerTilt(e) }];
         currentEnd.current = { screenX, screenY };
         setIsDrawing(true);
         onInteractionPinChange?.(true);
@@ -1270,7 +1272,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
         if (doubleClick || (activePoints.current.length >= 2 && distToStart < 12)) {
           commitFreeform();
         } else {
-          activePoints.current.push({ x: screenX, y: screenY, pressure: e.pressure > 0 ? e.pressure : 0.5, timestamp: e.timeStamp });
+          activePoints.current.push({ x: screenX, y: screenY, pressure: e.pressure > 0 ? e.pressure : 0.5, timestamp: e.timeStamp, tilt: pointerTilt(e) });
           currentEnd.current = { screenX, screenY };
           schedulePreviewRender();
         }
@@ -1573,12 +1575,13 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
           y: local.y,
           pressure: ev.pressure > 0 ? ev.pressure : 0.5,
           timestamp: ev.timeStamp,
+          tilt: pointerTilt(ev),
         });
       }
       // Predicted points shorten the visible lag; they are preview-only.
       predictedPoints.current = (e.nativeEvent.getPredictedEvents?.() ?? []).slice(0, 2).map((ev) => {
         const local = toLocalInkPoint(ev.clientX, ev.clientY);
-        return { x: local.x, y: local.y, pressure: ev.pressure > 0 ? ev.pressure : 0.5, timestamp: ev.timeStamp };
+        return { x: local.x, y: local.y, pressure: ev.pressure > 0 ? ev.pressure : 0.5, timestamp: ev.timeStamp, tilt: pointerTilt(ev) };
       });
       const lastPoint = activePoints.current[activePoints.current.length - 1];
       armHoldToShape(lastPoint.x, lastPoint.y);
@@ -1854,6 +1857,12 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     }
     addAnnotation(docId, ann);
     pushHistory(makeAddAction(docId, ann));
+    // Endless page: writing near the bottom adds room below.
+    if (ann.type === 'stroke' && toolOptions.pen.endlessPage && transform.effectiveRotation === 0) {
+      const lowest = Math.min(...ann.points.map((p) => p.y));
+      void import('../../commands/extendPageCommands').then((m) =>
+        m.maybeAutoExtend(docId, pageIndex, lowest, transform.cropBox.yMin, transform.cropBox.height));
+    }
   }
 
   // ── Freeform commit ───────────────────────────────────────────────────────

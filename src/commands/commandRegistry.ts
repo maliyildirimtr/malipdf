@@ -24,7 +24,7 @@ export type AppCommandId =
   | 'view.propertyShelf' | 'view.statusBar' | 'view.nativeFullscreen'
   | 'view.focusMode' | 'extras.favorites' | 'extras.toolStyles' | 'help.open'
   | 'app.requestQuit' | 'app.requestCloseWindow' | 'app.settings' | 'view.splitView' | 'view.moveTabToNewWindow' | 'insert.headerFooter' | 'page.removeCrop' | 'file.reduceSize' | 'file.exportImages' | 'file.fromImages' | 'file.openOffice' | 'file.exportWord' | 'file.imagesToWord'
-  | 'file.recoveredDocuments' | 'help.checkForUpdates' | 'help.about' | 'help.crashReports'
+  | 'file.recoveredDocuments' | 'help.checkForUpdates' | 'help.about' | 'help.crashReports' | 'help.reportProblem' | 'page.extend'
   | 'page.insertBlank' | 'page.insertNotePage' | 'page.duplicate' | 'page.delete' | 'page.rotateLeft' | 'page.rotateRight'
   | 'page.insertFromPdf' | 'page.exportSelected' | 'page.addBookmark'
   | 'view.ruler' | 'view.replayInk' | 'view.presentation' | 'view.nightMode'
@@ -149,6 +149,7 @@ export const APP_COMMANDS = {
   'help.open': command('help.open', 'MaliPDF Help', 'help', 'action', 'unavailable', { icon: 'help', menuPlacements: ['help'] }),
   'page.insertBlank': command('page.insertBlank', 'Insert Blank Page', 'page', 'action', 'document', { icon: 'newDocument', shortcut: '⇧⌘N', menuPlacements: ['page'] }),
   'page.insertNotePage': command('page.insertNotePage', 'Insert Note Page…', 'page', 'action', 'document', { icon: 'newDocument', shortcut: '⌥⌘N', menuPlacements: ['page'] }),
+  'page.extend': command('page.extend', 'Add Room Below This Page', 'page', 'action', 'document', { icon: 'newDocument', menuPlacements: ['page'] }),
   'page.duplicate': command('page.duplicate', 'Duplicate Page', 'page', 'action', 'document', { icon: 'selectAll', menuPlacements: ['page'] }),
   'page.delete': command('page.delete', 'Delete Page', 'page', 'action', 'document', { icon: 'delete', menuPlacements: ['page'] }),
   'page.rotateLeft': command('page.rotateLeft', 'Rotate Page Left', 'page', 'action', 'document', { icon: 'rotateLeft', shortcut: '⇧⌘[', menuPlacements: ['page'] }),
@@ -179,6 +180,7 @@ export const APP_COMMANDS = {
   'help.checkForUpdates': command('help.checkForUpdates', 'Check for Updates…', 'help', 'action', 'always', { icon: 'help', menuPlacements: ['help'] }),
   'help.about': command('help.about', 'About MaliPDF', 'help', 'action', 'always', { icon: 'help', menuPlacements: ['help'] }),
   'help.crashReports': command('help.crashReports', 'Show Crash Reports', 'help', 'action', 'always', { icon: 'help', menuPlacements: ['help'] }),
+  'help.reportProblem': command('help.reportProblem', 'Report a Problem…', 'help', 'action', 'always', { icon: 'help', menuPlacements: ['help'] }),
   'app.requestQuit': command('app.requestQuit', 'Quit MaliPDF', 'file', 'action', 'always', { icon: 'close', menuPlacements: [] }),
   'app.requestCloseWindow': command('app.requestCloseWindow', 'Close Window', 'file', 'action', 'always', { icon: 'close', menuPlacements: [] }),
 } as const satisfies Record<AppCommandId, AppCommandDefinition>;
