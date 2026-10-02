@@ -4,9 +4,9 @@
  * Crashes are logged locally (appInfo.logCrash). After a crash, the next start
  * asks whether to report it; "Report a Problem…" in the Help menu does the
  * same at any time (an in-app dialog, ProblemReportDialog). A report opens
- * a ready e-mail to SUPPORT_EMAIL in the user's mail app (or Gmail in the
- * browser when there is no mail app); the user sees it and sends it. It can
- * also be copied to the clipboard. Nothing is sent without the user doing so. Documents
+ * Gmail in the browser with an e-mail to SUPPORT_EMAIL filled in; the user
+ * sees it and sends it. Without a Gmail account, the report is copied and the
+ * contact page (CONTACT_URL) opens. Nothing is sent without the user doing so. Documents
  * are never included; home-folder paths are shortened to "~".
  */
 import { app, clipboard, shell, type BrowserWindow } from 'electron';
@@ -18,8 +18,10 @@ import { getBuildInfo, logCrash } from './appInfo';
 
 /** Where e-mailed problem reports go. Change it here (one place). */
 export const SUPPORT_EMAIL = 'mali@maliyildirimtr.com';
-/** Mail apps cut long mailto: links; keep the e-mail body shorter than the GitHub one. */
-const MAX_MAIL_BODY = 1800;
+/** Keeps the Gmail link to a length browsers and Gmail accept. */
+const MAX_MAIL_BODY = 3500;
+/** For people without a Gmail account: a page with other ways to reach the developer. */
+export const CONTACT_URL = 'https://maliyildirimtr.com/sosyal';
 const MAX_BODY = 6000;
 const MAX_ENTRIES = 5;
 
@@ -108,26 +110,10 @@ function markOffered(size: number): void {
   }
 }
 
-/** mailto: link with the report as subject and body. */
-export function reportMailto(report: { title: string; body: string }): string {
-  const body = report.body.length > MAX_MAIL_BODY ? `${report.body.slice(0, MAX_MAIL_BODY - 2)}\n…` : report.body;
-  // encodeURIComponent, not URLSearchParams: mail apps expect %20, not "+".
-  return `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(report.title)}&body=${encodeURIComponent(body)}`;
-}
-
 /** Gmail's web compose page, for people without a mail app. */
 export function gmailComposeUrl(report: { title: string; body: string }): string {
   const body = report.body.length > MAX_MAIL_BODY ? `${report.body.slice(0, MAX_MAIL_BODY - 2)}\n…` : report.body;
   return `https://mail.google.com/mail/?${new URLSearchParams({ view: 'cm', fs: '1', to: SUPPORT_EMAIL, su: report.title, body }).toString()}`;
-}
-
-/** Whether a mail app handles mailto: links here. */
-function hasMailApp(): boolean {
-  try {
-    return app.getApplicationNameForProtocol('mailto:').trim() !== '';
-  } catch {
-    return true; // unknown: just try
-  }
 }
 
 /** Crash entries the startup prompt is about (kept until the dialog asks for them). */
@@ -160,28 +146,16 @@ export function setupCrashReporting(isDev: boolean): void {
     const report = reportFor(rawAfterCrash === true, noteOf(rawNote));
     return { ...report, to: SUPPORT_EMAIL };
   });
-  // Open it as an e-mail. 'noMailApp' → the dialog offers Gmail / copying.
+  // 'gmail': Gmail compose in the browser. 'contact': copy the report and open the contact page.
   handleTrusted('app:sendProblemReport', isDev, async (_event, rawAfterCrash: unknown, rawNote: unknown, rawVia: unknown) => {
     const report = reportFor(rawAfterCrash === true, noteOf(rawNote));
-    if (rawVia === 'gmail') {
-      await shell.openExternal(gmailComposeUrl(report));
+    if (rawVia === 'contact') {
+      clipboard.writeText(`To: ${SUPPORT_EMAIL}\nSubject: ${report.title}\n\n${report.body}`);
+      await shell.openExternal(CONTACT_URL);
       return 'opened';
     }
-    if (!hasMailApp()) return 'noMailApp';
-    try {
-      await shell.openExternal(reportMailto(report));
-      return 'opened';
-    } catch {
-      return 'noMailApp';
-    }
-  });
-  // Name of the app that opens e-mails ("Mail", "Outlook"…), or '' when none.
-  handleTrusted('app:mailAppName', isDev, async () => {
-    try {
-      return app.getApplicationNameForProtocol('mailto:').trim();
-    } catch {
-      return '';
-    }
+    await shell.openExternal(gmailComposeUrl(report));
+    return 'opened';
   });
   handleTrusted('app:copyProblemReport', isDev, async (_event, rawAfterCrash: unknown, rawNote: unknown) => {
     const report = reportFor(rawAfterCrash === true, noteOf(rawNote));

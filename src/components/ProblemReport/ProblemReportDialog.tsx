@@ -2,18 +2,17 @@
  * Report a problem (Help ▸ Report a Problem…, or offered after a crash).
  *
  * The user can describe what happened, see exactly what will be sent, and
- * send it as an e-mail from their own mail app (Gmail in the browser when no
- * mail app is set up). Nothing is sent by MaliPDF itself.
+ * send it from Gmail in the browser (an e-mail to the developer, filled in).
+ * Without a Gmail account the report is copied and the contact page opens.
+ * Nothing is sent by MaliPDF itself.
  */
 import { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, Bug, Check, ChevronDown, ChevronRight, Copy, Mail, ShieldCheck, X } from 'lucide-react';
+import { AlertTriangle, Bug, Check, ChevronDown, ChevronRight, Copy, ExternalLink, Mail, ShieldCheck, X } from 'lucide-react';
 import { useUIStore } from '../../store/uiStore';
 import { errorMessage, notifyUser } from '../../utils/notify';
 import styles from './ProblemReportDialog.module.css';
 
-type Stage = 'compose' | 'noMailApp' | 'opened';
-/** Shown before the report (with the configured address) has loaded. */
-const SUPPORT_EMAIL_FALLBACK = 'mali@maliyildirimtr.com';
+type Stage = 'compose' | 'gmail' | 'contact';
 
 export function ProblemReportDialog() {
   const state = useUIStore((s) => s.problemReport);
@@ -24,7 +23,6 @@ export function ProblemReportDialog() {
   const [stage, setStage] = useState<Stage>('compose');
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [mailApp, setMailApp] = useState('');
   const noteRef = useRef<HTMLTextAreaElement>(null);
 
   // After a crash the main process asks for this dialog.
@@ -57,25 +55,29 @@ export function ProblemReportDialog() {
   const close = () => { if (!busy) setState(null); };
   const api = window.electronAPI;
 
-  const send = async (via: 'mail' | 'gmail') => {
+  const send = async (via: 'gmail' | 'contact') => {
     if (!api?.sendProblemReport) return;
     setBusy(true);
     try {
-      const result = await api.sendProblemReport(afterCrash, note, via);
-      if (result === 'noMailApp') {
-        await api.copyProblemReport?.(afterCrash, note);
-        setReport(await api.problemReport?.(afterCrash, note) ?? null);
-        setStage('noMailApp');
-      } else {
-        setMailApp(via === 'gmail' ? 'Gmail' : ((await api.mailAppName?.().catch(() => '')) ?? ''));
-        setStage('opened');
-      }
+      await api.sendProblemReport(afterCrash, note, via);
+      setStage(via);
     } catch (error) {
       notifyUser('error', `The report could not be opened: ${errorMessage(error)}`);
     } finally {
       setBusy(false);
     }
   };
+
+  const noGmail = (
+    <div className={styles.fallback}>
+      <span>No Gmail account?</span>
+      <div className={styles.fallbackActions}>
+        <button type="button" className={styles.linkAction} onClick={() => void send('contact')} disabled={busy}>
+          <ExternalLink size={13} /> Copy the report and open the contact page
+        </button>
+      </div>
+    </div>
+  );
 
   const copy = async () => {
     await api?.copyProblemReport?.(afterCrash, note);
@@ -96,7 +98,7 @@ export function ProblemReportDialog() {
           <h2 id="problem-report-title">{afterCrash ? 'MaliPDF closed unexpectedly' : 'Report a Problem'}</h2>
           <p>{afterCrash
             ? 'Sorry about that. Sending a short report helps fix it in the next version.'
-            : 'Tell us what went wrong. Your report goes straight to the developer by e-mail.'}</p>
+            : 'Tell us what went wrong. Your report goes to the developer by e-mail.'}</p>
         </div>
 
         {stage === 'compose' && (
@@ -135,32 +137,24 @@ export function ProblemReportDialog() {
               </button>
               <div className={styles.spacer} />
               <button type="button" className={styles.secondaryButton} onClick={close} disabled={busy}>{afterCrash ? 'Not Now' : 'Cancel'}</button>
-              <button type="button" className={styles.primaryButton} onClick={() => void send('mail')} disabled={busy}>
-                <Mail size={15} /> Send by E-mail
+              <button type="button" className={styles.primaryButton} onClick={() => void send('gmail')} disabled={busy}>
+                <Mail size={15} /> Send with Gmail
               </button>
             </div>
+            <div className={styles.footNote}>{noGmail}</div>
           </>
         )}
 
-        {stage === 'opened' && (
+        {stage === 'gmail' && (
           <>
             <div className={styles.result}>
               <div className={styles.resultIcon}><Check size={20} /></div>
               <div>
-                <p><strong>The e-mail was opened.</strong></p>
-                <p>Switch to it, check the message and press Send. The report is only sent when you do. Thank you!</p>
-                {mailApp && <p className={styles.addressLine}><span>App:</span> <span data-no-translate className={styles.address}>{mailApp}</span></p>}
+                <p><strong>Gmail opened in your browser.</strong></p>
+                <p>The e-mail to the developer is filled in. Check it and press Send — the report is only sent when you do. Thank you!</p>
               </div>
             </div>
-            {mailApp !== 'Gmail' && (
-              <div className={styles.fallback}>
-                <span>Didn’t see an e-mail? (for example, the Mail app has no account set up)</span>
-                <div className={styles.fallbackActions}>
-                  <button type="button" className={styles.linkAction} onClick={() => void send('gmail')} disabled={busy}><Mail size={13} /> Open in Gmail</button>
-                  <button type="button" className={styles.linkAction} onClick={() => void copy()}>{copied ? <Check size={13} /> : <Copy size={13} />} {copied ? 'Copied' : 'Copy Report'}</button>
-                </div>
-              </div>
-            )}
+            {noGmail}
             <div className={styles.footer}>
               <div className={styles.spacer} />
               <button type="button" className={styles.primaryButton} onClick={close}>Done</button>
@@ -168,16 +162,13 @@ export function ProblemReportDialog() {
           </>
         )}
 
-        {stage === 'noMailApp' && (
+        {stage === 'contact' && (
           <>
             <div className={styles.result}>
-              <div className={`${styles.resultIcon} ${styles.resultInfo}`}><Mail size={20} /></div>
+              <div className={`${styles.resultIcon} ${styles.resultInfo}`}><Copy size={20} /></div>
               <div>
-                <p><strong>No e-mail app is set up on this computer.</strong></p>
-                <p>The report was copied. Paste it into a new e-mail, or open Gmail with everything filled in.</p>
-                <p className={styles.addressLine}>
-                  <span>Address:</span> <span data-no-translate className={styles.address}>{report?.to ?? SUPPORT_EMAIL_FALLBACK}</span>
-                </p>
+                <p><strong>The report was copied.</strong></p>
+                <p>The contact page opened in your browser. Send the developer a message there and paste the report into it.</p>
               </div>
             </div>
             <div className={styles.footer}>
@@ -185,10 +176,7 @@ export function ProblemReportDialog() {
                 {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? 'Copied' : 'Copy Again'}
               </button>
               <div className={styles.spacer} />
-              <button type="button" className={styles.secondaryButton} onClick={close}>Close</button>
-              <button type="button" className={styles.primaryButton} onClick={() => void send('gmail')} disabled={busy}>
-                <Mail size={15} /> Open Gmail
-              </button>
+              <button type="button" className={styles.primaryButton} onClick={close}>Done</button>
             </div>
           </>
         )}

@@ -556,9 +556,8 @@ declare global {
       officePromptLibreOffice?: () => Promise<boolean>;
       openLink?: (url: string) => Promise<boolean>;
       problemReport?: (afterCrash: boolean, note: string) => Promise<{ title: string; body: string; to: string }>;
-      sendProblemReport?: (afterCrash: boolean, note: string, via?: 'mail' | 'gmail') => Promise<'opened' | 'noMailApp'>;
+      sendProblemReport?: (afterCrash: boolean, note: string, via: 'gmail' | 'contact') => Promise<'opened'>;
       copyProblemReport?: (afterCrash: boolean, note: string) => Promise<boolean>;
-      mailAppName?: () => Promise<string>;
       onShowProblemReport?: (callback: (info: { afterCrash: boolean }) => void) => () => void;
       logRendererError?: (error: { message: string; stack?: string }) => Promise<boolean>;
       ocrIsAvailable?: () => Promise<boolean>;

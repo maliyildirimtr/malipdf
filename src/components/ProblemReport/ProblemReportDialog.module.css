@@ -319,3 +319,7 @@
 .linkAction:hover:not(:disabled) {
   text-decoration: underline;
 }
+
+.footNote .fallback {
+  margin: -8px 28px 20px;
+}
