@@ -92,6 +92,7 @@ export interface ElectronAPI {
   problemReport: (afterCrash: boolean, note: string) => Promise<{ title: string; body: string; to: string }>;
   sendProblemReport: (afterCrash: boolean, note: string, via?: 'mail' | 'gmail') => Promise<'opened' | 'noMailApp'>;
   copyProblemReport: (afterCrash: boolean, note: string) => Promise<boolean>;
+  mailAppName: () => Promise<string>;
   onShowProblemReport: (callback: (info: { afterCrash: boolean }) => void) => () => void;
   logRendererError: (error: { message: string; stack?: string }) => Promise<boolean>;
   ocrIsAvailable: () => Promise<boolean>;
@@ -154,6 +155,7 @@ const electronAPI: ElectronAPI = {
   problemReport: (afterCrash, note) => ipcRenderer.invoke('app:problemReport', afterCrash, note),
   sendProblemReport: (afterCrash, note, via) => ipcRenderer.invoke('app:sendProblemReport', afterCrash, note, via),
   copyProblemReport: (afterCrash, note) => ipcRenderer.invoke('app:copyProblemReport', afterCrash, note),
+  mailAppName: () => ipcRenderer.invoke('app:mailAppName'),
   onShowProblemReport: (callback) => {
     const listener = (_event: Electron.IpcRendererEvent, info: { afterCrash: boolean }) => callback({ afterCrash: info?.afterCrash === true });
     ipcRenderer.on('app:showProblemReport', listener);

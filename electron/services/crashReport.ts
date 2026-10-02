@@ -175,6 +175,14 @@ export function setupCrashReporting(isDev: boolean): void {
       return 'noMailApp';
     }
   });
+  // Name of the app that opens e-mails ("Mail", "Outlook"…), or '' when none.
+  handleTrusted('app:mailAppName', isDev, async () => {
+    try {
+      return app.getApplicationNameForProtocol('mailto:').trim();
+    } catch {
+      return '';
+    }
+  });
   handleTrusted('app:copyProblemReport', isDev, async (_event, rawAfterCrash: unknown, rawNote: unknown) => {
     const report = reportFor(rawAfterCrash === true, noteOf(rawNote));
     clipboard.writeText(`To: ${SUPPORT_EMAIL}\nSubject: ${report.title}\n\n${report.body}`);

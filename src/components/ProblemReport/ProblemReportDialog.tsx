@@ -24,6 +24,7 @@ export function ProblemReportDialog() {
   const [stage, setStage] = useState<Stage>('compose');
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [mailApp, setMailApp] = useState('');
   const noteRef = useRef<HTMLTextAreaElement>(null);
 
   // After a crash the main process asks for this dialog.
@@ -66,6 +67,7 @@ export function ProblemReportDialog() {
         setReport(await api.problemReport?.(afterCrash, note) ?? null);
         setStage('noMailApp');
       } else {
+        setMailApp(via === 'gmail' ? 'Gmail' : ((await api.mailAppName?.().catch(() => '')) ?? ''));
         setStage('opened');
       }
     } catch (error) {
@@ -144,8 +146,21 @@ export function ProblemReportDialog() {
           <>
             <div className={styles.result}>
               <div className={styles.resultIcon}><Check size={20} /></div>
-              <p><strong>Your e-mail is ready.</strong> Check it in your mail app and press Send. Thank you!</p>
+              <div>
+                <p><strong>The e-mail was opened.</strong></p>
+                <p>Switch to it, check the message and press Send. The report is only sent when you do. Thank you!</p>
+                {mailApp && <p className={styles.addressLine}><span>App:</span> <span data-no-translate className={styles.address}>{mailApp}</span></p>}
+              </div>
             </div>
+            {mailApp !== 'Gmail' && (
+              <div className={styles.fallback}>
+                <span>Didn’t see an e-mail? (for example, the Mail app has no account set up)</span>
+                <div className={styles.fallbackActions}>
+                  <button type="button" className={styles.linkAction} onClick={() => void send('gmail')} disabled={busy}><Mail size={13} /> Open in Gmail</button>
+                  <button type="button" className={styles.linkAction} onClick={() => void copy()}>{copied ? <Check size={13} /> : <Copy size={13} />} {copied ? 'Copied' : 'Copy Report'}</button>
+                </div>
+              </div>
+            )}
             <div className={styles.footer}>
               <div className={styles.spacer} />
               <button type="button" className={styles.primaryButton} onClick={close}>Done</button>
