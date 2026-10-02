@@ -46,3 +46,14 @@ describe('e-mail report', () => {
     expect(body.length).toBeLessThanOrEqual(1800);
   });
 });
+
+describe('gmail fallback', () => {
+  it('fills in the address, subject and body', async () => {
+    const { gmailComposeUrl } = await import('../services/crashReport');
+    const url = new URL(gmailComposeUrl({ title: 'T', body: 'B' }));
+    expect(url.hostname).toBe('mail.google.com');
+    expect(url.searchParams.get('to')).toBe('mali@maliyildirimtr.com');
+    expect(url.searchParams.get('su')).toBe('T');
+    expect(url.searchParams.get('body')).toBe('B');
+  });
+});

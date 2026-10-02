@@ -148,7 +148,13 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
         if (docId) void import('./extendPageCommands').then((m) => m.extendPage(documents.documents.get(docId)?.activePageIndex ?? 0));
         return;
       case 'help.reportProblem':
-        void window.electronAPI?.reportProblem?.();
+        if (!window.electronAPI?.reportProblem) {
+          // The page was updated while the app kept running (npm run dev): the
+          // new main-process feature arrives with a restart.
+          notifyUser('error', 'Restart MaliPDF to report a problem (the app was updated while it was running).');
+          return;
+        }
+        void window.electronAPI.reportProblem().catch((error) => notifyUser('error', `The report could not be opened: ${errorMessage(error)}`));
         return;
       case 'file.close':
         if (docId) void closeDocumentById(docId);

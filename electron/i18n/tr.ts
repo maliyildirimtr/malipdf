@@ -829,6 +829,10 @@ export const TR: Readonly<Record<string, string>> = {
   'You can send the developer a report. It contains the app version, your system and the error details — never your documents. "Send by E-mail" opens a ready e-mail in your mail app; you can read it before sending. "Report on GitHub" needs a GitHub account. "Copy Report" copies it so you can send it another way.':
     'Geliştiriciye bir rapor gönderebilirsiniz. Rapor uygulama sürümünü, sisteminizi ve hata ayrıntılarını içerir — belgeleriniz asla eklenmez. "E-postayla Gönder", e-posta uygulamanızda hazır bir e-posta açar; göndermeden önce okuyabilirsiniz. "GitHub’da Bildir" için GitHub hesabı gerekir. "Raporu Kopyala" ile raporu başka bir yolla da gönderebilirsiniz.',
   'Send by E-mail': 'E-postayla Gönder',
+  'Open Gmail': 'Gmail’i Aç',
+  'No e-mail app is set up on this computer.': 'Bu bilgisayarda kurulu bir e-posta uygulaması yok.',
+  'Restart MaliPDF to report a problem (the app was updated while it was running).': 'Sorun bildirmek için MaliPDF’i yeniden başlatın (uygulama çalışırken güncellendi).',
+  'The report could not be opened': 'Rapor açılamadı',
   'Reading the scanned pages (text recognition)… The results update when it is done.': 'Taranmış sayfalar okunuyor (metin tanıma)… Bitince sonuçlar güncellenir.',
   'Some pages are scanned pictures without text. Searching them needs text recognition (macOS).': 'Bazı sayfalar metni olmayan taranmış görüntüler. Bu sayfalarda arama için metin tanıma (macOS) gerekir.',
   'Some pages are scanned pictures without text.': 'Bazı sayfalar metni olmayan taranmış görüntüler.',
@@ -889,6 +893,7 @@ type Pattern = readonly [RegExp, (...groups: string[]) => string];
 
 /** Messages with numbers or names in them. First match wins. */
 export const TR_PATTERNS: readonly Pattern[] = [
+  [/^The report was copied\. Paste it into an e-mail to (\S+) — or open Gmail in your browser with the report filled in\.$/, (a) => `Rapor kopyalandı. ${a} adresine bir e-postaya yapıştırın — ya da raporu doldurulmuş olarak tarayıcıda Gmail’i açın.`],
   [/^Page (\d+) of (\d+)$/, (a, b) => `Sayfa ${a} / ${b}`],
   [/^Page (\d+)$/, (a) => `Sayfa ${a}`],
   [/^Restored "(.+)"\. Save it to keep the changes\.$/s, (t) => `"${t}" geri yüklendi. Değişiklikleri korumak için kaydedin.`],

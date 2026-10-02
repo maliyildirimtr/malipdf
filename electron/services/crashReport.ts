@@ -117,6 +117,43 @@ export function reportMailto(report: { title: string; body: string }): string {
   return `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(report.title)}&body=${encodeURIComponent(body)}`;
 }
 
+/** Gmail's web compose page, for people without a mail app. */
+export function gmailComposeUrl(report: { title: string; body: string }): string {
+  const body = report.body.length > MAX_MAIL_BODY ? `${report.body.slice(0, MAX_MAIL_BODY - 2)}\n…` : report.body;
+  return `https://mail.google.com/mail/?${new URLSearchParams({ view: 'cm', fs: '1', to: SUPPORT_EMAIL, su: report.title, body }).toString()}`;
+}
+
+/**
+ * Open the report in the user's mail app. Without one (common on Macs where
+ * Mail was never set up), offer Gmail in the browser or copying the report.
+ */
+async function sendByEmail(window: BrowserWindow | null, report: { title: string; body: string }): Promise<void> {
+  let hasMailApp = true;
+  try {
+    hasMailApp = app.getApplicationNameForProtocol('mailto:').trim() !== '';
+  } catch {
+    hasMailApp = true; // unknown: just try
+  }
+  if (hasMailApp) {
+    try {
+      await shell.openExternal(reportMailto(report));
+      return;
+    } catch {
+      // fall through to the alternatives
+    }
+  }
+  clipboard.writeText(`To: ${SUPPORT_EMAIL}\n${report.title}\n\n${report.body}`);
+  const { response } = await showMessageBox(window, {
+    type: 'info',
+    buttons: ['Open Gmail', 'OK'],
+    defaultId: 0,
+    cancelId: 1,
+    message: 'No e-mail app is set up on this computer.',
+    detail: `The report was copied. Paste it into an e-mail to ${SUPPORT_EMAIL} — or open Gmail in your browser with the report filled in.`,
+  });
+  if (response === 0) await shell.openExternal(gmailComposeUrl(report));
+}
+
 /** Ask and send. `entries` may be empty (Help ▸ Report a Problem). */
 export async function offerReport(window: BrowserWindow | null, entries: readonly CrashEntry[], afterCrash: boolean): Promise<void> {
   const { response } = await showMessageBox(window, {
@@ -130,7 +167,7 @@ export async function offerReport(window: BrowserWindow | null, entries: readonl
   if (response === 3) return;
   const report = buildReport(entries);
   if (response === 0) {
-    await shell.openExternal(reportMailto(report));
+    await sendByEmail(window, report);
   } else if (response === 1) {
     const url = `${ISSUES_URL}?${new URLSearchParams({ title: report.title, body: report.body, labels: 'crash' }).toString()}`;
     await shell.openExternal(url);
