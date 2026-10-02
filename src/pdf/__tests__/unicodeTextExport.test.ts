@@ -9,6 +9,8 @@ import { resolve } from 'path';
 import { PDFDocument } from 'pdf-lib';
 import { exportAnnotatedPdf } from '../annotationExporter';
 import type { Annotation } from '../../types/annotations';
+import { exportFontPath } from '../exportFonts';
+import { TEXT_FONT_FAMILIES, type FontFamilyKey, type FontStyleKey } from '../fontFamilies';
 
 const fontkitName = '@pdf-lib/fontkit';
 const fontkit = await import(/* @vite-ignore */ fontkitName).then((m) => m.default, () => null);
@@ -22,9 +24,7 @@ describe.skipIf(!fontkit)('Unicode text export (bundled fonts)', () => {
     const source = await doc.save();
     const fonts = {
       fontkit,
-      load: async (family: 'sans' | 'serif' | 'mono', style: string) => font(
-        `Liberation${{ sans: 'Sans', serif: 'Serif', mono: 'Mono' }[family]}-${{ regular: 'Regular', bold: 'Bold', italic: 'Italic', boldItalic: 'BoldItalic' }[style]}.ttf`,
-      ),
+      load: async (family: FontFamilyKey, style: FontStyleKey) => font(exportFontPath(family, style).split('/').pop()!),
     };
     const texts: Annotation[] = [[false, false], [true, false], [false, true], [true, true]].map(([bold, italic], i) => ({
       id: `t${i}`, type: 'text', pageIndex: 0, color: '#000000', opacity: 1, locked: false, createdAt: 0, updatedAt: 0,
@@ -35,6 +35,31 @@ describe.skipIf(!fontkit)('Unicode text export (bundled fonts)', () => {
 
     const result = await exportAnnotatedPdf(source, new Map([[0, texts]]), { fonts });
     expect(result.annotationCount).toBe(4);
+    const reloaded = await PDFDocument.load(result.data);
+    expect(reloaded.getPageCount()).toBe(1);
+  });
+
+  it('embeds every font family offered in the text menu', async () => {
+    const doc = await PDFDocument.create();
+    doc.addPage([400, 800]);
+    const source = await doc.save();
+    const loaded: string[] = [];
+    const fonts = {
+      fontkit,
+      load: async (family: FontFamilyKey, style: FontStyleKey) => {
+        loaded.push(`${family}:${style}`);
+        return font(exportFontPath(family, style).split('/').pop()!);
+      },
+    };
+    const texts: Annotation[] = TEXT_FONT_FAMILIES.map((family, i) => ({
+      id: `f${i}`, type: 'text', pageIndex: 0, color: '#000000', opacity: 1, locked: false, createdAt: 0, updatedAt: 0,
+      bounds: { x: 10, y: 760 - i * 60, width: 380, height: 50 },
+      content: `${family.label}: Iğdır’da şoför İsmail ÖĞÜŞ`,
+      fontSize: 12, fontFamily: family.css, bold: i % 2 === 1, italic: i % 3 === 2, underline: false, align: 'left', backgroundColor: 'transparent',
+    }));
+    const result = await exportAnnotatedPdf(source, new Map([[0, texts]]), { fonts });
+    expect(result.annotationCount).toBe(TEXT_FONT_FAMILIES.length);
+    expect(new Set(loaded.map((k) => k.split(':')[0]))).toEqual(new Set(TEXT_FONT_FAMILIES.map((f) => f.key)));
     const reloaded = await PDFDocument.load(result.data);
     expect(reloaded.getPageCount()).toBe(1);
   });

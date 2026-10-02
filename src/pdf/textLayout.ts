@@ -7,6 +7,7 @@
  * hanging indent for wrapped continuation lines.
  */
 import type { TextAnnotation, TextListStyle } from '../types/annotations';
+import { requestScreenFont } from './screenFonts';
 
 export const TEXT_PADDING = 4;
 export const LINE_HEIGHT = 1.4;
@@ -94,8 +95,23 @@ export function autoSizeTextBox(
   };
 }
 
+/**
+ * Canvas text that measures like the saved PDF: pdf-lib writes the font's own
+ * advance widths, without kerning. Without geometricPrecision, Chromium may
+ * round each advance to whole pixels (hinted web fonts on Linux/Windows), and
+ * a line that fits on screen would wrap in the PDF.
+ */
+export function matchPdfText(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D): void {
+  ctx.fontKerning = 'none';
+  ctx.textRendering = 'geometricPrecision';
+}
+
+/** The same for DOM text (the text box being typed in). */
+export const PDF_TEXT_CSS = { fontKerning: 'none', textRendering: 'geometricPrecision' } as const;
+
 /** CSS font shorthand for canvas/DOM measurement. */
 export function cssFont(annotation: Pick<TextAnnotation, 'fontSize' | 'fontFamily' | 'bold' | 'italic'>): string {
+  requestScreenFont(annotation.fontFamily, annotation.bold, annotation.italic);
   return [annotation.italic ? 'italic' : '', annotation.bold ? 'bold' : '', `${annotation.fontSize}px`, annotation.fontFamily]
     .filter(Boolean)
     .join(' ');
@@ -115,6 +131,7 @@ export function canvasMeasure(annotation: Pick<TextAnnotation, 'fontSize' | 'fon
   const font = cssFont(annotation);
   return (text) => {
     ctx.font = font;
+    matchPdfText(ctx);
     return ctx.measureText(text).width;
   };
 }

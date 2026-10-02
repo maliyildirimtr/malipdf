@@ -3,7 +3,7 @@
  *
  * Every string in the app is written in English. Instead of threading a t()
  * call through hundreds of components, this watches the DOM and swaps UI text
- * (text nodes plus title / aria-label / placeholder / alt) for the chosen
+ * (text nodes plus title / aria-label / placeholder / alt / optgroup label) for the chosen
  * language. The English original is remembered, so switching back restores
  * it and React updates (new English text) are picked up and translated again.
  *
@@ -12,7 +12,7 @@
  */
 import { translate, type Language, type TranslationScope } from '../../electron/i18n';
 
-const ATTRIBUTES = ['title', 'aria-label', 'placeholder', 'alt'] as const;
+const ATTRIBUTES = ['title', 'aria-label', 'placeholder', 'alt', 'label'] as const;
 const SKIP_SELECTOR = '[data-no-translate], [translate="no"], textarea, script, style, .katex, math-field, [contenteditable="true"]';
 
 interface Remembered {
@@ -122,7 +122,8 @@ export class DomTranslator {
 
   private attribute(element: Element, name: string): void {
     // Form fields keep their placeholder translated but never their value.
-    if (name !== 'placeholder' && name !== 'title' && name !== 'aria-label' && name !== 'alt') return;
+    if (name !== 'placeholder' && name !== 'title' && name !== 'aria-label' && name !== 'alt' && name !== 'label') return;
+    if (name === 'label' && !element.matches('optgroup')) return;
     if (this.skipped(element) && !(name === 'placeholder' && element.matches('textarea'))) return;
     const current = element.getAttribute(name);
     if (current === null) return;

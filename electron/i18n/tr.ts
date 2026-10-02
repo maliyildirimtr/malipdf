@@ -361,9 +361,9 @@ export const TR: Readonly<Record<string, string>> = {
   Transparent: 'Saydam',
   'Remove favorite': 'Favoriden kaldır',
   'Add custom color': 'Özel renk ekle',
-  'Sans (Arial)': 'Sans (Arial)',
-  'Serif (Times)': 'Serif (Times)',
-  'Mono (Courier)': 'Mono (Courier)',
+  'Sans-serif': 'Tırnaksız',
+  'Serif': 'Tırnaklı',
+  'Monospace': 'Eş aralıklı',
   Black: 'Siyah',
   Blue: 'Mavi',
 

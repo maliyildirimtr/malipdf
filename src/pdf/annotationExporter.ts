@@ -71,7 +71,7 @@ import type {
 import { embedPicture, packPicture } from './imagePacking';
 import type { ImageAsset } from '../store/assetStore';
 import type { ExportFontSet } from './exportFonts';
-import { fontFamilyKey, fontStyleKey, type FontFamilyKey, type FontStyleKey } from './fontFamilies';
+import { fontFamilyKey, fontGroup, fontStyleKey, type FontGroup, type FontStyleKey } from './fontFamilies';
 import { layoutTextLines, LINE_HEIGHT, TEXT_PADDING } from './textLayout';
 import { captureEditableState, writeEditableData, type EditableAsset } from './editableData';
 import { appendBookmarksToOutline } from './outlineWriter';
@@ -127,7 +127,7 @@ export async function loadDefaultExportFonts(): Promise<ExportFontSet | undefine
 
 type TextFontResolver = (fontFamily: string, bold: boolean, italic: boolean) => Promise<PDFFont>;
 
-const STANDARD_FONTS: Record<FontFamilyKey, Record<FontStyleKey, StandardFonts>> = {
+const STANDARD_FONTS: Record<FontGroup, Record<FontStyleKey, StandardFonts>> = {
   sans: {
     regular: StandardFonts.Helvetica, bold: StandardFonts.HelveticaBold,
     italic: StandardFonts.HelveticaOblique, boldItalic: StandardFonts.HelveticaBoldOblique,
@@ -153,7 +153,7 @@ function createTextFontResolver(pdfDoc: PDFDocument, fonts: ExportFontSet | unde
     if (!font) {
       font = fonts
         ? fonts.load(family, style).then((bytes) => pdfDoc.embedFont(bytes, { subset: true }))
-        : pdfDoc.embedFont(STANDARD_FONTS[family][style]);
+        : pdfDoc.embedFont(STANDARD_FONTS[fontGroup(family)][style]);
       cache.set(key, font);
     }
     return font;

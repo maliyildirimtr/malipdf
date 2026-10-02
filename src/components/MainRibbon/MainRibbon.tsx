@@ -84,7 +84,9 @@ import { APP_COMMANDS, type AppCommandId } from '../../commands';
 import { useDocumentStore } from '../../store/documentStore';
 import { useUIStore } from '../../store/uiStore';
 import type { TextAlign, TextListStyle, ToolType } from '../../types/annotations';
-import { TEXT_FONT_FAMILIES, cssForFamily, fontFamilyKey } from '../../pdf/fontFamilies';
+import { cssForFamily, fontFamilyKey } from '../../pdf/fontFamilies';
+import { requestAllScreenFonts, requestScreenFontFamily } from '../../pdf/screenFonts';
+import { FontFamilyOptions } from '../Properties/FontFamilyOptions';
 import { ColorWell } from './ColorWell';
 import { PenPresetBar, QuickColors, ToolbarCustomizeMenu } from './ToolbarExtras';
 import { SignStampMenu } from '../SignStamp/SignStampMenu';
@@ -560,8 +562,8 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
             <>
               <label className={styles.compactControl}>
                 <span className={styles.propertyLabel}>Font</span>
-                <select className={`${styles.compactSelect} ${styles.fontSelect}`} value={cssForFamily(fontFamilyKey(toolOptions.text.fontFamily))} aria-label="Font family" onChange={(event) => updateTextOptions({ fontFamily: event.target.value })}>
-                  {TEXT_FONT_FAMILIES.map((font) => <option key={font.key} value={font.css}>{font.label}</option>)}
+                <select className={`${styles.compactSelect} ${styles.fontSelect}`} value={cssForFamily(fontFamilyKey(toolOptions.text.fontFamily))} aria-label="Font family" onFocus={requestAllScreenFonts} onPointerDown={requestAllScreenFonts} onChange={(event) => { requestScreenFontFamily(event.target.value); updateTextOptions({ fontFamily: event.target.value }); }}>
+                  <FontFamilyOptions />
                 </select>
               </label>
               <label className={styles.compactControl}>

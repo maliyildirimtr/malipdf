@@ -115,7 +115,8 @@ import { NotePopup } from './NotePopup';
 import type { TextEditAnnotation } from '../../types/annotations';
 import type { EditableLine } from '../../commands/textEditCommands';
 import { coverQuad, coverWidth } from '../../pdf/textEdit';
-import { autoSizeTextBox, canvasMeasure, cssFont, LINE_HEIGHT, MAX_AUTO_TEXT_WIDTH, TEXT_PADDING } from '../../pdf/textLayout';
+import { FONTS_LOADED_EVENT } from '../../pdf/screenFonts';
+import { PDF_TEXT_CSS, autoSizeTextBox, canvasMeasure, cssFont, LINE_HEIGHT, MAX_AUTO_TEXT_WIDTH, TEXT_PADDING } from '../../pdf/textLayout';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -675,6 +676,16 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
   useEffect(() => {
     redrawAnnotationLayer();
   }, [redrawAnnotationLayer, selectionState?.transientStyle]);
+
+  // A bundled text font finished loading: paint the text again in it.
+  useEffect(() => {
+    const onFonts = () => {
+      lastLayerDraw.current = null;
+      redrawAnnotationLayer();
+    };
+    window.addEventListener(FONTS_LOADED_EVENT, onFonts);
+    return () => window.removeEventListener(FONTS_LOADED_EVENT, onFonts);
+  }, [redrawAnnotationLayer]);
 
   /** Coalesce many redraw requests (eraser) into one per animation frame. */
   function scheduleLayerRedraw(region?: PdfRect) {
@@ -2655,6 +2666,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
             maxWidth: MAX_AUTO_TEXT_WIDTH * scale,
             minHeight: textOverlay.style.fontSize * LINE_HEIGHT * scale + TEXT_PADDING * 2 * scale,
             font: cssFont({ ...textOverlay.style, fontSize: textOverlay.style.fontSize * scale }),
+            ...PDF_TEXT_CSS,
             lineHeight: LINE_HEIGHT,
             textDecoration: textOverlay.style.underline ? 'underline' : 'none',
             textAlign: textOverlay.style.align,
@@ -2729,6 +2741,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
               border: '1.5px solid #0a84ff', borderRadius: 2, outline: 'none',
               background: look.background, color: look.color,
               font: `${look.italic ? 'italic ' : ''}${look.bold ? 'bold ' : ''}${look.fontSize * transform.scale}px ${look.fontFamily}`,
+              ...PDF_TEXT_CSS,
               lineHeight: `${box.height - 3}px`,
             }}
           />

@@ -2,6 +2,15 @@ Liberation Sans, Serif and Mono 2.1.5
 Copyright (c) 2010 Google Corporation with Reserved Font Arimo, Tinos and Cousine.
 Copyright (c) 2012 Red Hat, Inc. with Reserved Font Name Liberation.
 
+Carlito
+Copyright (c) 2010-2013 by tyPoland Lukasz Dziedzic with Reserved Font Name "Carlito".
+
+Caladea
+Copyright 2012 The Caladea Project Authors (https://github.com/huertatipografica/Caladea).
+
+Poppins
+Copyright 2020 The Poppins Project Authors (https://github.com/itfoundry/Poppins).
+
 This Font Software is licensed under the SIL Open Font License,
 Version 1.1.
 

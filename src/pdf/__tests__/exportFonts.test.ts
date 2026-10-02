@@ -6,7 +6,7 @@ import { resolve } from 'path';
 vi.mock('@pdf-lib/fontkit', () => ({ default: { create: () => ({}) } }));
 
 import { bundledExportFontPaths, dataUrlToBytes, loadExportFonts, readAssetBytes } from '../exportFonts';
-import { fontFamilyKey } from '../fontFamilies';
+import { TEXT_FONT_FAMILIES, cssForFamily, fontFamilyKey, fontGroup } from '../fontFamilies';
 
 const projectRoot = resolve(__dirname, '../../..');
 const readFromDisk = async (url: string) => new Uint8Array(readFileSync(resolve(projectRoot, url.replace(/^\//, '').replace(/\?.*$/, ''))));
@@ -17,13 +17,13 @@ describe('exportFonts', () => {
     expect([...await readAssetBytes('data:font/ttf;base64,AAEC/w==')]).toEqual([0, 1, 2, 255]);
   });
 
-  it('bundles 12 Liberation faces (sans, serif, mono × 4 styles)', async () => {
-    expect(bundledExportFontPaths()).toHaveLength(12);
+  it('bundles 4 styles of every text font family', async () => {
+    expect(bundledExportFontPaths()).toHaveLength(TEXT_FONT_FAMILIES.length * 4);
     const fonts = await loadExportFonts(readFromDisk);
-    for (const family of ['sans', 'serif', 'mono'] as const) {
+    for (const { key: family } of TEXT_FONT_FAMILIES) {
       for (const style of ['regular', 'bold', 'italic', 'boldItalic'] as const) {
         const bytes = await fonts.load(family, style);
-        expect(bytes.byteLength).toBeGreaterThan(100_000);
+        expect(bytes.byteLength).toBeGreaterThan(50_000);
         expect([...bytes.slice(0, 4)]).toEqual([0, 1, 0, 0]); // TrueType signature
       }
     }
@@ -34,5 +34,12 @@ describe('exportFonts', () => {
     expect(fontFamilyKey('Georgia, serif')).toBe('serif');
     expect(fontFamilyKey('"Times New Roman", "Liberation Serif", Times, serif')).toBe('serif');
     expect(fontFamilyKey('Courier New, monospace')).toBe('mono');
+    expect(fontFamilyKey('Calibri, sans-serif')).toBe('carlito');
+    expect(fontFamilyKey('Cambria, serif')).toBe('caladea');
+    expect(fontFamilyKey('"DejaVu Sans Mono", monospace')).toBe('dejavuMono');
+    expect(fontFamilyKey('"DejaVu Sans", sans-serif')).toBe('dejavuSans');
+    for (const family of TEXT_FONT_FAMILIES) expect(fontFamilyKey(cssForFamily(family.key))).toBe(family.key);
+    expect(fontGroup('poppins')).toBe('sans');
+    expect(fontGroup('dejavuMono')).toBe('mono');
   });
 });

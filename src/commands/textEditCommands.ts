@@ -7,7 +7,7 @@ import { createPageTransform, pdfRectToScreenBounds } from '../pdf/coordinateTra
 import { buildLines, fontStyleFromName, lineAt, type TextLine } from '../pdf/textLines';
 import { coverQuad } from '../pdf/textEdit';
 import { cssForFamily } from '../pdf/fontFamilies';
-import { cssFont } from '../pdf/textLayout';
+import { cssFont, matchPdfText } from '../pdf/textLayout';
 import { useAnnotationStore } from '../store/annotationStore';
 import { useHistoryStore, makeAddAction, makeUpdateAction, makeRemoveAction } from '../store/historyStore';
 import type { PdfPoint, TextEditAnnotation } from '../types/annotations';
@@ -114,6 +114,7 @@ export function measureEditText(text: string, a: Pick<TextEditAnnotation, 'fontS
   if (!measureCtx) measureCtx = document.createElement('canvas').getContext('2d');
   if (!measureCtx) return text.length * a.fontSize * 0.52;
   measureCtx.font = cssFont(a);
+  matchPdfText(measureCtx);
   return measureCtx.measureText(text).width;
 }
 

@@ -2,7 +2,9 @@ import React, { useRef, useState, useLayoutEffect, useEffect, useCallback } from
 import ReactDOM from 'react-dom';
 import type { Annotation, ShapeAnnotation, TextAnnotation, TextListStyle } from '../../types/annotations';
 import { autoSizeTextBox, canvasMeasure } from '../../pdf/textLayout';
-import { TEXT_FONT_FAMILIES, cssForFamily, fontFamilyKey } from '../../pdf/fontFamilies';
+import { cssForFamily, fontFamilyKey } from '../../pdf/fontFamilies';
+import { requestAllScreenFonts, requestScreenFontFamily } from '../../pdf/screenFonts';
+import { FontFamilyOptions } from './FontFamilyOptions';
 
 const TEXT_STYLE_KEYS = [
   'color', 'fontFamily', 'fontSize', 'bold', 'italic', 'underline', 'align',
@@ -359,9 +361,11 @@ export const FloatingInspector = React.memo(function FloatingInspector({
               className={styles.select}
               aria-label="Font"
               value={cssForFamily(fontFamilyKey(annotation.fontFamily))}
-              onChange={(e) => handlePropertyCommit({ fontFamily: e.target.value })}
+              onFocus={requestAllScreenFonts}
+              onPointerDown={requestAllScreenFonts}
+              onChange={(e) => { requestScreenFontFamily(e.target.value); handlePropertyCommit({ fontFamily: e.target.value }); }}
             >
-              {TEXT_FONT_FAMILIES.map((f) => <option key={f.key} value={f.css}>{f.label}</option>)}
+              <FontFamilyOptions />
             </select>
             <select
               className={styles.select}

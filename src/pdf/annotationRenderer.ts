@@ -42,7 +42,7 @@ import {
 } from './coordinateTransform';
 import type { DocumentIdentity } from '../types/documentSession';
 import { getCachedDecodedImage, requestImageDecode } from './imageRenderCache';
-import { cssFont, layoutTextLines, LINE_HEIGHT, TEXT_PADDING } from './textLayout';
+import { cssFont, layoutTextLines, matchPdfText, LINE_HEIGHT, TEXT_PADDING } from './textLayout';
 import { useAssetStore } from '../store/assetStore';
 import { commandsToPath2D, highlightShape, penShape, type InkShape } from './inkGeometry';
 
@@ -294,6 +294,7 @@ export function renderTextEdit(
     const downPt = pdfToScreen(o.x + dy, o.y - dx, transform);
     ctx.transform(alongPt.x - origin.x, alongPt.y - origin.y, downPt.x - origin.x, downPt.y - origin.y, origin.x, origin.y);
     ctx.font = cssFont(annotation);
+    matchPdfText(ctx);
     ctx.fillStyle = annotation.color;
     ctx.textBaseline = 'alphabetic';
     ctx.fillText(annotation.text, 0, 0);
@@ -441,6 +442,7 @@ export function renderText(
 
   // Text (shared layout with the exporter and auto-sizing)
   ctx.font = cssFont(annotation);
+  matchPdfText(ctx);
   ctx.fillStyle = annotation.color;
   ctx.textBaseline = 'top';
   const measure = (text: string) => ctx.measureText(text).width;
