@@ -80,16 +80,20 @@ async function showMessage(options: Electron.MessageBoxOptions) {
 export const STORE_PRODUCT_ID = '9PMT0XR7DGKH';
 export const STORE_PAGE_URL = `ms-windows-store://pdp/?productid=${STORE_PRODUCT_ID}`;
 
-/** Installed from the Microsoft Store (MSIX package): the Store keeps it up to date. */
+/** The Mac App Store's Updates page. */
+export const MAC_APP_STORE_UPDATES_URL = 'macappstore://showUpdatesPage';
+
+/** Installed from the Microsoft Store (MSIX) or the Mac App Store: the store keeps it up to date. */
 export function isStoreInstall(): boolean {
-  return process.platform === 'win32' && (process as NodeJS.Process & { windowsStore?: boolean }).windowsStore === true;
+  const proc = process as NodeJS.Process & { windowsStore?: boolean; mas?: boolean };
+  return proc.mas === true || (process.platform === 'win32' && proc.windowsStore === true);
 }
 
 /** manual = the user picked "Check for Updates…" (always answers). */
 export async function checkForUpdates(manual: boolean): Promise<void> {
   if (isStoreInstall()) {
     // Store installs never download installers; the Store page shows updates.
-    if (manual) await shell.openExternal(STORE_PAGE_URL).catch(() => {});
+    if (manual) await shell.openExternal(process.platform === 'darwin' ? MAC_APP_STORE_UPDATES_URL : STORE_PAGE_URL).catch(() => {});
     return;
   }
   if (checking || downloading) return;

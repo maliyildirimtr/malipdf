@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <!-- Mac App Store build (target "mas"). TEAM_ID is filled in by the
+         release workflow from the APPLE_TEAM_ID secret. -->
+    <key>com.apple.security.app-sandbox</key>
+    <true/>
+    <!-- Electron needs an app group named after the team and bundle id. -->
+    <key>com.apple.security.application-groups</key>
+    <array>
+      <string>TEAM_ID.com.maliyildirimtr.malipdf</string>
+    </array>
+    <!-- Open and save the PDFs the user picks (dialogs, drag and drop). -->
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+    <!-- Remember opened files across launches (Open Recent). -->
+    <key>com.apple.security.files.bookmarks.app-scope</key>
+    <true/>
+    <!-- File ▸ Print. -->
+    <key>com.apple.security.print</key>
+    <true/>
+  </dict>
+</plist>

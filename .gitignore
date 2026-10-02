@@ -32,3 +32,6 @@ Claude outputs/
 
 # Built text recognition helper (npm run build:ocr)
 build/native/
+
+# Mac App Store provisioning profile (written by the release workflow)
+build/embedded.provisionprofile

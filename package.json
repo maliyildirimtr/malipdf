@@ -161,6 +161,17 @@
       ],
       "showNameOnTiles": false,
       "artifactName": "MaliPDF-${version}-Store-${arch}.${ext}"
+    },
+    "mas": {
+      "entitlements": "build/entitlements.mas.plist",
+      "entitlementsInherit": "build/entitlements.mas.inherit.plist",
+      "hardenedRuntime": false,
+      "provisioningProfile": "build/embedded.provisionprofile",
+      "artifactName": "MaliPDF-${version}-MacAppStore.${ext}",
+      "extendInfo": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSScreenCaptureUsageDescription": "MaliPDF uses screen capture to insert screenshots into your PDF."
+      }
     }
   }
 }

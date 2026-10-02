@@ -1,14 +1,22 @@
 name: Build MaliPDF Release
 
-# Push a tag like v0.2.0 to build installers and publish a GitHub Release.
-# The tag becomes the app version (About MaliPDF, update checks).
+# Push a tag like v1.0.2 to build the store packages and publish a GitHub
+# Release with the release notes. The tag becomes the app version.
 #
-# Code signing is optional. Add these repository secrets to turn it on:
-#   macOS:   CSC_LINK (base64 .p12 "Developer ID Application"), CSC_KEY_PASSWORD,
-#            APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID  (notarization)
-#   Windows: WIN_CSC_LINK (base64 .pfx), WIN_CSC_KEY_PASSWORD
-# The Microsoft Store package (.appx) is always unsigned: the Store signs it.
-# Without them the installers are built unsigned (as before).
+# MaliPDF ships through the app stores, which also update it:
+#   Mac App Store   → artifact "mac-app-store" (.pkg): upload with Apple's
+#                     Transporter app to App Store Connect.
+#   Microsoft Store → artifact "microsoft-store" (.appx): upload in Partner
+#                     Center → Packages. Unsigned: the Store signs it.
+# (Actions → the run → Artifacts.)
+#
+# Repository secrets for the Mac App Store build:
+#   MAS_CSC_LINK            base64 .p12 with "Apple Distribution" and
+#                           "Mac Installer Distribution" certificates + keys
+#   MAS_CSC_KEY_PASSWORD    its password
+#   MAS_PROVISIONING_PROFILE base64 "Mac App Store" provisioning profile for
+#                           com.maliyildirimtr.malipdf
+#   APPLE_TEAM_ID           your 10-character Team ID
 
 on:
   push:
@@ -29,7 +37,7 @@ env:
   RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
 
 jobs:
-  build-macos-arm64:
+  build-mac-app-store:
     runs-on: macos-14
 
     steps:
@@ -54,98 +62,36 @@ jobs:
         shell: bash
         run: GITHUB_SHA="$(git rev-parse HEAD)" npm run build
 
-      - name: Package Apple Silicon DMG
+      - name: Package for the Mac App Store
         env:
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-          CSC_IDENTITY_AUTO_DISCOVERY: ${{ secrets.CSC_LINK != '' }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          CSC_LINK: ${{ secrets.MAS_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAS_CSC_KEY_PASSWORD }}
+          MAS_PROVISIONING_PROFILE: ${{ secrets.MAS_PROVISIONING_PROFILE }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          # An empty (or blank) secret must not reach electron-builder: it
-          # reads CSC_LINK="" as the project folder and fails with
-          # "<project> not a file". Without a certificate, build unsigned.
-          if [[ -z "$(printf '%s' "${CSC_LINK:-}" | tr -d '[:space:]')" ]]; then
-            unset CSC_LINK CSC_KEY_PASSWORD
-            export CSC_IDENTITY_AUTO_DISCOVERY=false
-            echo "No signing certificate: building an unsigned DMG."
-          fi
-          if [[ -z "$(printf '%s' "${APPLE_ID:-}" | tr -d '[:space:]')" ]]; then
-            unset APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID
-          fi
-          npx --yes "$ELECTRON_BUILDER" --mac dmg --arm64 --publish never
+          for name in CSC_LINK CSC_KEY_PASSWORD MAS_PROVISIONING_PROFILE APPLE_TEAM_ID; do
+            if [[ -z "$(printf '%s' "${!name:-}" | tr -d '[:space:]')" ]]; then
+              echo "::error::Missing secret for $name (see the top of release.yml)."
+              exit 1
+            fi
+          done
+          printf '%s' "$MAS_PROVISIONING_PROFILE" | base64 --decode > build/embedded.provisionprofile
+          sed -i '' "s/TEAM_ID\./${APPLE_TEAM_ID}./" build/entitlements.mas.plist
+          node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("package.json","utf8"));p.build.mas.extendInfo.ElectronTeamID=process.env.APPLE_TEAM_ID;fs.writeFileSync("package.json",JSON.stringify(p,null,2));'
+          npx --yes "$ELECTRON_BUILDER" --mac mas --universal --publish never
 
-      - name: Collect artifact
+      - name: Collect Mac App Store package
         run: |
-          mkdir -p artifacts
-          FILE=$(find release -maxdepth 1 -type f -name "*.dmg" | head -1)
-          cp "$FILE" artifacts/MaliPDF-macOS-Apple-Silicon.dmg
+          mkdir -p store
+          FILE=$(find release -type f -name "*.pkg" | head -1)
+          if [[ -z "$FILE" ]]; then echo "::error::Mac App Store package was not found."; exit 1; fi
+          cp "$FILE" store/MaliPDF-MacAppStore.pkg
 
-      - name: Upload artifact
+      - name: Upload Mac App Store package
         uses: actions/upload-artifact@v4
         with:
-          name: macos-arm64
-          path: artifacts/MaliPDF-macOS-Apple-Silicon.dmg
-
-  build-macos-x64:
-    runs-on: macos-15-intel
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-        with:
-          ref: ${{ env.RELEASE_TAG }}
-
-      - name: Setup Node
-        uses: actions/setup-node@v5
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Use tag as app version
-        run: npm version "${RELEASE_TAG#v}" --no-git-tag-version --allow-same-version
-
-      - name: Build application
-        shell: bash
-        run: GITHUB_SHA="$(git rev-parse HEAD)" npm run build
-
-      - name: Package Intel DMG
-        env:
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-          CSC_IDENTITY_AUTO_DISCOVERY: ${{ secrets.CSC_LINK != '' }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          # An empty (or blank) secret must not reach electron-builder: it
-          # reads CSC_LINK="" as the project folder and fails with
-          # "<project> not a file". Without a certificate, build unsigned.
-          if [[ -z "$(printf '%s' "${CSC_LINK:-}" | tr -d '[:space:]')" ]]; then
-            unset CSC_LINK CSC_KEY_PASSWORD
-            export CSC_IDENTITY_AUTO_DISCOVERY=false
-            echo "No signing certificate: building an unsigned DMG."
-          fi
-          if [[ -z "$(printf '%s' "${APPLE_ID:-}" | tr -d '[:space:]')" ]]; then
-            unset APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID
-          fi
-          npx --yes "$ELECTRON_BUILDER" --mac dmg --x64 --publish never
-
-      - name: Collect artifact
-        run: |
-          mkdir -p artifacts
-          FILE=$(find release -maxdepth 1 -type f -name "*.dmg" | head -1)
-          cp "$FILE" artifacts/MaliPDF-macOS-Intel.dmg
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-x64
-          path: artifacts/MaliPDF-macOS-Intel.dmg
+          name: mac-app-store
+          path: store/MaliPDF-MacAppStore.pkg
 
   build-windows:
     runs-on: windows-latest
@@ -173,17 +119,6 @@ jobs:
         shell: bash
         run: GITHUB_SHA="$(git rev-parse HEAD)" npm run build
 
-      - name: Package Windows installer
-        env:
-          CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-        shell: bash
-        run: |
-          if [[ -z "$(printf '%s' "${CSC_LINK:-}" | tr -d '[:space:]')" ]]; then
-            unset CSC_LINK CSC_KEY_PASSWORD
-          fi
-          npx --yes "$ELECTRON_BUILDER" --win nsis --x64 --publish never
-
       - name: Package Microsoft Store app (APPX)
         # Unsigned on purpose: the Microsoft Store signs the package after
         # certification. Upload this file in Partner Center → Packages.
@@ -191,25 +126,6 @@ jobs:
         run: |
           unset CSC_LINK CSC_KEY_PASSWORD
           npx --yes "$ELECTRON_BUILDER" --win appx --x64 --publish never
-
-      - name: Collect artifact
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
-
-          $file = Get-ChildItem -Path release -Filter *.exe -File | Select-Object -First 1
-
-          if (-not $file) {
-            throw "Windows installer was not found."
-          }
-
-          Copy-Item $file.FullName artifacts/MaliPDF-Windows-x64-Setup.exe
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-x64
-          path: artifacts/MaliPDF-Windows-x64-Setup.exe
 
       - name: Collect Microsoft Store package
         shell: pwsh
@@ -219,8 +135,8 @@ jobs:
           if (-not $file) { throw "Microsoft Store package was not found." }
           Copy-Item $file.FullName store/MaliPDF-Windows-Store-x64.appx
 
-      # Not attached to the GitHub Release: download it from the workflow run
-      # (Actions → this run → Artifacts → microsoft-store) for Partner Center.
+      # Download it from the workflow run (Actions → this run → Artifacts →
+      # microsoft-store) and upload it in Partner Center.
       - name: Upload Microsoft Store package
         uses: actions/upload-artifact@v4
         with:
@@ -229,19 +145,12 @@ jobs:
 
   release:
     needs:
-      - build-macos-arm64
-      - build-macos-x64
+      - build-mac-app-store
       - build-windows
 
     runs-on: ubuntu-latest
 
     steps:
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: release-files
-          merge-multiple: true
-
       - name: Checkout release notes
         uses: actions/checkout@v5
         with:
@@ -268,7 +177,3 @@ jobs:
           name: MaliPDF ${{ env.RELEASE_TAG }}
           prerelease: ${{ contains(env.RELEASE_TAG, '-') }}
           generate_release_notes: true
-          files: |
-            release-files/MaliPDF-macOS-Apple-Silicon.dmg
-            release-files/MaliPDF-macOS-Intel.dmg
-            release-files/MaliPDF-Windows-x64-Setup.exe
