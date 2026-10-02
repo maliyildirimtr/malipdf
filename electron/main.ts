@@ -270,7 +270,11 @@ function createWindow(options: { restoreId?: string } = {}): BrowserWindow {
   const query = secondary ? { secondary: '1' } : undefined;
   if (isDev) {
     window.loadURL(`http://localhost:5173${query ? '?secondary=1' : ''}`);
-    if (!secondary) window.webContents.openDevTools({ mode: 'detach' });
+    // DevTools are not opened automatically: while they are open, macOS
+    // ignores the window's drag area, so the title bar could not be used to
+    // move the window. Open them with View ▸ Toggle Developer Tools (⌥⌘I),
+    // or set MALIPDF_DEVTOOLS=1.
+    if (!secondary && process.env.MALIPDF_DEVTOOLS === '1') window.webContents.openDevTools({ mode: 'detach' });
   } else {
     window.loadFile(path.join(__dirname, '../dist/index.html'), query ? { query } : undefined);
   }
