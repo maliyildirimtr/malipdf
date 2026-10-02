@@ -33,6 +33,12 @@ describe('crash reports', () => {
     expect(report.body).not.toContain('/Users/me/');
     expect(report.body.length).toBeLessThanOrEqual(6000);
   });
+
+  it('puts the user\'s note first, without their user name', () => {
+    const report = buildReport([], '/Users/me', 'Kalemle yazarken kapandı /Users/me/x.pdf');
+    expect(report.body.startsWith('What happened?\nKalemle yazarken kapandı ~/x.pdf')).toBe(true);
+    expect(report.title).toBe('MaliPDF problem report (1.0.1)');
+  });
 });
 
 describe('e-mail report', () => {

@@ -3,20 +3,19 @@
  *
  * Crashes are logged locally (appInfo.logCrash). After a crash, the next start
  * asks whether to report it; "Report a Problem…" in the Help menu does the
- * same at any time. A report opens a ready e-mail to SUPPORT_EMAIL in the
- * user's mail app, or a new GitHub issue in the browser, with the details
- * filled in (the user sees and sends it), or is copied to the clipboard. Nothing is sent without the user doing so. Documents
+ * same at any time (an in-app dialog, ProblemReportDialog). A report opens
+ * a ready e-mail to SUPPORT_EMAIL in the user's mail app (or Gmail in the
+ * browser when there is no mail app); the user sees it and sends it. It can
+ * also be copied to the clipboard. Nothing is sent without the user doing so. Documents
  * are never included; home-folder paths are shortened to "~".
  */
-import { app, BrowserWindow, clipboard, shell } from 'electron';
+import { app, clipboard, shell, type BrowserWindow } from 'electron';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { showMessageBox } from '../i18n/mainLanguage';
 import { handleTrusted } from '../security';
 import { getBuildInfo, logCrash } from './appInfo';
 
-export const ISSUES_URL = 'https://github.com/maliyildirimtr/malipdf/issues/new';
 /** Where e-mailed problem reports go. Change it here (one place). */
 export const SUPPORT_EMAIL = 'mali@maliyildirimtr.com';
 /** Mail apps cut long mailto: links; keep the e-mail body shorter than the GitHub one. */
@@ -52,31 +51,30 @@ export function scrub(text: string, home = os.homedir()): string {
   return out.replace(/\/Users\/[^/\s"]+/g, '/Users/~').replace(/C:\\\\?Users\\\\?[^\\\s"]+/gi, 'C:\\Users\\~');
 }
 
-export function buildReport(entries: readonly CrashEntry[], home = os.homedir()): { title: string; body: string } {
+export function buildReport(entries: readonly CrashEntry[], home = os.homedir(), note = ''): { title: string; body: string } {
   const info = getBuildInfo();
   const recent = entries.slice(-MAX_ENTRIES);
   const lines = [
-    '**What happened?**',
-    '(Write here what you were doing — optional.)',
+    'What happened?',
+    note.trim() ? scrub(note.trim().slice(0, 1000), home) : '(not described)',
     '',
-    '**Details**',
+    'Details',
     `- MaliPDF ${info.version} (build ${info.build}, ${info.commit})`,
     `- ${process.platform} ${os.release()} ${process.arch} · Electron ${process.versions.electron}`,
     '',
   ];
   if (recent.length) {
-    lines.push('**Crash log (latest)**', '```');
+    lines.push('Error log (latest)', '----');
     for (const entry of recent) {
       const { stack, ...rest } = entry;
       lines.push(scrub(JSON.stringify(rest), home));
       if (typeof stack === 'string') lines.push(scrub(stack.split('\n').slice(0, 8).join('\n'), home));
     }
-    lines.push('```');
   }
   let body = lines.join('\n');
   if (body.length > MAX_BODY) body = `${body.slice(0, MAX_BODY - 4)}\n…`;
   const kind = recent.length ? String(recent[recent.length - 1].kind ?? 'crash') : 'problem';
-  return { title: `Crash report: ${kind} (${info.version})`, body };
+  return { title: recent.length ? `MaliPDF problem report: ${kind} (${info.version})` : `MaliPDF problem report (${info.version})`, body };
 }
 
 function readEntries(fromByte = 0): { entries: CrashEntry[]; size: number } {
@@ -123,60 +121,24 @@ export function gmailComposeUrl(report: { title: string; body: string }): string
   return `https://mail.google.com/mail/?${new URLSearchParams({ view: 'cm', fs: '1', to: SUPPORT_EMAIL, su: report.title, body }).toString()}`;
 }
 
-/**
- * Open the report in the user's mail app. Without one (common on Macs where
- * Mail was never set up), offer Gmail in the browser or copying the report.
- */
-async function sendByEmail(window: BrowserWindow | null, report: { title: string; body: string }): Promise<void> {
-  let hasMailApp = true;
+/** Whether a mail app handles mailto: links here. */
+function hasMailApp(): boolean {
   try {
-    hasMailApp = app.getApplicationNameForProtocol('mailto:').trim() !== '';
+    return app.getApplicationNameForProtocol('mailto:').trim() !== '';
   } catch {
-    hasMailApp = true; // unknown: just try
-  }
-  if (hasMailApp) {
-    try {
-      await shell.openExternal(reportMailto(report));
-      return;
-    } catch {
-      // fall through to the alternatives
-    }
-  }
-  clipboard.writeText(`To: ${SUPPORT_EMAIL}\n${report.title}\n\n${report.body}`);
-  const { response } = await showMessageBox(window, {
-    type: 'info',
-    buttons: ['Open Gmail', 'OK'],
-    defaultId: 0,
-    cancelId: 1,
-    message: 'No e-mail app is set up on this computer.',
-    detail: `The report was copied. Paste it into an e-mail to ${SUPPORT_EMAIL} — or open Gmail in your browser with the report filled in.`,
-  });
-  if (response === 0) await shell.openExternal(gmailComposeUrl(report));
-}
-
-/** Ask and send. `entries` may be empty (Help ▸ Report a Problem). */
-export async function offerReport(window: BrowserWindow | null, entries: readonly CrashEntry[], afterCrash: boolean): Promise<void> {
-  const { response } = await showMessageBox(window, {
-    type: afterCrash ? 'warning' : 'info',
-    buttons: ['Send by E-mail', 'Report on GitHub', 'Copy Report', afterCrash ? 'Not Now' : 'Cancel'],
-    defaultId: 0,
-    cancelId: 3,
-    message: afterCrash ? 'MaliPDF ran into a problem last time.' : 'Report a problem',
-    detail: 'You can send the developer a report. It contains the app version, your system and the error details — never your documents. "Send by E-mail" opens a ready e-mail in your mail app; you can read it before sending. "Report on GitHub" needs a GitHub account. "Copy Report" copies it so you can send it another way.',
-  });
-  if (response === 3) return;
-  const report = buildReport(entries);
-  if (response === 0) {
-    await sendByEmail(window, report);
-  } else if (response === 1) {
-    const url = `${ISSUES_URL}?${new URLSearchParams({ title: report.title, body: report.body, labels: 'crash' }).toString()}`;
-    await shell.openExternal(url);
-  } else {
-    clipboard.writeText(`To: ${SUPPORT_EMAIL}\n${report.title}\n\n${report.body}`);
+    return true; // unknown: just try
   }
 }
 
-/** At startup: offer to report crashes logged since the last offer. */
+/** Crash entries the startup prompt is about (kept until the dialog asks for them). */
+let pendingEntries: CrashEntry[] | null = null;
+
+function reportFor(afterCrash: boolean, note: string): { title: string; body: string } {
+  const entries = afterCrash && pendingEntries ? pendingEntries : readEntries().entries;
+  return buildReport(entries, os.homedir(), note);
+}
+
+/** At startup: ask the window to show the report dialog for crashes logged since the last offer. */
 export async function offerPendingCrashReport(window: BrowserWindow | null): Promise<void> {
   const offered = offeredSize();
   const all = readEntries();
@@ -184,14 +146,38 @@ export async function offerPendingCrashReport(window: BrowserWindow | null): Pro
   const fresh = all.size < offered ? all.entries : readEntries(offered).entries;
   markOffered(all.size);
   if (!fresh.some((entry) => CRASH_KINDS.has(String(entry.kind)))) return;
-  await offerReport(window, fresh, true);
+  pendingEntries = fresh;
+  window?.webContents.send('app:showProblemReport', { afterCrash: true });
 }
+
+const noteOf = (raw: unknown) => (typeof raw === 'string' ? raw.slice(0, 2000) : '');
 
 /** Renderer errors arrive here (rate-limited) so they appear in reports too. */
 let rendererErrors = 0;
 export function setupCrashReporting(isDev: boolean): void {
-  handleTrusted('app:reportProblem', isDev, async (event) => {
-    await offerReport(BrowserWindow.fromWebContents(event.sender), readEntries().entries, false);
+  // The report as it will be sent (shown in the dialog).
+  handleTrusted('app:problemReport', isDev, async (_event, rawAfterCrash: unknown, rawNote: unknown) => {
+    const report = reportFor(rawAfterCrash === true, noteOf(rawNote));
+    return { ...report, to: SUPPORT_EMAIL };
+  });
+  // Open it as an e-mail. 'noMailApp' → the dialog offers Gmail / copying.
+  handleTrusted('app:sendProblemReport', isDev, async (_event, rawAfterCrash: unknown, rawNote: unknown, rawVia: unknown) => {
+    const report = reportFor(rawAfterCrash === true, noteOf(rawNote));
+    if (rawVia === 'gmail') {
+      await shell.openExternal(gmailComposeUrl(report));
+      return 'opened';
+    }
+    if (!hasMailApp()) return 'noMailApp';
+    try {
+      await shell.openExternal(reportMailto(report));
+      return 'opened';
+    } catch {
+      return 'noMailApp';
+    }
+  });
+  handleTrusted('app:copyProblemReport', isDev, async (_event, rawAfterCrash: unknown, rawNote: unknown) => {
+    const report = reportFor(rawAfterCrash === true, noteOf(rawNote));
+    clipboard.writeText(`To: ${SUPPORT_EMAIL}\nSubject: ${report.title}\n\n${report.body}`);
     return true;
   });
   handleTrusted('app:logRendererError', isDev, async (_event, raw: unknown) => {

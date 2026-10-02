@@ -555,7 +555,10 @@ declare global {
       pptxCancelConversion: (jobId: string) => Promise<void>;
       officePromptLibreOffice?: () => Promise<boolean>;
       openLink?: (url: string) => Promise<boolean>;
-      reportProblem?: () => Promise<boolean>;
+      problemReport?: (afterCrash: boolean, note: string) => Promise<{ title: string; body: string; to: string }>;
+      sendProblemReport?: (afterCrash: boolean, note: string, via?: 'mail' | 'gmail') => Promise<'opened' | 'noMailApp'>;
+      copyProblemReport?: (afterCrash: boolean, note: string) => Promise<boolean>;
+      onShowProblemReport?: (callback: (info: { afterCrash: boolean }) => void) => () => void;
       logRendererError?: (error: { message: string; stack?: string }) => Promise<boolean>;
       ocrIsAvailable?: () => Promise<boolean>;
       ocrRecognize?: (png: ArrayBuffer, languages?: string[]) => Promise<import('../pdf/ocr').OcrLine[]>;

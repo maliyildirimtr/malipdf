@@ -89,7 +89,10 @@ export interface ElectronAPI {
   pptxCancelConversion: (jobId: string) => Promise<void>;
   officePromptLibreOffice: () => Promise<boolean>;
   openLink: (url: string) => Promise<boolean>;
-  reportProblem: () => Promise<boolean>;
+  problemReport: (afterCrash: boolean, note: string) => Promise<{ title: string; body: string; to: string }>;
+  sendProblemReport: (afterCrash: boolean, note: string, via?: 'mail' | 'gmail') => Promise<'opened' | 'noMailApp'>;
+  copyProblemReport: (afterCrash: boolean, note: string) => Promise<boolean>;
+  onShowProblemReport: (callback: (info: { afterCrash: boolean }) => void) => () => void;
   logRendererError: (error: { message: string; stack?: string }) => Promise<boolean>;
   ocrIsAvailable: () => Promise<boolean>;
   ocrRecognize: (png: ArrayBuffer, languages?: string[]) => Promise<OcrLine[]>;
@@ -148,7 +151,14 @@ const electronAPI: ElectronAPI = {
   pptxCancelConversion: (jobId) => ipcRenderer.invoke('pptx:cancelConversion', jobId),
   officePromptLibreOffice: () => ipcRenderer.invoke('office:promptLibreOffice'),
   openLink: (url) => ipcRenderer.invoke('shell:openLink', url),
-  reportProblem: () => ipcRenderer.invoke('app:reportProblem'),
+  problemReport: (afterCrash, note) => ipcRenderer.invoke('app:problemReport', afterCrash, note),
+  sendProblemReport: (afterCrash, note, via) => ipcRenderer.invoke('app:sendProblemReport', afterCrash, note, via),
+  copyProblemReport: (afterCrash, note) => ipcRenderer.invoke('app:copyProblemReport', afterCrash, note),
+  onShowProblemReport: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, info: { afterCrash: boolean }) => callback({ afterCrash: info?.afterCrash === true });
+    ipcRenderer.on('app:showProblemReport', listener);
+    return () => ipcRenderer.removeListener('app:showProblemReport', listener);
+  },
   logRendererError: (error) => ipcRenderer.invoke('app:logRendererError', error),
   ocrIsAvailable: () => ipcRenderer.invoke('ocr:isAvailable'),
   ocrRecognize: (png, languages) => ipcRenderer.invoke('ocr:recognize', png, languages),

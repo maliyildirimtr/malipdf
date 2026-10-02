@@ -103,6 +103,9 @@ interface UIStore {
   imagesDialogTarget: 'pdf' | 'word';
   setImagesDialogTarget: (target: 'pdf' | 'word') => void;
   exportWordOpen: boolean;
+  /** Problem report dialog (Help ▸ Report a Problem, or after a crash). */
+  problemReport: { afterCrash: boolean } | null;
+  setProblemReport: (value: { afterCrash: boolean } | null) => void;
   setExportWordOpen: (open: boolean) => void;
   setImagesToPdfOpen: (open: boolean) => void;
   exportImagesOpen: boolean;
@@ -446,6 +449,8 @@ export const useUIStore = create<UIStore>()(
         imagesDialogTarget: 'pdf',
         setImagesDialogTarget: (imagesDialogTarget) => set({ imagesDialogTarget }),
         exportWordOpen: false,
+        problemReport: null,
+        setProblemReport: (problemReport) => set({ problemReport }),
         setExportWordOpen: (exportWordOpen) => set({ exportWordOpen }),
         setImagesToPdfOpen: (imagesToPdfOpen) => set({ imagesToPdfOpen }),
         compressOpen: false,

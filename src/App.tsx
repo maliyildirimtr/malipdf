@@ -42,6 +42,7 @@ import { CompressDialog } from './components/NewDocumentDialog/CompressDialog';
 import { ExportImagesDialog } from './components/NewDocumentDialog/ExportImagesDialog';
 import { ImagesToPdfDialog } from './components/NewDocumentDialog/ImagesToPdfDialog';
 import { ExportWordDialog } from './components/NewDocumentDialog/ExportWordDialog';
+import { ProblemReportDialog } from './components/ProblemReport/ProblemReportDialog';
 import { PresentationView } from './components/Presentation/PresentationView';
 import { FormulaDialog } from './components/Formula/FormulaDialog';
 import { TaskProgressPanel } from './components/TaskProgress/TaskProgress';
@@ -269,6 +270,7 @@ export default function App() {
       <ExportImagesDialog />
       <ImagesToPdfDialog />
       <ExportWordDialog />
+      <ProblemReportDialog />
       <LaserOverlay />
       <PresentationView />
       <FormulaDialog />
