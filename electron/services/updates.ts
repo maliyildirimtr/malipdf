@@ -76,8 +76,22 @@ async function showMessage(options: Electron.MessageBoxOptions) {
   return showMessageBox(window, options);
 }
 
+/** MaliPDF's Microsoft Store listing (Partner Center → Product identity). */
+export const STORE_PRODUCT_ID = '9PMT0XR7DGKH';
+export const STORE_PAGE_URL = `ms-windows-store://pdp/?productid=${STORE_PRODUCT_ID}`;
+
+/** Installed from the Microsoft Store (MSIX package): the Store keeps it up to date. */
+export function isStoreInstall(): boolean {
+  return process.platform === 'win32' && (process as NodeJS.Process & { windowsStore?: boolean }).windowsStore === true;
+}
+
 /** manual = the user picked "Check for Updates…" (always answers). */
 export async function checkForUpdates(manual: boolean): Promise<void> {
+  if (isStoreInstall()) {
+    // Store installs never download installers; the Store page shows updates.
+    if (manual) await shell.openExternal(STORE_PAGE_URL).catch(() => {});
+    return;
+  }
   if (checking || downloading) return;
   checking = true;
   try {
@@ -204,7 +218,7 @@ export function setupUpdates(isDev: boolean): void {
     await checkForUpdates(true);
     return true;
   });
-  if (isDev) return; // never nag during development
+  if (isDev || isStoreInstall()) return; // never nag during development; the Store updates Store installs
   app.whenReady().then(() => {
     setTimeout(() => {
       const prefs = readPrefs();

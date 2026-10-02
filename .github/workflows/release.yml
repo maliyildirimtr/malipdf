@@ -7,6 +7,7 @@ name: Build MaliPDF Release
 #   macOS:   CSC_LINK (base64 .p12 "Developer ID Application"), CSC_KEY_PASSWORD,
 #            APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID  (notarization)
 #   Windows: WIN_CSC_LINK (base64 .pfx), WIN_CSC_KEY_PASSWORD
+# The Microsoft Store package (.appx) is always unsigned: the Store signs it.
 # Without them the installers are built unsigned (as before).
 
 on:
@@ -183,6 +184,14 @@ jobs:
           fi
           npx --yes "$ELECTRON_BUILDER" --win nsis --x64 --publish never
 
+      - name: Package Microsoft Store app (APPX)
+        # Unsigned on purpose: the Microsoft Store signs the package after
+        # certification. Upload this file in Partner Center → Packages.
+        shell: bash
+        run: |
+          unset CSC_LINK CSC_KEY_PASSWORD
+          npx --yes "$ELECTRON_BUILDER" --win appx --x64 --publish never
+
       - name: Collect artifact
         shell: pwsh
         run: |
@@ -201,6 +210,22 @@ jobs:
         with:
           name: windows-x64
           path: artifacts/MaliPDF-Windows-x64-Setup.exe
+
+      - name: Collect Microsoft Store package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path store | Out-Null
+          $file = Get-ChildItem -Path release -Filter *.appx -File | Select-Object -First 1
+          if (-not $file) { throw "Microsoft Store package was not found." }
+          Copy-Item $file.FullName store/MaliPDF-Windows-Store-x64.appx
+
+      # Not attached to the GitHub Release: download it from the workflow run
+      # (Actions → this run → Artifacts → microsoft-store) for Partner Center.
+      - name: Upload Microsoft Store package
+        uses: actions/upload-artifact@v4
+        with:
+          name: microsoft-store
+          path: store/MaliPDF-Windows-Store-x64.appx
 
   release:
     needs:

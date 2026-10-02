@@ -147,6 +147,20 @@
         "role": "Viewer",
         "rank": "Alternate"
       }
-    ]
+    ],
+    "appx": {
+      "identityName": "MehmetAliYldrm.MaliPDF",
+      "publisher": "CN=91E39BFD-90E8-4CA1-B4FE-3DAAC4FC4492",
+      "publisherDisplayName": "Mehmet Ali YILDIRIM",
+      "displayName": "MaliPDF",
+      "applicationId": "MaliPDF",
+      "backgroundColor": "transparent",
+      "languages": [
+        "tr-TR",
+        "en-US"
+      ],
+      "showNameOnTiles": false,
+      "artifactName": "MaliPDF-${version}-Store-${arch}.${ext}"
+    }
   }
 }
