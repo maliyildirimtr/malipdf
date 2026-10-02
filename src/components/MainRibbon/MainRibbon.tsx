@@ -322,8 +322,8 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
               item('page.split', Split),
               'separator',
               item('file.openOffice', FileInput, 'Word / Excel / PowerPoint ▸ PDF…'),
-              item('file.exportWord', FileText, 'PDF ▸ Word…'),
-              item('file.imagesToWord', ImageIcon, 'Images ▸ Word…'),
+              item('file.exportWord', FileText, 'PDF ▸ Word (coming soon)'),
+              item('file.imagesToWord', ImageIcon, 'Images ▸ Word (coming soon)'),
             ]}
           />
         </ToolbarGroup>

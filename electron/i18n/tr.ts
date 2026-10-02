@@ -928,6 +928,7 @@ export const TR_PATTERNS: readonly Pattern[] = [
  * too before it is put in ("Active tool: Pen" → "Etkin araç: Kalem").
  */
 export const TR_WRAPPERS: readonly Pattern[] = [
+  [/^(.+) \(coming soon\)$/s, (label) => `${label} (yakında)`],
   [/^Active tool: (.+)$/, (tool) => `Etkin araç: ${tool}`],
   [/^(.+) × (\d+)$/, (label, count) => `${label} × ${count}`],
   [/^(.+) is not available yet$/s, (label) => `${label} henüz kullanılamıyor`],

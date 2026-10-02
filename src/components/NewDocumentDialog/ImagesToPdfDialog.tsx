@@ -126,7 +126,8 @@ export function ImagesToPdfDialog() {
             <div className={styles.sectionHeader}>MAKE</div>
             <div className={styles.chipGroup} role="radiogroup" aria-label="Output">
               {chip(target === 'pdf', 'PDF', () => setTarget('pdf'))}
-              {chip(target === 'word', 'Word (.docx)', () => setTarget('word'))}
+              {/* Word output is still being finished: shown, but not selectable yet. */}
+              <button type="button" role="radio" aria-checked={false} disabled className={styles.chip} style={{ opacity: 0.5, cursor: 'default' }}>Word (.docx) (coming soon)</button>
             </div>
           </div>
           {target === 'word' && (
