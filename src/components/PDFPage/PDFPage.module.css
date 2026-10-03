@@ -69,8 +69,24 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-direction: column;
+  gap: 10px;
   color: var(--color-error);
   font-size: var(--text-sm);
+}
+
+.retryButton {
+  font: inherit;
+  padding: 5px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--color-border, rgba(0, 0, 0, 0.15));
+  background: var(--color-surface, #fff);
+  color: var(--color-text-primary, #222);
+  cursor: pointer;
+}
+
+.retryButton:hover {
+  background: var(--color-hover, rgba(0, 0, 0, 0.05));
 }
 
 .pageLabel {

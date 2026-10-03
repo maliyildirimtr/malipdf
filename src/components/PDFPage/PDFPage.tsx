@@ -18,6 +18,15 @@ import { LinkLayer } from './LinkLayer';
 import { useUIStore } from '../../store/uiStore';
 import styles from './PDFPage.module.css';
 
+/**
+ * A page render that has not finished after this long is treated as stuck:
+ * it is cancelled and started again (pdf.js can occasionally leave a render
+ * pending forever, e.g. after a cancel/restart race while scrolling fast).
+ */
+export const PAGE_RENDER_WATCHDOG_MS = 12_000;
+/** Automatic restarts before the page shows an error with a Retry button. */
+export const PAGE_RENDER_MAX_RETRIES = 2;
+
 interface PDFPageProps {
   docId: string;
   instanceId: number;
@@ -50,6 +59,9 @@ const PDFPage = React.memo<PDFPageProps>(function PDFPage({
   const renderTaskRef = useRef<RenderTask | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [renderError, setRenderError] = useState<string | null>(null);
+  /** Bumped to start the render again (watchdog restart or Retry button). */
+  const [renderAttempt, setRenderAttempt] = useState(0);
+  const autoRetriesRef = useRef(0);
 
   const transform = useMemo(
     () => page && renderEnabled
@@ -87,15 +99,40 @@ const PDFPage = React.memo<PDFPageProps>(function PDFPage({
     setIsLoading(true);
     setRenderError(null);
 
-    const task = renderPage({ canvas, page, transform });
+    let task: RenderTask;
+    try {
+      task = renderPage({ canvas, page, transform });
+    } catch {
+      setRenderError('Failed to render page');
+      setIsLoading(false);
+      return;
+    }
     renderTaskRef.current = task;
+
+    const watchdog = window.setTimeout(() => {
+      if (disposed || renderTaskRef.current !== task) return;
+      disposed = true;
+      task.cancel();
+      renderTaskRef.current = null;
+      if (autoRetriesRef.current < PAGE_RENDER_MAX_RETRIES) {
+        autoRetriesRef.current += 1;
+        setRenderAttempt((n) => n + 1);
+      } else {
+        setRenderError('Page could not be displayed');
+        setIsLoading(false);
+      }
+    }, PAGE_RENDER_WATCHDOG_MS);
+
     void task.promise.then(
       () => {
+        window.clearTimeout(watchdog);
         if (disposed || renderTaskRef.current !== task) return;
         renderTaskRef.current = null;
+        autoRetriesRef.current = 0;
         setIsLoading(false);
       },
       (error: unknown) => {
+        window.clearTimeout(watchdog);
         if (disposed || (error instanceof Error && error.name === 'RenderingCancelledException')) {
           return;
         }
@@ -107,12 +144,13 @@ const PDFPage = React.memo<PDFPageProps>(function PDFPage({
 
     return () => {
       disposed = true;
+      window.clearTimeout(watchdog);
       task.cancel();
       if (renderTaskRef.current === task) renderTaskRef.current = null;
       // Explicitly release the backing store; CSS slot geometry lives on the parent.
       releaseCanvas(canvas);
     };
-  }, [page, transform, renderEnabled]);
+  }, [page, transform, renderEnabled, renderAttempt]);
 
   const handlePinChange = useCallback((pinned: boolean) => {
     onInteractionPinChange?.(pageIndex, pinned);
@@ -162,6 +200,16 @@ const PDFPage = React.memo<PDFPageProps>(function PDFPage({
         {renderEnabled && renderError && (
           <div className={styles.errorOverlay}>
             <span>{renderError}</span>
+            <button
+              type="button"
+              className={styles.retryButton}
+              onClick={() => {
+                autoRetriesRef.current = 0;
+                setRenderAttempt((n) => n + 1);
+              }}
+            >
+              Retry
+            </button>
           </div>
         )}
       </div>
