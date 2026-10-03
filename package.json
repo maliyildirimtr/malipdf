@@ -168,6 +168,7 @@
       "hardenedRuntime": false,
       "provisioningProfile": "build/embedded.provisionprofile",
       "x64ArchFiles": "Contents/Resources/native/malipdf-vision",
+      "sign": "./build/masSign.js",
       "artifactName": "MaliPDF-${version}-MacAppStore.${ext}",
       "extendInfo": {
         "ITSAppUsesNonExemptEncryption": false,
