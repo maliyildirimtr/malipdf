@@ -1,4 +1,4 @@
-import { downloads, macosInstaller } from '../../config/downloads';
+import { downloads, macosInstaller, windowsStore } from '../../config/downloads';
 import './DownloadSection.css';
 
 export function DownloadSection() {
@@ -17,9 +17,8 @@ export function DownloadSection() {
               Start annotating today.
             </h2>
             <p className="download__body">
-              MaliPDF is a native desktop application for Apple silicon Macs.
+              MaliPDF is a native desktop application for Apple silicon Macs and Windows.
               No account required. No subscription. Your documents stay on your machine.
-              A Windows version is in development.
             </p>
 
             <div className="download__buttons">
@@ -39,6 +38,21 @@ export function DownloadSection() {
                   {macosInstaller.label} · {macosInstaller.sizeLabel}
                 </span>
               </div>
+              <div className="download__platform">
+                <a
+                  href={windowsStore.url}
+                  className="btn btn--ghost-navy btn--lg download__btn"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Get MaliPDF from the Microsoft Store for Windows"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M3 5.1 10.4 4v7.2H3V5.1zm8.3-1.2L21 2.5v8.7h-9.7V3.9zM3 12.6h7.4v7.2L3 18.8v-6.2zm8.3 0H21v8.9l-9.7-1.4v-7.5z" />
+              </svg>
+                  {windowsStore.label}
+                </a>
+                <span className="download__meta">{windowsStore.meta}</span>
+              </div>
             </div>
 
             <p className="download__version">
@@ -51,8 +65,8 @@ export function DownloadSection() {
                 'No account required',
                 'Works offline',
                 'Files stay on your machine',
-                'Developer ID signed',
                 'Apple notarized',
+                'Microsoft Store',
               ].map((item) => (
                 <span className="download__trust-item" key={item}>
                   <span className="download__trust-dot" aria-hidden="true" />

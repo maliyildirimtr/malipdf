@@ -1,4 +1,4 @@
-import { downloads, macosInstaller } from '../../config/downloads';
+import { downloads, macosInstaller, windowsStore } from '../../config/downloads';
 import './Hero.css';
 
 const lineWidths = ['82%', '66%', '91%', '74%', '86%', '58%', '78%', '92%', '69%'];
@@ -30,7 +30,7 @@ export function Hero() {
           <p className="hero__description">
             Annotate documents, teach from lecture slides, organize visual
             notes, and work directly on PDFs — with a fast, focused desktop
-            workflow built for Apple silicon Macs.
+            workflow built for Mac and Windows.
           </p>
 
           <div className="hero__actions">
@@ -46,9 +46,21 @@ export function Hero() {
               </svg>
               {downloads.macos.label}
             </a>
+            <a
+              href={windowsStore.url}
+              className="btn btn--outline btn--lg hero__btn-secondary"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Get MaliPDF from the Microsoft Store for Windows"
+            >
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M3 5.1 10.4 4v7.2H3V5.1zm8.3-1.2L21 2.5v8.7h-9.7V3.9zM3 12.6h7.4v7.2L3 18.8v-6.2zm8.3 0H21v8.9l-9.7-1.4v-7.5z" />
+              </svg>
+              {windowsStore.label}
+            </a>
           </div>
           <p className="hero__notice">
-            Version {downloads.version} · Apple Silicon · Developer ID signed and Apple notarized.
+            Mac: Apple Silicon, signed and notarized · Windows: Microsoft Store, updates automatically.
           </p>
         </div>
 

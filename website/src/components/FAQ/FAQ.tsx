@@ -6,7 +6,7 @@ const faqs = [
     id: 'what-is',
     question: 'What is MaliPDF?',
     answer:
-      'MaliPDF is a native desktop PDF annotation application for Apple silicon Macs. It lets you draw, highlight, add text, insert shapes and arrows, and annotate directly on PDF pages — without modifying the original file. A Windows version is in development.',
+      'MaliPDF is a native desktop PDF annotation application for Apple silicon Macs and Windows. It lets you draw, highlight, add text, insert shapes and arrows, and annotate directly on PDF pages — without modifying the original file.',
   },
   {
     id: 'modifies-pdf',
@@ -42,7 +42,7 @@ const faqs = [
     id: 'windows',
     question: 'Is there a Windows version?',
     answer:
-      'A Windows version is in development. The current build is focused on macOS. Check back for updates or subscribe to release notifications when they are available.',
+      'Yes. MaliPDF for Windows 10 and 11 is available on the Microsoft Store, and the Store keeps it up to date automatically.',
   },
   {
     id: 'powerpoint',

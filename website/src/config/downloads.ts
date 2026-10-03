@@ -61,5 +61,13 @@ export const downloads: DownloadConfig = {
   },
 };
 
+/** Windows: Microsoft Store (updates come from the Store). */
+export const windowsStore = {
+  label: 'Get it from Microsoft Store',
+  url: 'https://apps.microsoft.com/detail/9PMT0XR7DGKH',
+  storeId: '9PMT0XR7DGKH',
+  meta: 'Windows 10 and 11 · x64',
+};
+
 /** The public macOS installer. */
 export const macosInstaller = downloads.macos.assets[0];

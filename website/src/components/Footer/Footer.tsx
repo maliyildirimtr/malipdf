@@ -37,7 +37,7 @@ export function Footer() {
             </p>
             <p className="footer__desc">
               A native desktop application for Apple silicon Macs, built
-              for students, lecturers, engineers and researchers. Windows is in development.
+              for students, lecturers, engineers and researchers. Available for Mac and on the Microsoft Store for Windows.
             </p>
           </div>
 
