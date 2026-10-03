@@ -297,8 +297,21 @@ export function createDocumentSessionStore(): StoreApi<DocumentSessionStoreState
       const source = state.sessions.get(key);
       if (!source
         || !source.active
-        || source.pendingLoads.get(pageIndex) !== requestId
-        || (!source.preloadPages.has(pageIndex) && !source.pinnedPages.has(pageIndex))) {
+        || source.pendingLoads.get(pageIndex) !== requestId) {
+        return false;
+      }
+      if (!source.preloadPages.has(pageIndex) && !source.pinnedPages.has(pageIndex)) {
+        // The page scrolled out of range while it was loading. Its loaded
+        // proxy is not kept, but the request must be finished: a pending
+        // entry left behind blocks this page (and a load slot) for good, and
+        // the page stays on its grey placeholder when it scrolls back in.
+        const session = cloneSession(source);
+        const entry = session.pages.get(pageIndex) ?? emptyPageEntry(pageIndex);
+        session.pages.set(pageIndex, { ...entry, status: 'idle', requestId: null, loadedPage: null, error: null });
+        session.pendingLoads.delete(pageIndex);
+        const sessions = new Map(state.sessions);
+        sessions.set(key, session);
+        set({ sessions });
         return false;
       }
 

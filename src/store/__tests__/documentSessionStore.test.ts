@@ -72,6 +72,26 @@ describe('document session store', () => {
     expect(store.getState().sessions.get('A:99')?.pages.get(0)?.loadedPage).toBeNull();
   });
 
+  it('finishes a load whose page scrolled out of range, so it can load again', () => {
+    const store = createDocumentSessionStore();
+    store.getState().createSession(A, 60, 0, 1);
+    store.getState().setActiveIdentity(A, 0, 1);
+    store.getState().updateVisibility(A, new Set([0]), 1);
+    const request = store.getState().beginPageLoad(A, 1)!;
+    expect(request).not.toBeNull();
+
+    // Scroll far away before the page arrives.
+    store.getState().updateVisibility(A, new Set([50]), 1);
+    expect(store.getState().commitPageLoad(A, 1, request, loadedPage(1, 'late'))).toBe(false);
+    const away = store.getState().sessions.get('A:1')!;
+    expect(away.pendingLoads.has(1)).toBe(false);
+    expect(away.pages.get(1)?.loadedPage ?? null).toBeNull();
+
+    // Scroll back: the page can be requested again.
+    store.getState().updateVisibility(A, new Set([0]), 1);
+    expect(store.getState().beginPageLoad(A, 1)).not.toBeNull();
+  });
+
   it('stores visible/render/preload state per document', () => {
     const store = createDocumentSessionStore();
     store.getState().createSession(A, 20, 2, 1);
