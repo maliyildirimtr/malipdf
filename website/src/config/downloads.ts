@@ -8,7 +8,7 @@
 // ============================================================
 
 const REPO_URL = 'https://github.com/maliyildirimtr/malipdf';
-const RELEASE_TAG = 'v1.0.0';
+const RELEASE_TAG = 'v1.0.2';
 const RELEASE_DOWNLOAD_BASE = `${REPO_URL}/releases/download/${RELEASE_TAG}`;
 
 const assetUrl = (fileName: string) => `${RELEASE_DOWNLOAD_BASE}/${fileName}`;
@@ -41,7 +41,7 @@ export interface DownloadConfig {
 }
 
 export const downloads: DownloadConfig = {
-  version: '1.0.0',
+  version: '1.0.2',
   tag: RELEASE_TAG,
   releaseNotesUrl: `${REPO_URL}/releases/tag/${RELEASE_TAG}`,
 
@@ -59,6 +59,14 @@ export const downloads: DownloadConfig = {
       },
     ],
   },
+};
+
+/** Mac: Mac App Store (updates come from the App Store). */
+export const macAppStore = {
+  label: 'Download on the Mac App Store',
+  url: 'https://apps.apple.com/app/id6818672314',
+  appId: '6818672314',
+  meta: 'macOS 12 or later · Apple Silicon (M1 and later)',
 };
 
 /** Windows: Microsoft Store (updates come from the Store). */
