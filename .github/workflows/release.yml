@@ -78,7 +78,7 @@ jobs:
           printf '%s' "$MAS_PROVISIONING_PROFILE" | base64 --decode > build/embedded.provisionprofile
           sed -i '' "s/TEAM_ID\./${APPLE_TEAM_ID}./" build/entitlements.mas.plist
           node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("package.json","utf8"));p.build.mas.extendInfo.ElectronTeamID=process.env.APPLE_TEAM_ID;fs.writeFileSync("package.json",JSON.stringify(p,null,2));'
-          npx --yes "$ELECTRON_BUILDER" --mac mas --universal --publish never
+          npx --yes "$ELECTRON_BUILDER" --mac mas --arm64 --publish never
 
       - name: Collect Mac App Store package
         run: |

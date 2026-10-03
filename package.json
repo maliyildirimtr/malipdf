@@ -65,7 +65,12 @@
       "dist/**/*",
       "dist-electron/**/*",
       "package.json",
-      "!**/*.map"
+      "!**/*.map",
+      "!node_modules/**/*"
+    ],
+    "electronLanguages": [
+      "en",
+      "tr"
     ],
     "extraResources": [
       {
@@ -167,7 +172,6 @@
       "entitlementsInherit": "build/entitlements.mas.inherit.plist",
       "hardenedRuntime": false,
       "provisioningProfile": "build/embedded.provisionprofile",
-      "x64ArchFiles": "Contents/Resources/native/malipdf-vision",
       "sign": "./build/masSign.js",
       "artifactName": "MaliPDF-${version}-MacAppStore.${ext}",
       "extendInfo": {
