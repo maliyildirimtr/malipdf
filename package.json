@@ -2,7 +2,7 @@
   "name": "malipedefe",
   "productName": "MaliPDF",
   "version": "1.0.0",
-  "description": "Professional PDF Annotation & Document Workspace",
+  "description": "Professional PDF Annotation and Document Workspace",
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "concurrently -k \"npm run dev:vite\" \"npm run dev:electron\"",
@@ -167,6 +167,7 @@
       "entitlementsInherit": "build/entitlements.mas.inherit.plist",
       "hardenedRuntime": false,
       "provisioningProfile": "build/embedded.provisionprofile",
+      "x64ArchFiles": "Contents/Resources/native/malipdf-vision",
       "artifactName": "MaliPDF-${version}-MacAppStore.${ext}",
       "extendInfo": {
         "ITSAppUsesNonExemptEncryption": false,
