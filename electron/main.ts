@@ -27,6 +27,7 @@ import {
   createNativeMenuSchema,
   type NativeMenuNode,
 } from './nativeMenuSchema';
+import { saveFile } from './services/saveFile';
 import { OFFICE_EXTENSIONS, setupPptxIpc } from './services/pptx/pptxIpc';
 import { getLanguage, setLanguage, showMessageBox, showOpenDialog, showSaveDialog, t } from './i18n/mainLanguage';
 import { isLanguage, languageFromLocale } from './i18n';
@@ -591,16 +592,8 @@ handleTrusted('fs:writeFile', isDev, async (_event, filePath: unknown, data: unk
     throw new Error('Refusing to write a file the user did not choose in a dialog.');
   }
   const bytes = requireBinary(data, 'data', MAX_WRITE_BYTES);
-  const dir = path.dirname(filePath);
-  const tempPath = path.join(dir, `.${path.basename(filePath)}.tmp-${crypto.randomUUID()}`);
-  try {
-    await fs.promises.writeFile(tempPath, bytes);
-    await fs.promises.rename(tempPath, filePath);
-    return true;
-  } catch (error) {
-    await fs.promises.unlink(tempPath).catch(() => {});
-    throw error;
-  }
+  await saveFile(filePath, bytes);
+  return true;
 });
 
 // Links in a PDF (outline entries, link areas on pages): web and mail links
