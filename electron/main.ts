@@ -293,6 +293,10 @@ function createWindow(options: { restoreId?: string } = {}): BrowserWindow {
     }
   });
 
+  // The tab bar hides in full screen and slides in at the top edge.
+  window.on('enter-full-screen', () => window.webContents.send('window:fullScreenChanged', true));
+  window.on('leave-full-screen', () => window.webContents.send('window:fullScreenChanged', false));
+
   window.on('focus', () => {
     mainWindow = window;
     // The menu shows the focused window's state.
@@ -463,11 +467,16 @@ handleTrusted(FULLSCREEN_TOGGLE_CHANNEL, isDev, () => {
 
 // Focus Mode and presentations fill the screen (as the green button does).
 // Returns whether the window was already full screen, so it can be restored.
-handleTrusted('window:setFullScreen', isDev, (_event, on: unknown) => {
-  if (!mainWindow || mainWindow.isDestroyed()) return false;
-  const was = mainWindow.isFullScreen();
-  if (typeof on === 'boolean' && on !== was) mainWindow.setFullScreen(on);
+handleTrusted('window:setFullScreen', isDev, (event, on: unknown) => {
+  const target = BrowserWindow.fromWebContents(event.sender) ?? mainWindow;
+  if (!target || target.isDestroyed()) return false;
+  const was = target.isFullScreen();
+  if (typeof on === 'boolean' && on !== was) target.setFullScreen(on);
   return was;
+});
+handleTrusted('window:isFullScreen', isDev, (event) => {
+  const target = BrowserWindow.fromWebContents(event.sender);
+  return target ? target.isFullScreen() : false;
 });
 
 // Open PDF dialog

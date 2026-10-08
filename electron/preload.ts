@@ -49,6 +49,8 @@ export interface ElectronAPI {
   updateCommandStates: (states: NativeCommandState[]) => void;
   toggleFullScreen: () => Promise<boolean>;
   setFullScreen: (on: boolean) => Promise<boolean>;
+  isFullScreen: () => Promise<boolean>;
+  onFullScreenChange: (callback: (fullScreen: boolean) => void) => () => void;
   askCloseConfirm: (fileName: string) => Promise<'save' | 'discard' | 'cancel'>;
   askCloseAllConfirm: (fileNames: string[]) => Promise<'save' | 'discard' | 'cancel'>;
   confirmLifecycle: (requestId: string, allow: boolean) => void;
@@ -113,6 +115,12 @@ const electronAPI: ElectronAPI = {
   updateCommandStates: (states) => ipcRenderer.send(COMMAND_STATE_CHANNEL, states),
   toggleFullScreen: () => ipcRenderer.invoke(FULLSCREEN_TOGGLE_CHANNEL),
   setFullScreen: (on) => ipcRenderer.invoke('window:setFullScreen', on),
+  isFullScreen: () => ipcRenderer.invoke('window:isFullScreen'),
+  onFullScreenChange: (callback) => {
+    const listener = (_event: unknown, value: unknown) => callback(value === true);
+    ipcRenderer.on('window:fullScreenChanged', listener);
+    return () => ipcRenderer.removeListener('window:fullScreenChanged', listener);
+  },
   askCloseConfirm: (fileName) => ipcRenderer.invoke('dialog:askCloseConfirm', fileName),
   askCloseAllConfirm: (fileNames) => ipcRenderer.invoke('dialog:askCloseAllConfirm', fileNames),
   confirmLifecycle: (requestId, allow) => ipcRenderer.send('app:confirmLifecycle', requestId, allow),

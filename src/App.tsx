@@ -17,6 +17,7 @@
  */
 
 import { useImmersiveFullScreen } from './hooks/useImmersiveFullScreen';
+import { useFullScreenTabBar } from './hooks/useFullScreenTabBar';
 import { useFormStore } from './store/formStore';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { TopBar } from './components/TopBar/TopBar';
@@ -122,6 +123,7 @@ function ImportJobOverlay() {
 
 export default function App() {
   useImmersiveFullScreen();
+  const tabBar = useFullScreenTabBar();
   const { theme, resolvedTheme, setResolvedTheme, workspaceMode } = useUIStore();
   const { documents, activeDocId } = useDocumentStore();
   const { docAnnotations } = useAnnotationStore();
@@ -240,9 +242,17 @@ export default function App() {
   // ── Render ────────────────────────────────────────────────────────────
 
   return (
-    <div className="app-root" data-theme={resolvedTheme} data-workspace-mode={workspaceMode}>
+    <div
+      className="app-root"
+      data-theme={resolvedTheme}
+      data-workspace-mode={workspaceMode}
+      data-fullscreen={tabBar.fullScreen || undefined}
+      data-tabbar-revealed={tabBar.revealed || undefined}
+    >
       <div className="app-top-chrome">
-        <TopBar />
+        <div className="app-tabbar-slot">
+          <TopBar />
+        </div>
         <MainRibbon onCommand={executeCommand} canExecute={canExecute} />
       </div>
       <div

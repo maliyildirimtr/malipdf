@@ -518,6 +518,8 @@ declare global {
       updateCommandStates: (states: any[]) => void;
       toggleFullScreen: () => Promise<boolean>;
       setFullScreen?: (on: boolean) => Promise<boolean>;
+      isFullScreen?: () => Promise<boolean>;
+      onFullScreenChange?: (callback: (fullScreen: boolean) => void) => () => void;
       askCloseConfirm: (fileName: string) => Promise<'save' | 'discard' | 'cancel'>;
       askCloseAllConfirm: (fileNames: string[]) => Promise<'save' | 'discard' | 'cancel'>;
       confirmLifecycle: (requestId: string, allow: boolean) => void;
