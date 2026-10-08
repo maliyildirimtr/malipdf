@@ -36,19 +36,24 @@ export type ShowTool = Exclude<PresentationTool, 'shapes'> | ShapeTool;
 
 /** The ribbon's drag shapes (polygon needs clicks, so it is not offered here). */
 const SHAPES: ReadonlyArray<{ tool: ShapeTool; label: string; icon: LucideIcon }> = [
-  { tool: 'line', label: 'Line', icon: Minus },
-  { tool: 'arrow', label: 'Arrow', icon: ArrowRight },
-  { tool: 'rectangle', label: 'Rectangle', icon: Square },
-  { tool: 'ellipse', label: 'Ellipse', icon: Circle },
+  { tool: 'line', label: 'Line (L)', icon: Minus },
+  { tool: 'arrow', label: 'Arrow (A)', icon: ArrowRight },
+  { tool: 'rectangle', label: 'Rectangle (R)', icon: Square },
+  { tool: 'ellipse', label: 'Ellipse (C)', icon: Circle },
 ];
+/** The app's tool keys, the same in every mode. */
+const SHOW_TOOL_KEYS: Record<string, ShowTool> = {
+  k: 'laser', p: 'pen', m: 'highlighter', e: 'eraser', t: 'text',
+  l: 'line', a: 'arrow', r: 'rectangle', c: 'ellipse',
+};
 const isShapeTool = (tool: ShowTool): tool is ShapeTool => SHAPES.some((x) => x.tool === tool);
 
 const TOOL_BUTTONS: Record<Exclude<PresentationTool, 'shapes'>, { label: string; icon: LucideIcon }> = {
-  laser: { label: 'Laser (L)', icon: Pointer },
-  pen: { label: 'Pen (D)', icon: Pen },
-  highlighter: { label: 'Highlighter (H)', icon: Highlighter },
+  laser: { label: 'Laser Pointer (K)', icon: Pointer },
+  pen: { label: 'Pen (P)', icon: Pen },
+  highlighter: { label: 'Highlighter (M)', icon: Highlighter },
   eraser: { label: 'Eraser (E)', icon: Eraser },
-  text: { label: 'Text', icon: Type },
+  text: { label: 'Text (T)', icon: Type },
 };
 const TOOL_NAMES: Record<PresentationTool, string> = {
   laser: 'Laser', pen: 'Pen', highlighter: 'Highlighter', eraser: 'Eraser', text: 'Text', shapes: 'Shapes',
@@ -325,8 +330,8 @@ function PresentationSurface() {
         e.stopPropagation();
         return;
       }
-      const next = ['ArrowRight', 'ArrowDown', 'PageDown', ' ', 'Enter', 'n', 'N'];
-      const prev = ['ArrowLeft', 'ArrowUp', 'PageUp', 'Backspace', 'p', 'P'];
+      const next = ['ArrowRight', 'ArrowDown', 'PageDown', ' ', 'Enter'];
+      const prev = ['ArrowLeft', 'ArrowUp', 'PageUp', 'Backspace'];
       const k = e.key.toLowerCase();
       if ((e.metaKey || e.ctrlKey) && k === 'z') undoInk();
       else if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -335,12 +340,8 @@ function PresentationSurface() {
       else if (prev.includes(e.key)) go(-1);
       else if (e.key === 'Home') setPageIndex(0);
       else if (e.key === 'End') setPageIndex(Math.max(0, pageCount - 1));
-      else if (k === 'l') setTool('laser');
-      else if (k === 'd') setTool('pen');
-      else if (k === 'h') setTool('highlighter');
-      else if (k === 'e') setTool('eraser');
-      else if (k === 't') setTool('text');
-      else if (k === 'c') clearPageInk();
+      else if (SHOW_TOOL_KEYS[k]) setTool(SHOW_TOOL_KEYS[k]);
+      else if (e.key === 'Delete') clearPageInk();
       else return;
       e.preventDefault();
       e.stopPropagation();
@@ -633,7 +634,7 @@ function PresentationSurface() {
         )}
         <span className={styles.divider} />
         <button type="button" onClick={undoInk} disabled={undoStack.current.length === 0} aria-label="Undo ink (⌘Z)" title="Undo ink (⌘Z)"><Undo2 size={17} /></button>
-        <button type="button" onClick={clearPageInk} disabled={!pageHasInk} aria-label="Erase all ink on this page (C)" title="Erase all ink on this page (C)"><Trash2 size={17} /></button>
+        <button type="button" onClick={clearPageInk} disabled={!pageHasInk} aria-label="Erase all ink on this page (Delete)" title="Erase all ink on this page (Delete)"><Trash2 size={17} /></button>
         <span className={styles.divider} />
         <div className={styles.customizeWrap} data-show-menu>
           <button

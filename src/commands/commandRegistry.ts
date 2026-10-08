@@ -112,7 +112,7 @@ export const APP_COMMANDS = {
   'tool.editText': toolCommand('editText', 'Edit PDF Text', undefined, 'text'),
   'tool.measure': toolCommand('measure', 'Measure', undefined, 'measure'),
   'tool.formula': unavailableTool('tool.formula', 'Formula', 'formula'),
-  'tool.laserPointer': toolCommand('laserPointer', 'Laser Pointer', undefined, 'laserPointer'),
+  'tool.laserPointer': toolCommand('laserPointer', 'Laser Pointer', 'K', 'laserPointer'),
   'tool.note': toolCommand('note', 'Sticky Note', 'N', 'note'),
   'tool.pointer': unavailableTool('tool.pointer', 'Pointer', 'pointer'),
   'insert.image': command('insert.image', 'Insert Image…', 'insert', 'action', 'document', { icon: 'image', menuPlacements: ['edit'], toolbarPlacements: ['primary.insert'] }),
@@ -241,7 +241,7 @@ function unavailableTool(id: AppCommandId, label: string, icon: CommandIconId): 
 export interface ToolShortcutDefinition {
   readonly commandId: ToolCommandId;
   readonly tool: CanonicalTool;
-  readonly key: 'V' | 'H' | 'P' | 'M' | 'E' | 'T' | 'L' | 'A' | 'R' | 'C' | 'S' | 'U' | 'N';
+  readonly key: 'V' | 'H' | 'P' | 'M' | 'E' | 'T' | 'L' | 'A' | 'R' | 'C' | 'S' | 'U' | 'N' | 'F' | 'K';
   readonly label: string;
 }
 export const TOOL_SHORTCUTS = [
@@ -249,6 +249,7 @@ export const TOOL_SHORTCUTS = [
   toolShortcut('M', 'highlighter'), toolShortcut('E', 'eraser'), toolShortcut('T', 'text'),
   toolShortcut('L', 'line'), toolShortcut('A', 'arrow'), toolShortcut('R', 'rectangle'),
   toolShortcut('C', 'ellipse'), toolShortcut('S', 'lasso'), toolShortcut('U', 'textMarkup'), toolShortcut('N', 'note'),
+  toolShortcut('F', 'freeform'), toolShortcut('K', 'laserPointer'),
 ] as const satisfies readonly ToolShortcutDefinition[];
 const TOOL_SHORTCUT_BY_KEY = new Map<string, ToolShortcutDefinition>(TOOL_SHORTCUTS.map((shortcut) => [shortcut.key.toLowerCase(), shortcut]));
 const TOOL_COMMAND_BY_TOOL = new Map<CanonicalTool, ToolCommandId>(TOOL_SHORTCUTS.map(({ tool, commandId }) => [tool, commandId]));

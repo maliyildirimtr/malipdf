@@ -155,6 +155,7 @@ export function FocusToolbar({ onCommand, canExecute }: FocusToolbarProps) {
         ref={rootRef}
         className={`${styles.toolbar} ${styles.collapsed} ${styles[focusToolbarSide]}`}
         role="toolbar"
+      data-toolbar-control="true"
         aria-orientation="vertical"
         aria-label="Collapsed focus toolbar"
       >
@@ -234,6 +235,7 @@ export function FocusToolbar({ onCommand, canExecute }: FocusToolbarProps) {
       ref={rootRef}
       className={`${styles.toolbar} ${styles[focusToolbarSide]}`}
       role="toolbar"
+      data-toolbar-control="true"
       aria-orientation="vertical"
       aria-label="Focus mode annotation tools"
       onKeyDown={(event) => {
@@ -464,7 +466,7 @@ function isShapeLike(tool: ToolType): boolean {
 }
 
 function shortcutFor(tool: keyof typeof TOOL_COMMANDS): string {
-  return ({ select: 'V', hand: 'H', pen: 'P', highlighter: 'M', eraser: 'E', text: 'T', line: 'L', arrow: 'A', rectangle: 'R', ellipse: 'C', lasso: 'S', laserPointer: '', note: 'N', freeform: 'F' } as Record<string, string>)[tool];
+  return ({ select: 'V', hand: 'H', pen: 'P', highlighter: 'M', eraser: 'E', text: 'T', line: 'L', arrow: 'A', rectangle: 'R', ellipse: 'C', lasso: 'S', laserPointer: 'K', note: 'N', freeform: 'F' } as Record<string, string>)[tool];
 }
 
 function getPropertySummary(activeTool: ToolType, options: ReturnType<typeof useUIStore.getState>['toolOptions']) {
