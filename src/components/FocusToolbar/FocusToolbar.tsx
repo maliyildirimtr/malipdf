@@ -5,6 +5,10 @@ import {
   ChevronRight,
   Circle,
   Eraser,
+  LassoSelect,
+  Pointer,
+  Settings2,
+  StickyNote,
   Hand,
   Highlighter,
   LogOut,
@@ -24,7 +28,9 @@ import {
 import type { AppCommandId } from '../../commands';
 import {
   useUIStore,
+  FOCUS_TOOLBAR_ITEMS,
   type FocusShapeTool,
+  type FocusToolbarItem,
   type ToolColorFamily,
 } from '../../store/uiStore';
 import type { ToolType } from '../../types/annotations';
@@ -45,6 +51,9 @@ const TOOL_COMMANDS = {
   arrow: 'tool.arrow',
   rectangle: 'tool.rectangle',
   ellipse: 'tool.ellipse',
+  lasso: 'tool.lasso',
+  laserPointer: 'tool.laserPointer',
+  note: 'tool.note',
 } as const satisfies Partial<Record<ToolType, AppCommandId>>;
 
 const SHAPES: ReadonlyArray<{ tool: FocusShapeTool; label: string; icon: LucideIcon }> = [
@@ -55,6 +64,30 @@ const SHAPES: ReadonlyArray<{ tool: FocusShapeTool; label: string; icon: LucideI
 ];
 
 
+/** Single-tool buttons that can be added to the toolbar. */
+const TOOL_ITEMS: Record<Exclude<FocusToolbarItem, 'shapes'>, { label: string; icon: LucideIcon }> = {
+  select: { label: 'Select', icon: MousePointer2 },
+  hand: { label: 'Hand', icon: Hand },
+  lasso: { label: 'Lasso Select', icon: LassoSelect },
+  laserPointer: { label: 'Laser Pointer', icon: Pointer },
+  pen: { label: 'Pen', icon: Pen },
+  highlighter: { label: 'Highlighter', icon: Highlighter },
+  eraser: { label: 'Eraser', icon: Eraser },
+  text: { label: 'Text', icon: Type },
+  note: { label: 'Sticky Note', icon: StickyNote },
+  line: { label: 'Line', icon: Minus },
+  arrow: { label: 'Arrow', icon: ArrowRight },
+  rectangle: { label: 'Rectangle', icon: Square },
+  ellipse: { label: 'Ellipse', icon: Circle },
+};
+
+const ITEM_LABELS: Record<FocusToolbarItem, string> = {
+  ...Object.fromEntries(Object.entries(TOOL_ITEMS).map(([k, v]) => [k, v.label])),
+  shapes: 'Shapes (menu)',
+} as Record<FocusToolbarItem, string>;
+
+/** Items after which a separator is drawn (navigation | drawing tools). */
+const NAVIGATION_ITEMS: readonly FocusToolbarItem[] = ['select', 'hand', 'lasso', 'laserPointer'];
 
 export interface FocusToolbarProps {
   onCommand: (commandId: AppCommandId) => void;
@@ -75,9 +108,12 @@ export function FocusToolbar({ onCommand, canExecute }: FocusToolbarProps) {
     updateHighlighterOptions,
     updateTextOptions,
     updateShapeOptions,
+    focusToolbarItems,
+    toggleFocusToolbarItem,
+    resetFocusToolbarItems,
   } = useUIStore();
   const rootRef = useRef<HTMLElement>(null);
-  const [openPanel, setOpenPanel] = useState<'shape' | 'properties' | null>(null);
+  const [openPanel, setOpenPanel] = useState<'shape' | 'properties' | 'customize' | null>(null);
 
   useEffect(() => {
     if (!openPanel) return;
@@ -134,6 +170,54 @@ export function FocusToolbar({ onCommand, canExecute }: FocusToolbarProps) {
     );
   }
 
+  const renderShapeSplit = () => (
+    <div className={styles.splitButton}>
+          <button
+            type="button"
+            className={`${styles.shapeMain} ${activeTool === lastShapeTool ? styles.active : ''}`}
+            onClick={() => run(TOOL_COMMANDS[lastShapeTool])}
+            aria-label={shapeDefinition.label}
+            aria-pressed={activeTool === lastShapeTool}
+            title={`${shapeDefinition.label} (${shortcutFor(lastShapeTool)})`}
+            disabled={!canExecute(TOOL_COMMANDS[lastShapeTool])}
+          >
+            <ShapeIcon size={20} aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className={styles.shapeDisclosure}
+            onClick={() => setOpenPanel((panel) => panel === 'shape' ? null : 'shape')}
+            aria-label="Choose shape tool"
+            aria-haspopup="menu"
+            aria-expanded={openPanel === 'shape'}
+            title="Choose shape tool"
+          >
+            <ChevronRight size={11} aria-hidden="true" />
+          </button>
+          {openPanel === 'shape' && (
+            <div className={`${styles.popover} ${styles.shapePopover}`} role="menu" aria-label="Shape tools">
+              {SHAPES.map(({ tool, label, icon: Icon }) => (
+                <button
+                  key={tool}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={activeTool === tool}
+                  className={`${styles.shapeOption} ${activeTool === tool ? styles.active : ''}`}
+                  onClick={() => {
+                    run(TOOL_COMMANDS[tool]);
+                    setOpenPanel(null);
+                  }}
+                  title={`${label} (${shortcutFor(tool)})`}
+                >
+                  <Icon size={19} aria-hidden="true" />
+                  <span>{label}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+  );
+
   return (
     <aside
       ref={rootRef}
@@ -151,59 +235,28 @@ export function FocusToolbar({ onCommand, canExecute }: FocusToolbarProps) {
         handleArrowNavigation(event);
       }}
     >
-      <FocusToolButton tool="select" label="Select" icon={MousePointer2} activeTool={activeTool} run={run} enabled={canExecute('tool.select')} />
-      <FocusToolButton tool="hand" label="Hand" icon={Hand} activeTool={activeTool} run={run} enabled={canExecute('tool.hand')} />
-      <Separator />
-      <FocusToolButton tool="pen" label="Pen" icon={Pen} activeTool={activeTool} run={run} enabled={canExecute('tool.pen')} />
-      <FocusToolButton tool="highlighter" label="Highlighter" icon={Highlighter} activeTool={activeTool} run={run} enabled={canExecute('tool.highlighter')} />
-      <FocusToolButton tool="eraser" label="Eraser" icon={Eraser} activeTool={activeTool} run={run} enabled={canExecute('tool.eraser')} />
-      <FocusToolButton tool="text" label="Text" icon={Type} activeTool={activeTool} run={run} enabled={canExecute('tool.text')} />
-
-      <div className={styles.splitButton}>
-        <button
-          type="button"
-          className={`${styles.shapeMain} ${activeTool === lastShapeTool ? styles.active : ''}`}
-          onClick={() => run(TOOL_COMMANDS[lastShapeTool])}
-          aria-label={shapeDefinition.label}
-          aria-pressed={activeTool === lastShapeTool}
-          title={`${shapeDefinition.label} (${shortcutFor(lastShapeTool)})`}
-          disabled={!canExecute(TOOL_COMMANDS[lastShapeTool])}
-        >
-          <ShapeIcon size={20} aria-hidden="true" />
-        </button>
-        <button
-          type="button"
-          className={styles.shapeDisclosure}
-          onClick={() => setOpenPanel((panel) => panel === 'shape' ? null : 'shape')}
-          aria-label="Choose shape tool"
-          aria-haspopup="menu"
-          aria-expanded={openPanel === 'shape'}
-          title="Choose shape tool"
-        >
-          <ChevronRight size={11} aria-hidden="true" />
-        </button>
-        {openPanel === 'shape' && (
-          <div className={`${styles.popover} ${styles.shapePopover}`} role="menu" aria-label="Shape tools">
-            {SHAPES.map(({ tool, label, icon: Icon }) => (
-              <button
-                key={tool}
-                type="button"
-                role="menuitemradio"
-                aria-checked={activeTool === tool}
-                className={`${styles.shapeOption} ${activeTool === tool ? styles.active : ''}`}
-                onClick={() => {
-                  run(TOOL_COMMANDS[tool]);
-                  setOpenPanel(null);
-                }}
-                title={`${label} (${shortcutFor(tool)})`}
-              >
-                <Icon size={19} aria-hidden="true" />
-                <span>{label}</span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+      {focusToolbarItems.map((item, index) => {
+        const previous = focusToolbarItems[index - 1];
+        const separator = previous && NAVIGATION_ITEMS.includes(previous) && !NAVIGATION_ITEMS.includes(item);
+        const button = item === 'shapes'
+          ? renderShapeSplit()
+          : (
+            <FocusToolButton
+              tool={item}
+              label={TOOL_ITEMS[item].label}
+              icon={TOOL_ITEMS[item].icon}
+              activeTool={activeTool}
+              run={run}
+              enabled={canExecute(TOOL_COMMANDS[item])}
+            />
+          );
+        return (
+          <React.Fragment key={item}>
+            {separator && <Separator />}
+            {button}
+          </React.Fragment>
+        );
+      })}
 
       <Separator />
       <FocusCommandButton commandId="history.undo" label="Undo" icon={Undo2} run={run} enabled={canExecute('history.undo')} />
@@ -246,6 +299,34 @@ export function FocusToolbar({ onCommand, canExecute }: FocusToolbarProps) {
       )}
 
       <span className={styles.flexSpacer} />
+      <button
+        type="button"
+        className={`${styles.focusButton} ${openPanel === 'customize' ? styles.active : ''}`}
+        onClick={() => setOpenPanel((panel) => panel === 'customize' ? null : 'customize')}
+        aria-label="Customize toolbar"
+        aria-haspopup="dialog"
+        aria-expanded={openPanel === 'customize'}
+        title="Customize toolbar"
+      >
+        <Settings2 size={19} aria-hidden="true" />
+      </button>
+      {openPanel === 'customize' && (
+        <div className={`${styles.popover} ${styles.customizePopover}`} role="dialog" aria-label="Customize toolbar">
+          <div className={styles.popoverTitle}>Show in toolbar</div>
+          {FOCUS_TOOLBAR_ITEMS.map((item) => (
+            <label key={item} className={styles.customizeItem}>
+              <input
+                type="checkbox"
+                checked={focusToolbarItems.includes(item)}
+                disabled={focusToolbarItems.length === 1 && focusToolbarItems.includes(item)}
+                onChange={() => toggleFocusToolbarItem(item)}
+              />
+              {ITEM_LABELS[item]}
+            </label>
+          ))}
+          <button type="button" className={styles.customizeReset} onClick={resetFocusToolbarItems}>Reset</button>
+        </div>
+      )}
       <button type="button" className={styles.focusButton} onClick={toggleFocusToolbarCollapsed} aria-label="Collapse focus toolbar" title="Collapse focus toolbar">
         {focusToolbarSide === 'left'
           ? <PanelLeftClose size={19} aria-hidden="true" />
@@ -275,7 +356,7 @@ function FocusToolButton({ tool, label, icon: Icon, activeTool, run, enabled }: 
       disabled={!enabled}
       aria-label={label}
       aria-pressed={selected}
-      title={`${label} (${shortcutFor(tool)})`}
+      title={shortcutFor(tool) ? `${label} (${shortcutFor(tool)})` : label}
     >
       <Icon size={20} aria-hidden="true" />
     </button>
@@ -375,7 +456,7 @@ function isShapeLike(tool: ToolType): boolean {
 }
 
 function shortcutFor(tool: keyof typeof TOOL_COMMANDS): string {
-  return ({ select: 'V', hand: 'H', pen: 'P', highlighter: 'M', eraser: 'E', text: 'T', line: 'L', arrow: 'A', rectangle: 'R', ellipse: 'C' } as const)[tool];
+  return ({ select: 'V', hand: 'H', pen: 'P', highlighter: 'M', eraser: 'E', text: 'T', line: 'L', arrow: 'A', rectangle: 'R', ellipse: 'C', lasso: 'S', laserPointer: '', note: 'N' } as Record<string, string>)[tool];
 }
 
 function getPropertySummary(activeTool: ToolType, options: ReturnType<typeof useUIStore.getState>['toolOptions']) {

@@ -25,6 +25,8 @@ export const TR: Readonly<Record<string, string>> = {
   Done: 'Bitti',
   Failed: 'Başarısız',
   Retry: 'Tekrar dene',
+  'Shapes (menu)': 'Şekiller (menü)',
+  Laser: 'Lazer',
   'Failed to render page': 'Sayfa çizilemedi',
   'Page could not be displayed': 'Sayfa görüntülenemedi',
   Cancelled: 'İptal edildi',

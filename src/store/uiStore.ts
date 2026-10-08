@@ -14,6 +14,21 @@ export type WorkspaceMode = 'normal' | 'focus';
 export type FocusToolbarSide = 'left' | 'right';
 export type ToolColorFamily = 'pen' | 'highlighter' | 'text' | 'shape';
 export type FocusShapeTool = Extract<ToolType, 'line' | 'arrow' | 'rectangle' | 'ellipse'>;
+/** Buttons the user can show or hide in the Focus Mode toolbar ('shapes' is the shape split button). */
+export type FocusToolbarItem = 'select' | 'hand' | 'lasso' | 'laserPointer' | 'pen' | 'highlighter' | 'eraser' | 'text' | 'note' | 'shapes' | 'line' | 'arrow' | 'rectangle' | 'ellipse';
+export const FOCUS_TOOLBAR_ITEMS: readonly FocusToolbarItem[] = ['select', 'hand', 'lasso', 'laserPointer', 'pen', 'highlighter', 'eraser', 'text', 'note', 'shapes', 'line', 'arrow', 'rectangle', 'ellipse'];
+export const DEFAULT_FOCUS_TOOLBAR_ITEMS: readonly FocusToolbarItem[] = ['select', 'hand', 'pen', 'highlighter', 'eraser', 'text', 'shapes'];
+/** Tools of the presentation (slide show) toolbar. */
+export type PresentationTool = 'laser' | 'pen' | 'highlighter' | 'eraser' | 'line' | 'arrow' | 'rectangle' | 'ellipse';
+export const PRESENTATION_TOOLS: readonly PresentationTool[] = ['laser', 'pen', 'highlighter', 'eraser', 'line', 'arrow', 'rectangle', 'ellipse'];
+export const DEFAULT_PRESENTATION_TOOLS: readonly PresentationTool[] = ['laser', 'pen', 'highlighter', 'eraser'];
+
+/** Toggle `item` in a list kept in the canonical order of `all`; at least one item stays. */
+export function toggleInOrder<T>(list: readonly T[], item: T, all: readonly T[]): T[] {
+  const next = list.includes(item) ? list.filter((x) => x !== item) : [...list, item];
+  if (next.length === 0) return [...list];
+  return all.filter((x) => next.includes(x));
+}
 
 import { normalizeColor } from '../constants/palette';
 import { DEFAULT_LASER_OPTIONS, type LaserOptions } from '../components/Laser/laserTrail';
@@ -156,6 +171,14 @@ interface UIStore {
   /** Tool buttons the user removed from the ribbon (Customize Toolbar). */
   hiddenToolbarTools: ToolType[];
   toggleToolbarTool: (tool: ToolType) => void;
+  /** Buttons shown in the Focus Mode toolbar (customizable). */
+  focusToolbarItems: FocusToolbarItem[];
+  toggleFocusToolbarItem: (item: FocusToolbarItem) => void;
+  resetFocusToolbarItems: () => void;
+  /** Tools shown in the presentation toolbar (customizable). */
+  presentationTools: PresentationTool[];
+  togglePresentationTool: (tool: PresentationTool) => void;
+  resetPresentationTools: () => void;
 
   // Sidebar
   sidebarOpen: boolean;
@@ -410,6 +433,16 @@ export const useUIStore = create<UIStore>()(
         }),
 
         hiddenToolbarTools: [],
+        focusToolbarItems: [...DEFAULT_FOCUS_TOOLBAR_ITEMS],
+        toggleFocusToolbarItem: (item) => set((state) => ({
+          focusToolbarItems: toggleInOrder(state.focusToolbarItems, item, FOCUS_TOOLBAR_ITEMS),
+        })),
+        resetFocusToolbarItems: () => set({ focusToolbarItems: [...DEFAULT_FOCUS_TOOLBAR_ITEMS] }),
+        presentationTools: [...DEFAULT_PRESENTATION_TOOLS],
+        togglePresentationTool: (tool) => set((state) => ({
+          presentationTools: toggleInOrder(state.presentationTools, tool, PRESENTATION_TOOLS),
+        })),
+        resetPresentationTools: () => set({ presentationTools: [...DEFAULT_PRESENTATION_TOOLS] }),
         toggleToolbarTool: (tool) => set((state) => ({
           hiddenToolbarTools: state.hiddenToolbarTools.includes(tool)
             ? state.hiddenToolbarTools.filter((t) => t !== tool)
@@ -512,7 +545,14 @@ export const useUIStore = create<UIStore>()(
             toolOptions[key] = base && typeof base === 'object' && value && typeof value === 'object' ? { ...base, ...value } : value;
           }
           const language = isLanguage(saved.language) ? saved.language : current.language;
-          return { ...current, ...saved, language, toolOptions: toolOptions as unknown as ToolOptions };
+          const pick = <T,>(value: unknown, all: readonly T[], fallback: T[]): T[] => {
+            if (!Array.isArray(value)) return fallback;
+            const list = all.filter((x) => value.includes(x));
+            return list.length ? list : fallback;
+          };
+          const focusToolbarItems = pick(saved.focusToolbarItems, FOCUS_TOOLBAR_ITEMS, current.focusToolbarItems);
+          const presentationTools = pick(saved.presentationTools, PRESENTATION_TOOLS, current.presentationTools);
+          return { ...current, ...saved, language, focusToolbarItems, presentationTools, toolOptions: toolOptions as unknown as ToolOptions };
         },
         // Only persist tool options, theme and favorite colors — not transient UI state
         partialize: (state) => ({
@@ -527,6 +567,8 @@ export const useUIStore = create<UIStore>()(
           signatures: state.signatures,
           shapeStyles: state.shapeStyles,
           hiddenToolbarTools: state.hiddenToolbarTools,
+          focusToolbarItems: state.focusToolbarItems,
+          presentationTools: state.presentationTools,
           notePageStyle: state.notePageStyle,
           laserOptions: state.laserOptions,
           pageTheme: state.pageTheme,

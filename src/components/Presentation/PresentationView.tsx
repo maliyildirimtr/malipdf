@@ -7,8 +7,8 @@
  * document as annotations, one undo step) or discard it.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Eraser, Highlighter, Pen, Pointer, Trash2, Undo2, X } from 'lucide-react';
-import { useUIStore } from '../../store/uiStore';
+import { ArrowRight, ChevronLeft, ChevronRight, Circle, Eraser, Highlighter, Minus, Pen, Pointer, Settings2, Square, Trash2, Undo2, X, type LucideIcon } from 'lucide-react';
+import { useUIStore, PRESENTATION_TOOLS, type PresentationTool } from '../../store/uiStore';
 import { useDocumentStore } from '../../store/documentStore';
 import { useAnnotationStore } from '../../store/annotationStore';
 import { useHistoryStore, makeAddAction, makeBatchAction } from '../../store/historyStore';
@@ -17,7 +17,7 @@ import { createPageTransform, screenPointsToPdf, screenToPdf, type PageTransform
 import { isMultiplyAnnotation, renderAnnotations } from '../../pdf/annotationRenderer';
 import { hitTestAnnotation } from '../../pdf/annotationHitTest';
 import { simplifyInkPoints, stabilizePoints } from '../../pdf/inkGeometry';
-import type { Annotation, InputPoint } from '../../types/annotations';
+import type { Annotation, InputPoint, ShapeKind } from '../../types/annotations';
 import { nanoid } from '../../utils/nanoid';
 import { addLaserPoint, clearLaser, endLaserTrail, startLaserTrail } from '../Laser/laserTrail';
 import { LaserOverlay } from '../Laser/LaserOverlay';
@@ -29,7 +29,25 @@ const MAX_CANVAS_PIXELS = 16_000_000;
 const CLICK_SLOP_PX = 6;
 const CONTROLS_HIDE_MS = 2200;
 
-export type ShowTool = 'laser' | 'pen' | 'highlighter' | 'eraser';
+export type ShowTool = PresentationTool;
+
+const SHAPE_TOOLS: readonly ShowTool[] = ['line', 'arrow', 'rectangle', 'ellipse'];
+const isShapeTool = (tool: ShowTool): tool is Extract<ShowTool, ShapeKind> => SHAPE_TOOLS.includes(tool);
+
+const TOOL_BUTTONS: Record<ShowTool, { label: string; icon: LucideIcon }> = {
+  laser: { label: 'Laser (L)', icon: Pointer },
+  pen: { label: 'Pen (D)', icon: Pen },
+  highlighter: { label: 'Highlighter (H)', icon: Highlighter },
+  eraser: { label: 'Eraser (E)', icon: Eraser },
+  line: { label: 'Line', icon: Minus },
+  arrow: { label: 'Arrow', icon: ArrowRight },
+  rectangle: { label: 'Rectangle', icon: Square },
+  ellipse: { label: 'Ellipse', icon: Circle },
+};
+const TOOL_NAMES: Record<ShowTool, string> = {
+  laser: 'Laser', pen: 'Pen', highlighter: 'Highlighter', eraser: 'Eraser',
+  line: 'Line', arrow: 'Arrow', rectangle: 'Rectangle', ellipse: 'Ellipse',
+};
 
 const PEN_COLORS = ['#e63946', '#1d4ed8', '#16a34a', '#111111', '#ffffff'];
 const HIGHLIGHT_COLORS = ['#ffeb3b', '#7bed9f', '#74c0fc', '#ffa8a8'];
@@ -53,6 +71,10 @@ function PresentationSurface() {
   const [highlightColor, setHighlightColor] = useState(HIGHLIGHT_COLORS[0]);
   const [inkVersion, setInkVersion] = useState(0);
   const [keepPrompt, setKeepPrompt] = useState(false);
+  const [customizeOpen, setCustomizeOpen] = useState(false);
+  const shownTools = useUIStore((s) => s.presentationTools);
+  const togglePresentationTool = useUIStore((s) => s.togglePresentationTool);
+  const resetPresentationTools = useUIStore((s) => s.resetPresentationTools);
 
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -157,6 +179,22 @@ function PresentationSurface() {
   function buildLiveInk(transform: PageTransform, finished = false): Annotation | null {
     const pts = livePoints.current;
     const kind = toolRef.current;
+    if (isShapeTool(kind)) {
+      if (pts.length < 2) return null;
+      const start = pts[0];
+      const end = pts[pts.length - 1];
+      if (Math.hypot(end.x - start.x, end.y - start.y) < 4) return null;
+      const now = Date.now();
+      const shapeOptions = useUIStore.getState().toolOptions.shape;
+      return {
+        id: finished ? nanoid() : 'live', pageIndex: pageRef.current, locked: false, createdAt: now, updatedAt: now,
+        type: 'shape', shapeKind: kind,
+        startPoint: screenToPdf(start.x, start.y, transform),
+        endPoint: screenToPdf(end.x, end.y, transform),
+        color: penColorRef.current, opacity: 1,
+        strokeWidth: Math.max(2, shapeOptions.strokeWidth), borderStyle: 'solid', fillColor: 'transparent', cornerRadius: 8,
+      };
+    }
     if (kind !== 'pen' && kind !== 'highlighter') return null;
     if (pts.length < (kind === 'highlighter' ? 2 : 1)) return null;
     const options = useUIStore.getState().toolOptions;
@@ -359,7 +397,7 @@ function PresentationSurface() {
   }
 
   const onPointerDown = (e: React.PointerEvent) => {
-    if ((e.target as HTMLElement).closest('button, [data-keep-prompt]')) return;
+    if ((e.target as HTMLElement).closest('button, [data-keep-prompt], [data-show-menu]')) return;
     const eraserEnd = e.pointerType === 'pen' && (e.button === 5 || (e.buttons & 32) !== 0);
     if (e.button !== 0 && !eraserEnd) return;
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -391,6 +429,10 @@ function PresentationSurface() {
       for (const ev of events) addLaserPoint(ev.clientX, ev.clientY, ev.timeStamp);
     } else if (mode === 'eraser') {
       for (const ev of events) eraseAt(ev.clientX, ev.clientY);
+    } else if (isShapeTool(mode)) {
+      const q = localPoint(e.clientX, e.clientY, e.pressure, e.timeStamp);
+      if (q) livePoints.current = [livePoints.current[0] ?? q, q];
+      paintInk();
     } else {
       for (const ev of events) {
         const q = localPoint(ev.clientX, ev.clientY, ev.pressure, ev.timeStamp);
@@ -413,7 +455,7 @@ function PresentationSurface() {
       }
       return;
     }
-    if (mode === 'pen' || mode === 'highlighter') {
+    if (mode === 'pen' || mode === 'highlighter' || isShapeTool(mode)) {
       const v = view.current;
       const ann = v && v.page === pageRef.current ? buildLiveInk(v.transform, true) : null;
       livePoints.current = [];
@@ -424,7 +466,7 @@ function PresentationSurface() {
 
   const cursor = !controlsVisible && tool === 'laser'
     ? undefined
-    : tool === 'pen' ? PEN_CURSOR : tool === 'highlighter' ? HIGHLIGHTER_CURSOR : tool === 'eraser' ? ERASER_CURSOR : LASER_CURSOR;
+    : tool === 'pen' || isShapeTool(tool) ? PEN_CURSOR : tool === 'highlighter' ? HIGHLIGHTER_CURSOR : tool === 'eraser' ? ERASER_CURSOR : LASER_CURSOR;
   const colors = tool === 'highlighter' ? HIGHLIGHT_COLORS : PEN_COLORS;
   const activeColor = tool === 'highlighter' ? highlightColor : penColor;
   const pageHasInk = (sessionInk.current.get(pageIndex)?.length ?? 0) > 0;
@@ -449,16 +491,16 @@ function PresentationSurface() {
         <canvas ref={inkCanvasRef} className={styles.inkLayer} />
       </div>
 
-      <div className={`${styles.controls} ${controlsVisible || tool !== 'laser' ? styles.controlsVisible : ''}`}>
+      <div className={`${styles.controls} ${controlsVisible || tool !== 'laser' || customizeOpen ? styles.controlsVisible : ''}`}>
         <button type="button" onClick={() => go(-1)} disabled={pageIndex === 0} aria-label="Previous page"><ChevronLeft size={18} /></button>
         <span className={styles.counter}>{pageIndex + 1} / {pageCount}</span>
         <button type="button" onClick={() => go(1)} disabled={pageIndex >= pageCount - 1} aria-label="Next page"><ChevronRight size={18} /></button>
         <span className={styles.divider} />
-        <ToolButton label="Laser (L)" active={tool === 'laser'} onClick={() => setTool('laser')}><Pointer size={17} /></ToolButton>
-        <ToolButton label="Pen (D)" active={tool === 'pen'} onClick={() => setTool('pen')}><Pen size={17} /></ToolButton>
-        <ToolButton label="Highlighter (H)" active={tool === 'highlighter'} onClick={() => setTool('highlighter')}><Highlighter size={17} /></ToolButton>
-        <ToolButton label="Eraser (E)" active={tool === 'eraser'} onClick={() => setTool('eraser')}><Eraser size={17} /></ToolButton>
-        {(tool === 'pen' || tool === 'highlighter') && (
+        {shownTools.map((t) => {
+          const { label, icon: Icon } = TOOL_BUTTONS[t];
+          return <ToolButton key={t} label={label} active={tool === t} onClick={() => setTool(t)}><Icon size={17} /></ToolButton>;
+        })}
+        {(tool === 'pen' || tool === 'highlighter' || isShapeTool(tool)) && (
           <>
             <span className={styles.divider} />
             {colors.map((c) => (
@@ -478,6 +520,33 @@ function PresentationSurface() {
         <button type="button" onClick={undoInk} disabled={undoStack.current.length === 0} aria-label="Undo ink (⌘Z)" title="Undo ink (⌘Z)"><Undo2 size={17} /></button>
         <button type="button" onClick={clearPageInk} disabled={!pageHasInk} aria-label="Erase all ink on this page (C)" title="Erase all ink on this page (C)"><Trash2 size={17} /></button>
         <span className={styles.divider} />
+        <div className={styles.customizeWrap} data-show-menu>
+          <button
+            type="button"
+            onClick={() => setCustomizeOpen((v) => !v)}
+            data-active={customizeOpen || undefined}
+            aria-expanded={customizeOpen}
+            aria-label="Customize toolbar"
+            title="Customize toolbar"
+          ><Settings2 size={17} /></button>
+          {customizeOpen && (
+            <div className={styles.customizeMenu} role="dialog" aria-label="Customize toolbar">
+              <div className={styles.customizeTitle}>Show in toolbar</div>
+              {PRESENTATION_TOOLS.map((t) => (
+                <label key={t} className={styles.customizeItem}>
+                  <input
+                    type="checkbox"
+                    checked={shownTools.includes(t)}
+                    disabled={shownTools.length === 1 && shownTools.includes(t)}
+                    onChange={() => togglePresentationTool(t)}
+                  />
+                  {TOOL_NAMES[t]}
+                </label>
+              ))}
+              <button type="button" className={styles.customizeReset} onClick={resetPresentationTools}>Reset</button>
+            </div>
+          )}
+        </div>
         <button type="button" onClick={close} aria-label="End presentation" title="End presentation (Esc)"><X size={18} /></button>
       </div>
 
