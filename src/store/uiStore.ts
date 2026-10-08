@@ -65,7 +65,9 @@ const defaultToolOptions: ToolOptions = {
     opacity: 0.4,
   },
   eraser: {
-    mode: 'stroke',
+    // One touch removes the whole stroke (as in presentations); "Stroke
+    // Eraser" in the ribbon still cuts through a line.
+    mode: 'object',
     size: 20,
   },
   text: {
@@ -516,8 +518,12 @@ export const useUIStore = create<UIStore>()(
       }),
       {
         name: 'malipedefe-ui',
-        version: 1, // bump version for migration
+        version: 2, // bump version for migration
         migrate: (persistedState: any, version: number) => {
+          // v2: the eraser removes whole strokes by default.
+          if (version < 2 && persistedState?.toolOptions?.eraser) {
+            persistedState.toolOptions.eraser.mode = 'object';
+          }
           if (version === 0) {
             // Migrate recentColorsByFamily to favoriteColors
             const state = persistedState as any;

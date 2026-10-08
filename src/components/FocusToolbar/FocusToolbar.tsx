@@ -412,7 +412,22 @@ function FocusProperties({ activeTool, toolOptions, updatePenOptions, updateHigh
       </div>
     );
   }
-  if (activeTool === 'eraser') return <p className={styles.propertyHint}>Whole Stroke eraser</p>;
+  if (activeTool === 'eraser') {
+    const eraser = useUIStore.getState().toolOptions.eraser;
+    const setMode = (mode: 'stroke' | 'object') => useUIStore.getState().updateEraserOptions({ mode });
+    return (
+      <div className={styles.propertyStack}>
+        <label className={styles.customizeItem}>
+          <input type="radio" name="focus-eraser-mode" checked={eraser.mode === 'object'} onChange={() => setMode('object')} />
+          Object Eraser
+        </label>
+        <label className={styles.customizeItem}>
+          <input type="radio" name="focus-eraser-mode" checked={eraser.mode === 'stroke'} onChange={() => setMode('stroke')} />
+          Stroke Eraser
+        </label>
+      </div>
+    );
+  }
   if (activeTool === 'hand') return <p className={styles.propertyHint}>Hold Space for temporary Hand.</p>;
   return <p className={styles.propertyHint}>Select a drawing tool to edit its properties.</p>;
 }
@@ -457,7 +472,7 @@ function getPropertySummary(activeTool: ToolType, options: ReturnType<typeof use
   if (activeTool === 'highlighter') return { toolLabel: 'Highlighter', label: `${options.highlighter.width} pt`, color: options.highlighter.color, width: options.highlighter.width };
   if (activeTool === 'text') return { toolLabel: 'Text', label: `${options.text.fontSize} pt`, color: options.text.color, width: null };
   if (isShapeLike(activeTool)) return { toolLabel: activeTool[0].toUpperCase() + activeTool.slice(1), label: `${options.shape.strokeWidth} pt`, color: options.shape.color, width: options.shape.strokeWidth };
-  if (activeTool === 'eraser') return { toolLabel: 'Eraser', label: 'Whole Stroke', color: null, width: null };
+  if (activeTool === 'eraser') return { toolLabel: 'Eraser', label: options.eraser.mode === 'object' ? 'Object Eraser' : 'Stroke Eraser', color: null, width: null };
   return { toolLabel: activeTool === 'hand' ? 'Hand' : 'Select', label: 'No editable properties', color: null, width: null };
 }
 
