@@ -461,6 +461,15 @@ handleTrusted(FULLSCREEN_TOGGLE_CHANNEL, isDev, () => {
   return mainWindow.isFullScreen();
 });
 
+// Focus Mode and presentations fill the screen (as the green button does).
+// Returns whether the window was already full screen, so it can be restored.
+handleTrusted('window:setFullScreen', isDev, (_event, on: unknown) => {
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  const was = mainWindow.isFullScreen();
+  if (typeof on === 'boolean' && on !== was) mainWindow.setFullScreen(on);
+  return was;
+});
+
 // Open PDF dialog
 // kind: 'pdf' (default) — PDFs only; 'any' — PDFs and Office files (the
 // renderer converts those with LibreOffice); 'office' — Office files only.

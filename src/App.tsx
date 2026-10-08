@@ -16,6 +16,7 @@
  * - Export status toast notifications
  */
 
+import { useImmersiveFullScreen } from './hooks/useImmersiveFullScreen';
 import { useFormStore } from './store/formStore';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { TopBar } from './components/TopBar/TopBar';
@@ -120,6 +121,7 @@ function ImportJobOverlay() {
 // ─── App component ────────────────────────────────────────────────────────────
 
 export default function App() {
+  useImmersiveFullScreen();
   const { theme, resolvedTheme, setResolvedTheme, workspaceMode } = useUIStore();
   const { documents, activeDocId } = useDocumentStore();
   const { docAnnotations } = useAnnotationStore();

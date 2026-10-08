@@ -114,6 +114,15 @@ export function FocusToolbar({ onCommand, canExecute }: FocusToolbarProps) {
   } = useUIStore();
   const rootRef = useRef<HTMLElement>(null);
   const [openPanel, setOpenPanel] = useState<'shape' | 'properties' | 'customize' | null>(null);
+  /** Where the settings of a double-clicked tool open (next to its button). */
+  const [propertyTop, setPropertyTop] = useState(0);
+  const openProperties = (button: HTMLElement) => {
+    const root = rootRef.current;
+    if (!root) return;
+    const top = button.getBoundingClientRect().top - root.getBoundingClientRect().top;
+    setPropertyTop(Math.max(0, Math.min(top, root.clientHeight - 60)));
+    setOpenPanel('properties');
+  };
 
   useEffect(() => {
     if (!openPanel) return;
@@ -177,6 +186,7 @@ export function FocusToolbar({ onCommand, canExecute }: FocusToolbarProps) {
             type="button"
             className={`${styles.shapeMain} ${activeTool === currentShape ? styles.active : ''}`}
             onClick={() => run(TOOL_COMMANDS[currentShape])}
+            onDoubleClick={(event) => openProperties(event.currentTarget)}
             aria-label={shapeDefinition.label}
             aria-pressed={activeTool === currentShape}
             title={`${shapeDefinition.label} (${shortcutFor(currentShape)})`}
@@ -249,6 +259,7 @@ export function FocusToolbar({ onCommand, canExecute }: FocusToolbarProps) {
               activeTool={activeTool}
               run={run}
               enabled={canExecute(TOOL_COMMANDS[item])}
+              onDoubleClick={openProperties}
             />
           );
         return (
@@ -264,29 +275,8 @@ export function FocusToolbar({ onCommand, canExecute }: FocusToolbarProps) {
       <FocusCommandButton commandId="history.redo" label="Redo" icon={Redo2} run={run} enabled={canExecute('history.redo')} />
       <Separator />
 
-      <button
-        type="button"
-        className={styles.focusButton}
-        onClick={() => setOpenPanel((panel) => panel === 'properties' ? null : 'properties')}
-        aria-label={`Tool properties, ${propertySummary.label}`}
-        aria-haspopup="dialog"
-        aria-expanded={openPanel === 'properties'}
-        title={`Tool properties · ${propertySummary.label}`}
-      >
-        {propertySummary.color ? (
-          <span className={styles.colorIndicator} style={{ '--focus-color': propertySummary.color } as React.CSSProperties}>
-            <Palette size={19} aria-hidden="true" />
-          </span>
-        ) : (
-          <SlidersHorizontal size={19} aria-hidden="true" />
-        )}
-        {propertySummary.width !== null && (
-          <span className={styles.widthIndicator} aria-hidden="true">{propertySummary.width}</span>
-        )}
-      </button>
-
       {openPanel === 'properties' && (
-        <div className={`${styles.popover} ${styles.propertyPopover}`} role="dialog" aria-label={`${propertySummary.toolLabel} properties`}>
+        <div className={`${styles.popover} ${styles.propertyPopover}`} style={{ top: propertyTop }} role="dialog" aria-label={`${propertySummary.toolLabel} properties`}>
           <div className={styles.popoverTitle}>{propertySummary.toolLabel}</div>
           <FocusProperties
             activeTool={activeTool}
@@ -340,13 +330,14 @@ export function FocusToolbar({ onCommand, canExecute }: FocusToolbarProps) {
   );
 }
 
-function FocusToolButton({ tool, label, icon: Icon, activeTool, run, enabled }: {
+function FocusToolButton({ tool, label, icon: Icon, activeTool, run, enabled, onDoubleClick }: {
   tool: keyof typeof TOOL_COMMANDS;
   label: string;
   icon: LucideIcon;
   activeTool: ToolType;
   run: (commandId: AppCommandId) => void;
   enabled: boolean;
+  onDoubleClick?: (button: HTMLElement) => void;
 }) {
   const selected = activeTool === tool;
   return (
@@ -354,6 +345,7 @@ function FocusToolButton({ tool, label, icon: Icon, activeTool, run, enabled }: 
       type="button"
       className={`${styles.focusButton} ${selected ? styles.active : ''}`}
       onClick={() => run(TOOL_COMMANDS[tool])}
+      onDoubleClick={(event) => onDoubleClick?.(event.currentTarget)}
       disabled={!enabled}
       aria-label={label}
       aria-pressed={selected}

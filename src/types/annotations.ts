@@ -517,6 +517,7 @@ declare global {
       onCommand: (callback: (commandId: unknown, payload?: unknown) => void) => () => void;
       updateCommandStates: (states: any[]) => void;
       toggleFullScreen: () => Promise<boolean>;
+      setFullScreen?: (on: boolean) => Promise<boolean>;
       askCloseConfirm: (fileName: string) => Promise<'save' | 'discard' | 'cancel'>;
       askCloseAllConfirm: (fileNames: string[]) => Promise<'save' | 'discard' | 'cancel'>;
       confirmLifecycle: (requestId: string, allow: boolean) => void;
