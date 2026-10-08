@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useUIStore } from '../store/uiStore';
 
 /** How close to the top edge (px) the pointer must come to show the tab bar. */
 const REVEAL_EDGE = 6;
@@ -35,6 +36,24 @@ export function useFullScreenTabBar(): { fullScreen: boolean; revealed: boolean 
       window.removeEventListener('pointermove', onMove);
       document.documentElement.removeEventListener('pointerleave', onLeave);
     };
+  }, [fullScreen]);
+
+  // Esc leaves full screen, when nothing else used the key (a dialog, a text
+  // box, a drawing in progress, Focus Mode or a presentation handle it first).
+  useEffect(() => {
+    if (!fullScreen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented || event.repeat) return;
+      if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+      const target = event.target as HTMLElement | null;
+      if (target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return;
+      if (document.querySelector('[role="dialog"], [role="alertdialog"], [role="menu"]')) return;
+      const ui = useUIStore.getState();
+      if (ui.workspaceMode === 'focus' || ui.presentationOpen) return;
+      void window.electronAPI?.setFullScreen?.(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
   }, [fullScreen]);
 
   return { fullScreen, revealed };
