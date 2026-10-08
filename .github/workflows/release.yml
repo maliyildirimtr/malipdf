@@ -10,6 +10,12 @@ name: Build MaliPDF Release
 #                     Center → Packages. Unsigned: the Store signs it.
 # (Actions → the run → Artifacts.)
 #
+# A direct download is built as well and attached to the GitHub Release:
+#   macOS DMG (Apple Silicon), Developer ID signed and notarized when the
+#   secrets below are set (unsigned otherwise):
+#     CSC_LINK (base64 .p12 "Developer ID Application"), CSC_KEY_PASSWORD,
+#     APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID
+#
 # Repository secrets for the Mac App Store build:
 #   MAS_CSC_LINK            base64 .p12 with "Apple Distribution" and
 #                           "Mac Installer Distribution" certificates + keys
@@ -93,6 +99,65 @@ jobs:
           name: mac-app-store
           path: store/MaliPDF-MacAppStore.pkg
 
+  build-macos-dmg:
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Use tag as app version
+        run: npm version "${RELEASE_TAG#v}" --no-git-tag-version --allow-same-version
+
+      - name: Build application
+        shell: bash
+        run: GITHUB_SHA="$(git rev-parse HEAD)" npm run build
+
+      - name: Package Apple Silicon DMG
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          # An empty secret must not reach electron-builder; without a
+          # certificate the DMG is built unsigned.
+          if [[ -z "$(printf '%s' "${CSC_LINK:-}" | tr -d '[:space:]')" ]]; then
+            unset CSC_LINK CSC_KEY_PASSWORD
+            export CSC_IDENTITY_AUTO_DISCOVERY=false
+            echo "No Developer ID certificate: building an unsigned DMG."
+          fi
+          if [[ -z "$(printf '%s' "${APPLE_ID:-}" | tr -d '[:space:]')" ]]; then
+            unset APPLE_ID APPLE_APP_SPECIFIC_PASSWORD
+            echo "No notarization credentials: the DMG is not notarized."
+          fi
+          npx --yes "$ELECTRON_BUILDER" --mac dmg --arm64 --publish never
+
+      - name: Collect DMG
+        run: |
+          mkdir -p artifacts
+          FILE=$(find release -maxdepth 1 -type f -name "*.dmg" | head -1)
+          if [[ -z "$FILE" ]]; then echo "::error::DMG was not found."; exit 1; fi
+          cp "$FILE" artifacts/MaliPDF-macOS-Apple-Silicon.dmg
+
+      - name: Upload DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: artifacts/MaliPDF-macOS-Apple-Silicon.dmg
+
   build-windows:
     runs-on: windows-latest
 
@@ -146,11 +211,18 @@ jobs:
   release:
     needs:
       - build-mac-app-store
+      - build-macos-dmg
       - build-windows
 
     runs-on: ubuntu-latest
 
     steps:
+      - name: Download DMG
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-dmg
+          path: release-files
+
       - name: Checkout release notes
         uses: actions/checkout@v5
         with:
@@ -177,3 +249,5 @@ jobs:
           name: MaliPDF ${{ env.RELEASE_TAG }}
           prerelease: ${{ contains(env.RELEASE_TAG, '-') }}
           generate_release_notes: true
+          files: |
+            release-files/MaliPDF-macOS-Apple-Silicon.dmg
