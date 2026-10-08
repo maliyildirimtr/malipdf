@@ -5,6 +5,7 @@ import {
   ChevronRight,
   Circle,
   Eraser,
+  Hexagon,
   LassoSelect,
   Pointer,
   Settings2,
@@ -54,13 +55,16 @@ const TOOL_COMMANDS = {
   lasso: 'tool.lasso',
   laserPointer: 'tool.laserPointer',
   note: 'tool.note',
+  freeform: 'tool.freeform',
 } as const satisfies Partial<Record<ToolType, AppCommandId>>;
 
-const SHAPES: ReadonlyArray<{ tool: FocusShapeTool; label: string; icon: LucideIcon }> = [
+/** The same shapes as the ribbon's shape menu. */
+const SHAPES: ReadonlyArray<{ tool: FocusShapeTool | 'freeform'; label: string; icon: LucideIcon }> = [
   { tool: 'line', label: 'Line', icon: Minus },
   { tool: 'arrow', label: 'Arrow', icon: ArrowRight },
   { tool: 'rectangle', label: 'Rectangle', icon: Square },
   { tool: 'ellipse', label: 'Ellipse', icon: Circle },
+  { tool: 'freeform', label: 'Polygon', icon: Hexagon },
 ];
 
 
@@ -75,15 +79,11 @@ const TOOL_ITEMS: Record<Exclude<FocusToolbarItem, 'shapes'>, { label: string; i
   eraser: { label: 'Eraser', icon: Eraser },
   text: { label: 'Text', icon: Type },
   note: { label: 'Sticky Note', icon: StickyNote },
-  line: { label: 'Line', icon: Minus },
-  arrow: { label: 'Arrow', icon: ArrowRight },
-  rectangle: { label: 'Rectangle', icon: Square },
-  ellipse: { label: 'Ellipse', icon: Circle },
 };
 
 const ITEM_LABELS: Record<FocusToolbarItem, string> = {
   ...Object.fromEntries(Object.entries(TOOL_ITEMS).map(([k, v]) => [k, v.label])),
-  shapes: 'Shapes (menu)',
+  shapes: 'Shapes',
 } as Record<FocusToolbarItem, string>;
 
 /** Items after which a separator is drawn (navigation | drawing tools). */
@@ -128,7 +128,8 @@ export function FocusToolbar({ onCommand, canExecute }: FocusToolbarProps) {
     if (workspaceMode !== 'focus') setOpenPanel(null);
   }, [workspaceMode]);
 
-  const shapeDefinition = SHAPES.find(({ tool }) => tool === lastShapeTool) ?? SHAPES[2];
+  const currentShape = SHAPES.some(({ tool }) => tool === activeTool) ? activeTool as FocusShapeTool | 'freeform' : lastShapeTool;
+  const shapeDefinition = SHAPES.find(({ tool }) => tool === currentShape) ?? SHAPES[2];
   const ShapeIcon = shapeDefinition.icon;
   const propertySummary = useMemo(() => getPropertySummary(activeTool, toolOptions), [activeTool, toolOptions]);
 
@@ -174,12 +175,12 @@ export function FocusToolbar({ onCommand, canExecute }: FocusToolbarProps) {
     <div className={styles.splitButton}>
           <button
             type="button"
-            className={`${styles.shapeMain} ${activeTool === lastShapeTool ? styles.active : ''}`}
-            onClick={() => run(TOOL_COMMANDS[lastShapeTool])}
+            className={`${styles.shapeMain} ${activeTool === currentShape ? styles.active : ''}`}
+            onClick={() => run(TOOL_COMMANDS[currentShape])}
             aria-label={shapeDefinition.label}
-            aria-pressed={activeTool === lastShapeTool}
-            title={`${shapeDefinition.label} (${shortcutFor(lastShapeTool)})`}
-            disabled={!canExecute(TOOL_COMMANDS[lastShapeTool])}
+            aria-pressed={activeTool === currentShape}
+            title={`${shapeDefinition.label} (${shortcutFor(currentShape)})`}
+            disabled={!canExecute(TOOL_COMMANDS[currentShape])}
           >
             <ShapeIcon size={20} aria-hidden="true" />
           </button>
@@ -456,7 +457,7 @@ function isShapeLike(tool: ToolType): boolean {
 }
 
 function shortcutFor(tool: keyof typeof TOOL_COMMANDS): string {
-  return ({ select: 'V', hand: 'H', pen: 'P', highlighter: 'M', eraser: 'E', text: 'T', line: 'L', arrow: 'A', rectangle: 'R', ellipse: 'C', lasso: 'S', laserPointer: '', note: 'N' } as Record<string, string>)[tool];
+  return ({ select: 'V', hand: 'H', pen: 'P', highlighter: 'M', eraser: 'E', text: 'T', line: 'L', arrow: 'A', rectangle: 'R', ellipse: 'C', lasso: 'S', laserPointer: '', note: 'N', freeform: 'F' } as Record<string, string>)[tool];
 }
 
 function getPropertySummary(activeTool: ToolType, options: ReturnType<typeof useUIStore.getState>['toolOptions']) {

@@ -15,13 +15,13 @@ export type FocusToolbarSide = 'left' | 'right';
 export type ToolColorFamily = 'pen' | 'highlighter' | 'text' | 'shape';
 export type FocusShapeTool = Extract<ToolType, 'line' | 'arrow' | 'rectangle' | 'ellipse'>;
 /** Buttons the user can show or hide in the Focus Mode toolbar ('shapes' is the shape split button). */
-export type FocusToolbarItem = 'select' | 'hand' | 'lasso' | 'laserPointer' | 'pen' | 'highlighter' | 'eraser' | 'text' | 'note' | 'shapes' | 'line' | 'arrow' | 'rectangle' | 'ellipse';
-export const FOCUS_TOOLBAR_ITEMS: readonly FocusToolbarItem[] = ['select', 'hand', 'lasso', 'laserPointer', 'pen', 'highlighter', 'eraser', 'text', 'note', 'shapes', 'line', 'arrow', 'rectangle', 'ellipse'];
+export type FocusToolbarItem = 'select' | 'hand' | 'lasso' | 'laserPointer' | 'pen' | 'highlighter' | 'eraser' | 'text' | 'note' | 'shapes';
+export const FOCUS_TOOLBAR_ITEMS: readonly FocusToolbarItem[] = ['select', 'hand', 'lasso', 'laserPointer', 'pen', 'highlighter', 'eraser', 'text', 'note', 'shapes'];
 export const DEFAULT_FOCUS_TOOLBAR_ITEMS: readonly FocusToolbarItem[] = ['select', 'hand', 'pen', 'highlighter', 'eraser', 'text', 'shapes'];
-/** Tools of the presentation (slide show) toolbar. */
-export type PresentationTool = 'laser' | 'pen' | 'highlighter' | 'eraser' | 'line' | 'arrow' | 'rectangle' | 'ellipse';
-export const PRESENTATION_TOOLS: readonly PresentationTool[] = ['laser', 'pen', 'highlighter', 'eraser', 'line', 'arrow', 'rectangle', 'ellipse'];
-export const DEFAULT_PRESENTATION_TOOLS: readonly PresentationTool[] = ['laser', 'pen', 'highlighter', 'eraser'];
+/** Buttons of the presentation (slide show) toolbar ('shapes' opens the shape menu). */
+export type PresentationTool = 'laser' | 'pen' | 'highlighter' | 'eraser' | 'text' | 'shapes';
+export const PRESENTATION_TOOLS: readonly PresentationTool[] = ['laser', 'pen', 'highlighter', 'eraser', 'text', 'shapes'];
+export const DEFAULT_PRESENTATION_TOOLS: readonly PresentationTool[] = ['laser', 'pen', 'highlighter', 'eraser', 'shapes'];
 
 /** Toggle `item` in a list kept in the canonical order of `all`; at least one item stays. */
 export function toggleInOrder<T>(list: readonly T[], item: T, all: readonly T[]): T[] {

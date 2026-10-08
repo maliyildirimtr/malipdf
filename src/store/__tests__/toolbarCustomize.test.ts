@@ -25,11 +25,11 @@ describe('toolbar customization', () => {
     expect([...order].sort((a, b) => a - b)).toEqual(order);
   });
 
-  it('adds shape tools to the presentation toolbar', () => {
+  it('adds the text tool to the presentation toolbar', () => {
     const store = useUIStore.getState();
     store.resetPresentationTools();
     expect(useUIStore.getState().presentationTools).toEqual(DEFAULT_PRESENTATION_TOOLS);
-    store.togglePresentationTool('rectangle');
-    expect(useUIStore.getState().presentationTools).toEqual(['laser', 'pen', 'highlighter', 'eraser', 'rectangle']);
+    store.togglePresentationTool('text');
+    expect(useUIStore.getState().presentationTools).toEqual(['laser', 'pen', 'highlighter', 'eraser', 'text', 'shapes']);
   });
 });

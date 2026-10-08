@@ -209,3 +209,48 @@
   color: rgba(242, 242, 242, 0.85);
   font-size: 12px;
 }
+
+.controls .disclosure {
+  width: 16px;
+  min-width: 16px;
+  margin-left: -6px;
+  padding: 0;
+}
+
+.shapeMenu {
+  right: auto;
+  left: -40px;
+  min-width: 160px;
+}
+
+.controls .shapeItem {
+  display: flex;
+  justify-content: flex-start;
+  gap: 10px;
+  width: 100%;
+  height: 34px;
+  padding: 0 8px;
+  border-radius: 8px;
+}
+
+.menuHint {
+  margin-top: 6px;
+  color: rgba(242, 242, 242, 0.55);
+  font-size: 11px;
+}
+
+.textDraft {
+  position: fixed;
+  z-index: 10002;
+  min-width: 120px;
+  margin: 0;
+  padding: 2px 4px;
+  border: 1px dashed rgba(29, 78, 216, 0.8);
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.85);
+  line-height: 1.2;
+  resize: none;
+  overflow: hidden;
+  outline: none;
+  cursor: text;
+}

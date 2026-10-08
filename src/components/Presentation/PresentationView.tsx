@@ -7,7 +7,7 @@
  * document as annotations, one undo step) or discard it.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowRight, ChevronLeft, ChevronRight, Circle, Eraser, Highlighter, Minus, Pen, Pointer, Settings2, Square, Trash2, Undo2, X, type LucideIcon } from 'lucide-react';
+import { ArrowRight, ChevronLeft, ChevronRight, ChevronUp, Circle, Eraser, Highlighter, Minus, Pen, Pointer, Settings2, Square, Trash2, Type, Undo2, X, type LucideIcon } from 'lucide-react';
 import { useUIStore, PRESENTATION_TOOLS, type PresentationTool } from '../../store/uiStore';
 import { useDocumentStore } from '../../store/documentStore';
 import { useAnnotationStore } from '../../store/annotationStore';
@@ -17,7 +17,8 @@ import { createPageTransform, screenPointsToPdf, screenToPdf, type PageTransform
 import { isMultiplyAnnotation, renderAnnotations } from '../../pdf/annotationRenderer';
 import { hitTestAnnotation } from '../../pdf/annotationHitTest';
 import { simplifyInkPoints, stabilizePoints } from '../../pdf/inkGeometry';
-import type { Annotation, InputPoint, ShapeKind } from '../../types/annotations';
+import type { Annotation, InputPoint, TextAnnotation } from '../../types/annotations';
+import { autoSizeTextBox, canvasMeasure, cssFont, PDF_TEXT_CSS } from '../../pdf/textLayout';
 import { nanoid } from '../../utils/nanoid';
 import { addLaserPoint, clearLaser, endLaserTrail, startLaserTrail } from '../Laser/laserTrail';
 import { LaserOverlay } from '../Laser/LaserOverlay';
@@ -29,28 +30,47 @@ const MAX_CANVAS_PIXELS = 16_000_000;
 const CLICK_SLOP_PX = 6;
 const CONTROLS_HIDE_MS = 2200;
 
-export type ShowTool = PresentationTool;
+type ShapeTool = 'line' | 'arrow' | 'rectangle' | 'ellipse';
+/** The active tool; shapes are picked from the Shapes menu. */
+export type ShowTool = Exclude<PresentationTool, 'shapes'> | ShapeTool;
 
-const SHAPE_TOOLS: readonly ShowTool[] = ['line', 'arrow', 'rectangle', 'ellipse'];
-const isShapeTool = (tool: ShowTool): tool is Extract<ShowTool, ShapeKind> => SHAPE_TOOLS.includes(tool);
+/** The ribbon's drag shapes (polygon needs clicks, so it is not offered here). */
+const SHAPES: ReadonlyArray<{ tool: ShapeTool; label: string; icon: LucideIcon }> = [
+  { tool: 'line', label: 'Line', icon: Minus },
+  { tool: 'arrow', label: 'Arrow', icon: ArrowRight },
+  { tool: 'rectangle', label: 'Rectangle', icon: Square },
+  { tool: 'ellipse', label: 'Ellipse', icon: Circle },
+];
+const isShapeTool = (tool: ShowTool): tool is ShapeTool => SHAPES.some((x) => x.tool === tool);
 
-const TOOL_BUTTONS: Record<ShowTool, { label: string; icon: LucideIcon }> = {
+const TOOL_BUTTONS: Record<Exclude<PresentationTool, 'shapes'>, { label: string; icon: LucideIcon }> = {
   laser: { label: 'Laser (L)', icon: Pointer },
   pen: { label: 'Pen (D)', icon: Pen },
   highlighter: { label: 'Highlighter (H)', icon: Highlighter },
   eraser: { label: 'Eraser (E)', icon: Eraser },
-  line: { label: 'Line', icon: Minus },
-  arrow: { label: 'Arrow', icon: ArrowRight },
-  rectangle: { label: 'Rectangle', icon: Square },
-  ellipse: { label: 'Ellipse', icon: Circle },
+  text: { label: 'Text', icon: Type },
 };
-const TOOL_NAMES: Record<ShowTool, string> = {
-  laser: 'Laser', pen: 'Pen', highlighter: 'Highlighter', eraser: 'Eraser',
-  line: 'Line', arrow: 'Arrow', rectangle: 'Rectangle', ellipse: 'Ellipse',
+const TOOL_NAMES: Record<PresentationTool, string> = {
+  laser: 'Laser', pen: 'Pen', highlighter: 'Highlighter', eraser: 'Eraser', text: 'Text', shapes: 'Shapes',
 };
 
 const PEN_COLORS = ['#e63946', '#1d4ed8', '#16a34a', '#111111', '#ffffff'];
 const HIGHLIGHT_COLORS = ['#ffeb3b', '#7bed9f', '#74c0fc', '#ffa8a8'];
+
+/** Shift: squares and circles; lines and arrows in 45° steps (as on the page). */
+function constrainEnd(tool: ShapeTool, start: { x: number; y: number }, end: { x: number; y: number }) {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  if (tool === 'rectangle' || tool === 'ellipse') {
+    const d = Math.max(Math.abs(dx), Math.abs(dy));
+    return { x: start.x + (dx < 0 ? -1 : 1) * d, y: start.y + (dy < 0 ? -1 : 1) * d };
+  }
+  const angle = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * (Math.PI / 4);
+  const dist = Math.hypot(dx, dy);
+  return { x: start.x + Math.cos(angle) * dist, y: start.y + Math.sin(angle) * dist };
+}
+
+interface TextDraft { clientX: number; clientY: number; pdfX: number; pdfY: number; page: number; scale: number }
 
 export function PresentationView() {
   const open = useUIStore((s) => s.presentationOpen);
@@ -67,8 +87,12 @@ function PresentationSurface() {
   const [size, setSize] = useState({ width: window.innerWidth, height: window.innerHeight });
   const [controlsVisible, setControlsVisible] = useState(true);
   const [tool, setToolState] = useState<ShowTool>('laser');
-  const [penColor, setPenColor] = useState(PEN_COLORS[0]);
-  const [highlightColor, setHighlightColor] = useState(HIGHLIGHT_COLORS[0]);
+  // Colours, widths and styles are the main toolbar's: a change here shows there too.
+  const toolOptions = useUIStore((s) => s.toolOptions);
+  const lastShapeTool = useUIStore((s) => s.lastShapeTool);
+  const [shapeMenuOpen, setShapeMenuOpen] = useState(false);
+  const [textDraft, setTextDraft] = useState<TextDraft | null>(null);
+  const textCommitted = useRef(false);
   const [inkVersion, setInkVersion] = useState(0);
   const [keepPrompt, setKeepPrompt] = useState(false);
   const [customizeOpen, setCustomizeOpen] = useState(false);
@@ -144,6 +168,9 @@ function PresentationSurface() {
     livePoints.current = [];
     pointer.current = null;
     endLaserTrail();
+    setShapeMenuOpen(false);
+    // Same tool in the main toolbar, so each tool uses (and changes) the same settings.
+    if (next !== 'laser') useUIStore.getState().setActiveTool(next);
     setToolState(next);
   }, []);
 
@@ -182,17 +209,17 @@ function PresentationSurface() {
     if (isShapeTool(kind)) {
       if (pts.length < 2) return null;
       const start = pts[0];
-      const end = pts[pts.length - 1];
+      const end = shiftRef.current ? constrainEnd(kind, start, pts[pts.length - 1]) : pts[pts.length - 1];
       if (Math.hypot(end.x - start.x, end.y - start.y) < 4) return null;
       const now = Date.now();
-      const shapeOptions = useUIStore.getState().toolOptions.shape;
+      const shape = useUIStore.getState().toolOptions.shape;
       return {
         id: finished ? nanoid() : 'live', pageIndex: pageRef.current, locked: false, createdAt: now, updatedAt: now,
         type: 'shape', shapeKind: kind,
         startPoint: screenToPdf(start.x, start.y, transform),
         endPoint: screenToPdf(end.x, end.y, transform),
-        color: penColorRef.current, opacity: 1,
-        strokeWidth: Math.max(2, shapeOptions.strokeWidth), borderStyle: 'solid', fillColor: 'transparent', cornerRadius: 8,
+        color: shape.color, opacity: shape.opacity,
+        strokeWidth: shape.strokeWidth, borderStyle: shape.borderStyle, fillColor: shape.fillColor, cornerRadius: 8,
       };
     }
     if (kind !== 'pen' && kind !== 'highlighter') return null;
@@ -203,19 +230,39 @@ function PresentationSurface() {
     if (kind === 'highlighter') {
       let points = screenPointsToPdf(pts, transform);
       if (finished) points = simplifyInkPoints(points, 0.35 / transform.scale);
-      return { ...base, type: 'highlight', points, color: highlightColorRef.current, width: options.highlighter.width, opacity: 0.4 };
+      return { ...base, type: 'highlight', points, color: options.highlighter.color, width: options.highlighter.width, opacity: options.highlighter.opacity };
     }
     let points = screenPointsToPdf(stabilizePoints(pts, options.pen.stabilizer), transform);
     if (finished) points = simplifyInkPoints(points, 0.35 / transform.scale, options.pen.pressureSensitive ? options.pen.width * 0.7 : 0);
     return {
-      ...base, type: 'stroke', points, color: penColorRef.current, width: Math.max(2, options.pen.width), opacity: 1,
-      smooth: true, pressure: options.pen.pressureSensitive,
+      ...base, type: 'stroke', points, color: options.pen.color, width: options.pen.width, opacity: options.pen.opacity,
+      smooth: options.pen.smooth, pressure: options.pen.pressureSensitive, penStyle: options.pen.penStyle,
     };
   }
-  const penColorRef = useRef(penColor);
-  penColorRef.current = penColor;
-  const highlightColorRef = useRef(highlightColor);
-  highlightColorRef.current = highlightColor;
+  const shiftRef = useRef(false);
+
+  // ── Text ──────────────────────────────────────────────────────────────
+
+  const commitText = useCallback((draft: TextDraft, content: string) => {
+    if (textCommitted.current) return;
+    textCommitted.current = true;
+    setTextDraft(null);
+    if (!content.trim()) return;
+    const style = useUIStore.getState().toolOptions.text;
+    const size = autoSizeTextBox({ content, fontSize: style.fontSize, listStyle: style.listStyle }, canvasMeasure(style));
+    const now = Date.now();
+    const ann: TextAnnotation = {
+      id: nanoid(), pageIndex: draft.page, type: 'text',
+      bounds: { x: draft.pdfX, y: draft.pdfY - size.height, width: size.width, height: size.height },
+      content,
+      fontFamily: style.fontFamily, fontSize: style.fontSize, bold: style.bold, italic: style.italic, underline: style.underline,
+      align: style.align, color: style.color, backgroundColor: style.backgroundColor,
+      borderColor: style.borderColor, borderWidth: style.borderWidth, listStyle: style.listStyle,
+      opacity: 1, locked: false, createdAt: now, updatedAt: now,
+    };
+    changeInk(draft.page, [...(sessionInk.current.get(draft.page) ?? []), ann]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const changeInk = useCallback((page: number, next: Annotation[]) => {
     undoStack.current.push({ page, before: sessionInk.current.get(page) ?? [] });
@@ -268,6 +315,8 @@ function PresentationSurface() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      shiftRef.current = e.shiftKey;
+      if ((e.target as HTMLElement | null)?.tagName === 'TEXTAREA') return;
       if (keepPrompt) {
         if (e.key === 'Enter') finishClose(true);
         else if (e.key === 'Escape') finishClose(false);
@@ -290,13 +339,19 @@ function PresentationSurface() {
       else if (k === 'd') setTool('pen');
       else if (k === 'h') setTool('highlighter');
       else if (k === 'e') setTool('eraser');
+      else if (k === 't') setTool('text');
       else if (k === 'c') clearPageInk();
       else return;
       e.preventDefault();
       e.stopPropagation();
     };
+    const onKeyUp = (e: KeyboardEvent) => { shiftRef.current = e.shiftKey; };
     window.addEventListener('keydown', onKey, true);
-    return () => window.removeEventListener('keydown', onKey, true);
+    window.addEventListener('keyup', onKeyUp, true);
+    return () => {
+      window.removeEventListener('keydown', onKey, true);
+      window.removeEventListener('keyup', onKeyUp, true);
+    };
   }, [close, go, pageCount, keepPrompt, finishClose, undoInk, setTool, clearPageInk]);
 
   const showControls = useCallback(() => {
@@ -397,12 +452,25 @@ function PresentationSurface() {
   }
 
   const onPointerDown = (e: React.PointerEvent) => {
-    if ((e.target as HTMLElement).closest('button, [data-keep-prompt], [data-show-menu]')) return;
+    if ((e.target as HTMLElement).closest('button, textarea, [data-keep-prompt], [data-show-menu]')) return;
+    setShapeMenuOpen(false);
+    shiftRef.current = e.shiftKey;
     const eraserEnd = e.pointerType === 'pen' && (e.button === 5 || (e.buttons & 32) !== 0);
     if (e.button !== 0 && !eraserEnd) return;
     e.currentTarget.setPointerCapture(e.pointerId);
     pointer.current = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: false };
     const mode = eraserEnd ? 'eraser' : toolRef.current;
+    if (mode === 'text') {
+      pointer.current = null;
+      const v = view.current;
+      const local = localPoint(e.clientX, e.clientY, 0.5, 0);
+      if (!v || !local || v.page !== pageRef.current || textDraft) return;
+      e.preventDefault();
+      const pdf = screenToPdf(local.x, local.y, v.transform);
+      textCommitted.current = false;
+      setTextDraft({ clientX: e.clientX, clientY: e.clientY, pdfX: pdf.x, pdfY: pdf.y, page: v.page, scale: v.transform.scale });
+      return;
+    }
     if (mode === 'laser') {
       startLaserTrail(e.clientX, e.clientY, e.timeStamp);
     } else if (mode === 'eraser') {
@@ -421,6 +489,7 @@ function PresentationSurface() {
       return;
     }
     if (p.id !== e.pointerId) return;
+    shiftRef.current = e.shiftKey;
     if (Math.hypot(e.clientX - p.x, e.clientY - p.y) > CLICK_SLOP_PX) p.moved = true;
     const events = e.nativeEvent.getCoalescedEvents?.() ?? [e.nativeEvent];
     const eraserEnd = e.pointerType === 'pen' && (e.buttons & 32) !== 0;
@@ -466,9 +535,20 @@ function PresentationSurface() {
 
   const cursor = !controlsVisible && tool === 'laser'
     ? undefined
-    : tool === 'pen' || isShapeTool(tool) ? PEN_CURSOR : tool === 'highlighter' ? HIGHLIGHTER_CURSOR : tool === 'eraser' ? ERASER_CURSOR : LASER_CURSOR;
+    : tool === 'text' ? 'text' : tool === 'pen' || isShapeTool(tool) ? PEN_CURSOR : tool === 'highlighter' ? HIGHLIGHTER_CURSOR : tool === 'eraser' ? ERASER_CURSOR : LASER_CURSOR;
   const colors = tool === 'highlighter' ? HIGHLIGHT_COLORS : PEN_COLORS;
-  const activeColor = tool === 'highlighter' ? highlightColor : penColor;
+  const activeColor = tool === 'highlighter' ? toolOptions.highlighter.color
+    : tool === 'text' ? toolOptions.text.color
+      : isShapeTool(tool) ? toolOptions.shape.color : toolOptions.pen.color;
+  const setColor = (color: string) => {
+    const ui = useUIStore.getState();
+    if (tool === 'highlighter') ui.updateHighlighterOptions({ color });
+    else if (tool === 'text') ui.updateTextOptions({ color });
+    else if (isShapeTool(tool)) ui.updateShapeOptions({ color });
+    else ui.updatePenOptions({ color });
+  };
+  const currentShape: ShapeTool = isShapeTool(tool) ? tool : (SHAPES.some((x) => x.tool === lastShapeTool) ? lastShapeTool as ShapeTool : 'rectangle');
+  const CurrentShapeIcon = SHAPES.find((x) => x.tool === currentShape)!.icon;
   const pageHasInk = (sessionInk.current.get(pageIndex)?.length ?? 0) > 0;
   void inkVersion; // re-render when ink changes (undo / clear buttons)
 
@@ -491,16 +571,51 @@ function PresentationSurface() {
         <canvas ref={inkCanvasRef} className={styles.inkLayer} />
       </div>
 
-      <div className={`${styles.controls} ${controlsVisible || tool !== 'laser' || customizeOpen ? styles.controlsVisible : ''}`}>
+      <div className={`${styles.controls} ${controlsVisible || tool !== 'laser' || customizeOpen || shapeMenuOpen ? styles.controlsVisible : ''}`}>
         <button type="button" onClick={() => go(-1)} disabled={pageIndex === 0} aria-label="Previous page"><ChevronLeft size={18} /></button>
         <span className={styles.counter}>{pageIndex + 1} / {pageCount}</span>
         <button type="button" onClick={() => go(1)} disabled={pageIndex >= pageCount - 1} aria-label="Next page"><ChevronRight size={18} /></button>
         <span className={styles.divider} />
         {shownTools.map((t) => {
+          if (t === 'shapes') {
+            return (
+              <div key={t} className={styles.customizeWrap} data-show-menu>
+                <ToolButton label={SHAPES.find((x) => x.tool === currentShape)!.label} active={isShapeTool(tool)} onClick={() => setTool(currentShape)}>
+                  <CurrentShapeIcon size={17} />
+                </ToolButton>
+                <button
+                  type="button"
+                  className={styles.disclosure}
+                  onClick={() => setShapeMenuOpen((v) => !v)}
+                  aria-expanded={shapeMenuOpen}
+                  aria-label="Choose shape tool"
+                  title="Choose shape tool"
+                ><ChevronUp size={12} /></button>
+                {shapeMenuOpen && (
+                  <div className={`${styles.customizeMenu} ${styles.shapeMenu}`} role="menu" aria-label="Shapes">
+                    {SHAPES.map(({ tool: shapeTool, label, icon: Icon }) => (
+                      <button
+                        key={shapeTool}
+                        type="button"
+                        role="menuitemradio"
+                        aria-checked={tool === shapeTool}
+                        data-active={tool === shapeTool || undefined}
+                        className={styles.shapeItem}
+                        onClick={() => setTool(shapeTool)}
+                      >
+                        <Icon size={17} /><span>{label}</span>
+                      </button>
+                    ))}
+                    <div className={styles.menuHint}>Shift: square, circle, 45°</div>
+                  </div>
+                )}
+              </div>
+            );
+          }
           const { label, icon: Icon } = TOOL_BUTTONS[t];
           return <ToolButton key={t} label={label} active={tool === t} onClick={() => setTool(t)}><Icon size={17} /></ToolButton>;
         })}
-        {(tool === 'pen' || tool === 'highlighter' || isShapeTool(tool)) && (
+        {(tool === 'pen' || tool === 'highlighter' || tool === 'text' || isShapeTool(tool)) && (
           <>
             <span className={styles.divider} />
             {colors.map((c) => (
@@ -511,7 +626,7 @@ function PresentationSurface() {
                 style={{ background: c }}
                 aria-label={`Colour ${c}`}
                 aria-pressed={activeColor === c}
-                onClick={() => (tool === 'highlighter' ? setHighlightColor(c) : setPenColor(c))}
+                onClick={() => setColor(c)}
               />
             ))}
           </>
@@ -523,7 +638,7 @@ function PresentationSurface() {
         <div className={styles.customizeWrap} data-show-menu>
           <button
             type="button"
-            onClick={() => setCustomizeOpen((v) => !v)}
+            onClick={() => { setCustomizeOpen((v) => !v); setShapeMenuOpen(false); }}
             data-active={customizeOpen || undefined}
             aria-expanded={customizeOpen}
             aria-label="Customize toolbar"
@@ -549,6 +664,34 @@ function PresentationSurface() {
         </div>
         <button type="button" onClick={close} aria-label="End presentation" title="End presentation (Esc)"><X size={18} /></button>
       </div>
+
+      {textDraft && (
+        <textarea
+          className={styles.textDraft}
+          autoFocus
+          rows={1}
+          style={{
+            left: textDraft.clientX,
+            top: textDraft.clientY,
+            font: cssFont(toolOptions.text).replace(/(\d+(?:\.\d+)?)px/, (_, n) => `${Number(n) * textDraft.scale}px`),
+            color: toolOptions.text.color,
+            ...PDF_TEXT_CSS,
+          }}
+          aria-label="Text"
+          onPointerDown={(e) => e.stopPropagation()}
+          onKeyDown={(e) => {
+            e.stopPropagation();
+            if (e.key === 'Escape') { textCommitted.current = true; setTextDraft(null); }
+            else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) commitText(textDraft, e.currentTarget.value);
+          }}
+          onBlur={(e) => commitText(textDraft, e.currentTarget.value)}
+          onInput={(e) => {
+            const el = e.currentTarget;
+            el.style.height = 'auto';
+            el.style.height = `${el.scrollHeight}px`;
+          }}
+        />
+      )}
 
       {keepPrompt && (
         <div className={styles.promptBackdrop} data-keep-prompt>
