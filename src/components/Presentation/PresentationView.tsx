@@ -7,13 +7,15 @@
  * document as annotations, one undo step) or discard it.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowRight, ChevronLeft, ChevronRight, ChevronUp, Circle, Eraser, Highlighter, Minus, Pen, Pointer, Settings2, Square, Trash2, Type, Undo2, X, type LucideIcon } from 'lucide-react';
+import { ArrowRight, MousePointer2, ChevronLeft, ChevronRight, ChevronUp, Circle, Eraser, Highlighter, Minus, Pen, Pointer, Settings2, Square, Trash2, Type, Undo2, X, type LucideIcon } from 'lucide-react';
 import { useUIStore, PRESENTATION_TOOLS, type PresentationTool } from '../../store/uiStore';
 import { useDocumentStore } from '../../store/documentStore';
 import { useAnnotationStore } from '../../store/annotationStore';
 import { useHistoryStore, makeAddAction, makeBatchAction } from '../../store/historyStore';
 import { getDocumentProxy } from '../../pdf/documentManager';
-import { createPageTransform, screenPointsToPdf, screenToPdf, type PageTransform } from '../../pdf/coordinateTransform';
+import { createPageTransform, pdfToScreen, screenPointsToPdf, screenToPdf, type PageTransform } from '../../pdf/coordinateTransform';
+import { translateAnnotation } from '../../pdf/annotationTransform';
+import { getAnnotationBounds } from '../../pdf/annotationGeometry';
 import { isMultiplyAnnotation, renderAnnotations } from '../../pdf/annotationRenderer';
 import { hitTestAnnotation } from '../../pdf/annotationHitTest';
 import { simplifyInkPoints, stabilizePoints } from '../../pdf/inkGeometry';
@@ -43,12 +45,13 @@ const SHAPES: ReadonlyArray<{ tool: ShapeTool; label: string; icon: LucideIcon }
 ];
 /** The app's tool keys, the same in every mode. */
 const SHOW_TOOL_KEYS: Record<string, ShowTool> = {
-  k: 'laser', p: 'pen', m: 'highlighter', e: 'eraser', t: 'text',
+  v: 'select', k: 'laser', p: 'pen', m: 'highlighter', e: 'eraser', t: 'text',
   l: 'line', a: 'arrow', r: 'rectangle', c: 'ellipse',
 };
 const isShapeTool = (tool: ShowTool): tool is ShapeTool => SHAPES.some((x) => x.tool === tool);
 
 const TOOL_BUTTONS: Record<Exclude<PresentationTool, 'shapes'>, { label: string; icon: LucideIcon }> = {
+  select: { label: 'Select (V)', icon: MousePointer2 },
   laser: { label: 'Laser Pointer (K)', icon: Pointer },
   pen: { label: 'Pen (P)', icon: Pen },
   highlighter: { label: 'Highlighter (M)', icon: Highlighter },
@@ -56,7 +59,7 @@ const TOOL_BUTTONS: Record<Exclude<PresentationTool, 'shapes'>, { label: string;
   text: { label: 'Text (T)', icon: Type },
 };
 const TOOL_NAMES: Record<PresentationTool, string> = {
-  laser: 'Laser', pen: 'Pen', highlighter: 'Highlighter', eraser: 'Eraser', text: 'Text', shapes: 'Shapes',
+  select: 'Select', laser: 'Laser', pen: 'Pen', highlighter: 'Highlighter', eraser: 'Eraser', text: 'Text', shapes: 'Shapes',
 };
 
 const PEN_COLORS = ['#e63946', '#1d4ed8', '#16a34a', '#111111', '#ffffff'];
@@ -166,6 +169,7 @@ function PresentationSurface() {
 
   const go = useCallback((delta: number) => {
     livePoints.current = [];
+    selectedRef.current = null;
     setPageIndex((p) => Math.max(0, Math.min(pageCount - 1, p + delta)));
   }, [pageCount]);
 
@@ -174,6 +178,7 @@ function PresentationSurface() {
     pointer.current = null;
     endLaserTrail();
     setShapeMenuOpen(false);
+    selectedRef.current = null;
     // Same tool in the main toolbar, so each tool uses (and changes) the same settings.
     if (next !== 'laser') useUIStore.getState().setActiveTool(next);
     setToolState(next);
@@ -205,8 +210,49 @@ function PresentationSurface() {
     const ictx = ink.getContext('2d');
     if (hctx) renderAnnotations(hctx, list.filter(isMultiplyAnnotation), v.transform, v.dpr);
     if (ictx) renderAnnotations(ictx, list.filter((a) => !isMultiplyAnnotation(a)), v.transform, v.dpr);
+    const selected = selectedRef.current ? list.find((a) => a.id === selectedRef.current) : undefined;
+    if (ictx && selected) {
+      const b = getAnnotationBounds(selected);
+      const p1 = pdfToScreen(b.x, b.y, v.transform);
+      const p2 = pdfToScreen(b.x + b.width, b.y + b.height, v.transform);
+      const pad = 6;
+      ictx.save();
+      ictx.setTransform(v.dpr, 0, 0, v.dpr, 0, 0);
+      ictx.strokeStyle = '#2563eb';
+      ictx.lineWidth = 1.5;
+      ictx.setLineDash([5, 4]);
+      ictx.strokeRect(Math.min(p1.x, p2.x) - pad, Math.min(p1.y, p2.y) - pad, Math.abs(p2.x - p1.x) + pad * 2, Math.abs(p2.y - p1.y) + pad * 2);
+      ictx.restore();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /** Topmost ink item of this page under the pointer. */
+  function inkAt(clientX: number, clientY: number): Annotation | null {
+    const v = view.current;
+    const local = localPoint(clientX, clientY, 0.5, 0);
+    if (!v || !local || v.page !== pageRef.current) return null;
+    const p = screenToPdf(local.x, local.y, v.transform);
+    const list = sessionInk.current.get(v.page) ?? [];
+    const tolerance = 8 / v.transform.scale;
+    for (let i = list.length - 1; i >= 0; i--) {
+      const b = getAnnotationBounds(list[i]);
+      const inside = p.x >= b.x - tolerance && p.x <= b.x + b.width + tolerance && p.y >= b.y - tolerance && p.y <= b.y + b.height + tolerance;
+      if (hitTestAnnotation(p, list[i], tolerance) || (list[i].type === 'text' && inside)) return list[i];
+    }
+    return null;
+  }
+
+  const deleteSelected = () => {
+    const id = selectedRef.current;
+    const page = pageRef.current;
+    if (!id) return false;
+    const list = sessionInk.current.get(page) ?? [];
+    selectedRef.current = null;
+    if (list.some((a) => a.id === id)) changeInk(page, list.filter((a) => a.id !== id));
+    else paintInk();
+    return true;
+  };
 
   function buildLiveInk(transform: PageTransform, finished = false): Annotation | null {
     const pts = livePoints.current;
@@ -245,6 +291,9 @@ function PresentationSurface() {
     };
   }
   const shiftRef = useRef(false);
+  /** Select tool: the picked ink item, and the move in progress. */
+  const selectedRef = useRef<string | null>(null);
+  const dragRef = useRef<{ id: string; page: number; startPdf: { x: number; y: number }; before: Annotation[] } | null>(null);
 
   // ── Text ──────────────────────────────────────────────────────────────
 
@@ -335,6 +384,8 @@ function PresentationSurface() {
       const k = e.key.toLowerCase();
       if ((e.metaKey || e.ctrlKey) && k === 'z') undoInk();
       else if (e.metaKey || e.ctrlKey || e.altKey) return;
+      else if (e.key === 'Escape' && selectedRef.current) { selectedRef.current = null; paintInk(); }
+      else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedRef.current) deleteSelected();
       else if (e.key === 'Escape') close();
       else if (next.includes(e.key)) go(1);
       else if (prev.includes(e.key)) go(-1);
@@ -472,6 +523,17 @@ function PresentationSurface() {
       setTextDraft({ clientX: e.clientX, clientY: e.clientY, pdfX: pdf.x, pdfY: pdf.y, page: v.page, scale: v.transform.scale });
       return;
     }
+    if (mode === 'select') {
+      const hit = inkAt(e.clientX, e.clientY);
+      selectedRef.current = hit?.id ?? null;
+      const v = view.current;
+      const local = localPoint(e.clientX, e.clientY, 0.5, 0);
+      dragRef.current = hit && v && local
+        ? { id: hit.id, page: v.page, startPdf: screenToPdf(local.x, local.y, v.transform), before: sessionInk.current.get(v.page) ?? [] }
+        : null;
+      paintInk();
+      return;
+    }
     if (mode === 'laser') {
       startLaserTrail(e.clientX, e.clientY, e.timeStamp);
     } else if (mode === 'eraser') {
@@ -495,6 +557,18 @@ function PresentationSurface() {
     const events = e.nativeEvent.getCoalescedEvents?.() ?? [e.nativeEvent];
     const eraserEnd = e.pointerType === 'pen' && (e.buttons & 32) !== 0;
     const mode = eraserEnd ? 'eraser' : toolRef.current;
+    if (mode === 'select') {
+      const drag = dragRef.current;
+      const v = view.current;
+      const local = localPoint(e.clientX, e.clientY, 0.5, 0);
+      if (!drag || !v || !local || v.page !== drag.page) return;
+      const now = screenToPdf(local.x, local.y, v.transform);
+      const dx = now.x - drag.startPdf.x;
+      const dy = now.y - drag.startPdf.y;
+      sessionInk.current.set(drag.page, drag.before.map((a) => (a.id === drag.id ? translateAnnotation(a, dx, dy) : a)));
+      paintInk();
+      return;
+    }
     if (mode === 'laser') {
       for (const ev of events) addLaserPoint(ev.clientX, ev.clientY, ev.timeStamp);
     } else if (mode === 'eraser') {
@@ -517,6 +591,18 @@ function PresentationSurface() {
     if (!p || (e && p.id !== e.pointerId)) return;
     pointer.current = null;
     const mode = toolRef.current;
+    if (mode === 'select') {
+      const drag = dragRef.current;
+      dragRef.current = null;
+      if (drag && p.moved) {
+        // One undo step for the whole move.
+        undoStack.current.push({ page: drag.page, before: drag.before });
+        setInkVersion((n) => n + 1);
+      } else if (drag) {
+        sessionInk.current.set(drag.page, drag.before);
+      }
+      return;
+    }
     if (mode === 'laser') {
       endLaserTrail(e?.timeStamp);
       if (e && !p.moved) {
@@ -536,7 +622,7 @@ function PresentationSurface() {
 
   const cursor = !controlsVisible && tool === 'laser'
     ? undefined
-    : tool === 'text' ? 'text' : tool === 'pen' || isShapeTool(tool) ? PEN_CURSOR : tool === 'highlighter' ? HIGHLIGHTER_CURSOR : tool === 'eraser' ? ERASER_CURSOR : LASER_CURSOR;
+    : tool === 'select' ? 'default' : tool === 'text' ? 'text' : tool === 'pen' || isShapeTool(tool) ? PEN_CURSOR : tool === 'highlighter' ? HIGHLIGHTER_CURSOR : tool === 'eraser' ? ERASER_CURSOR : LASER_CURSOR;
   const colors = tool === 'highlighter' ? HIGHLIGHT_COLORS : PEN_COLORS;
   const activeColor = tool === 'highlighter' ? toolOptions.highlighter.color
     : tool === 'text' ? toolOptions.text.color

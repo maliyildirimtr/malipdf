@@ -30,6 +30,6 @@ describe('toolbar customization', () => {
     store.resetPresentationTools();
     expect(useUIStore.getState().presentationTools).toEqual(DEFAULT_PRESENTATION_TOOLS);
     store.togglePresentationTool('text');
-    expect(useUIStore.getState().presentationTools).toEqual(['laser', 'pen', 'highlighter', 'eraser', 'text', 'shapes']);
+    expect(useUIStore.getState().presentationTools).toEqual(['select', 'laser', 'pen', 'highlighter', 'eraser', 'text', 'shapes']);
   });
 });

@@ -383,6 +383,7 @@ export const TR: Readonly<Record<string, string>> = {
   'Keep ink annotations?': 'Mürekkep notları saklansın mı?',
   'What you wrote during the presentation can be added to the document.': 'Sunum sırasında yazdıklarınız belgeye eklenebilir.',
   'Laser (L)': 'Lazer (L)',
+  'Select (V)': 'Seç (V)',
   'Laser Pointer (K)': 'Lazer İşaretçi (K)',
   'Pen (P)': 'Kalem (P)',
   'Highlighter (M)': 'Fosforlu Kalem (M)',

@@ -19,9 +19,9 @@ export type FocusToolbarItem = 'select' | 'hand' | 'lasso' | 'laserPointer' | 'p
 export const FOCUS_TOOLBAR_ITEMS: readonly FocusToolbarItem[] = ['select', 'hand', 'lasso', 'laserPointer', 'pen', 'highlighter', 'eraser', 'text', 'note', 'shapes'];
 export const DEFAULT_FOCUS_TOOLBAR_ITEMS: readonly FocusToolbarItem[] = ['select', 'hand', 'pen', 'highlighter', 'eraser', 'text', 'shapes'];
 /** Buttons of the presentation (slide show) toolbar ('shapes' opens the shape menu). */
-export type PresentationTool = 'laser' | 'pen' | 'highlighter' | 'eraser' | 'text' | 'shapes';
-export const PRESENTATION_TOOLS: readonly PresentationTool[] = ['laser', 'pen', 'highlighter', 'eraser', 'text', 'shapes'];
-export const DEFAULT_PRESENTATION_TOOLS: readonly PresentationTool[] = ['laser', 'pen', 'highlighter', 'eraser', 'shapes'];
+export type PresentationTool = 'select' | 'laser' | 'pen' | 'highlighter' | 'eraser' | 'text' | 'shapes';
+export const PRESENTATION_TOOLS: readonly PresentationTool[] = ['select', 'laser', 'pen', 'highlighter', 'eraser', 'text', 'shapes'];
+export const DEFAULT_PRESENTATION_TOOLS: readonly PresentationTool[] = ['select', 'laser', 'pen', 'highlighter', 'eraser', 'shapes'];
 
 /** Toggle `item` in a list kept in the canonical order of `all`; at least one item stays. */
 export function toggleInOrder<T>(list: readonly T[], item: T, all: readonly T[]): T[] {
@@ -518,8 +518,12 @@ export const useUIStore = create<UIStore>()(
       }),
       {
         name: 'malipedefe-ui',
-        version: 2, // bump version for migration
+        version: 3, // bump version for migration
         migrate: (persistedState: any, version: number) => {
+          // v3: the presentation toolbar gained Select.
+          if (version < 3 && Array.isArray(persistedState?.presentationTools) && !persistedState.presentationTools.includes('select')) {
+            persistedState.presentationTools = ['select', ...persistedState.presentationTools];
+          }
           // v2: the eraser removes whole strokes by default.
           if (version < 2 && persistedState?.toolOptions?.eraser) {
             persistedState.toolOptions.eraser.mode = 'object';
