@@ -565,6 +565,8 @@ declare global {
       logRendererError?: (error: { message: string; stack?: string }) => Promise<boolean>;
       ocrIsAvailable?: () => Promise<boolean>;
       ocrRecognize?: (png: ArrayBuffer, languages?: string[]) => Promise<import('../pdf/ocr').OcrLine[]>;
+      /** iPad: opens the share sheet for a PDF (send, save to Files, print). */
+      sharePdf?: (name: string, data: ArrayBuffer | Uint8Array) => Promise<boolean>;
     };
   }
 }

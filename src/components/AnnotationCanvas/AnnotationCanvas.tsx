@@ -112,6 +112,8 @@ import { selectText, type TextSelection } from '../../pdf/textSelection';
 import type { TextMarkupAnnotation, NoteAnnotation, MeasureAnnotation } from '../../types/annotations';
 import { NOTE_ICON_SIZE } from '../../types/annotations';
 import { NotePopup } from './NotePopup';
+import { isIpadApp } from '../../platform/native';
+import { fingerNavigates, useStylusScrollGuard } from '../../platform/pencilInput';
 import type { TextEditAnnotation } from '../../types/annotations';
 import type { EditableLine } from '../../commands/textEditCommands';
 import { coverQuad, coverWidth } from '../../pdf/textEdit';
@@ -379,6 +381,9 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
   }, [activeTool]);
   const interactionTool = temporaryTool ?? activeTool;
   const selectedTool = interactionTool; // before per-gesture pen-button overrides
+  // iPad "draw with Apple Pencil only": a finger scrolls the page natively.
+  const pencilOnly = useUIStore(state => state.pencilOnly) && isIpadApp();
+  useStylusScrollGuard(interactionRef, pencilOnly);
   const addAnnotation = useAnnotationStore(state => state.addAnnotation);
   const replaceAnnotation = useAnnotationStore(state => state.replaceAnnotation);
   const getPageAnnotations = useAnnotationStore(state => state.getPageAnnotations);
@@ -1188,6 +1193,8 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
       stopReplay();
       return;
     }
+    // iPad: a finger scrolls (the browser handles it); the Pencil draws.
+    if (fingerNavigates(e.pointerType, selectedTool, pencilOnly)) return;
     // A click outside an open sticky note closes (and saves) it.
     if (useUIStore.getState().openNote) {
       useUIStore.getState().setOpenNote(null);
@@ -2828,7 +2835,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
           top: 0,
           width: '100%',
           height: '100%',
-          touchAction: 'none',
+          touchAction: pencilOnly ? 'pan-x pan-y' : 'none',
           pointerEvents: textEditingRef.current ? 'none' : 'auto',
           zIndex: 20,
         }}

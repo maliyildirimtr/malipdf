@@ -248,3 +248,9 @@
     transition: none;
   }
 }
+
+/* iPad: no window buttons on the left; the app menu comes first. */
+:global(html.platform-ipad) .topBar {
+  padding-left: 8px;
+  -webkit-app-region: no-drag;
+}

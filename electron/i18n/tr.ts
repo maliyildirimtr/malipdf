@@ -913,12 +913,24 @@ export const TR: Readonly<Record<string, string>> = {
   'The writing in each picture becomes editable text.': 'Her resimdeki yazı düzenlenebilir metne dönüşür.',
   'Each picture goes on its own A4 page.': 'Her resim kendi A4 sayfasına yerleşir.',
   'Each picture goes on its own A4 page. Turning pictures into text needs text recognition (macOS).': 'Her resim kendi A4 sayfasına yerleşir. Resimleri metne çevirmek için metin tanıma (macOS) gerekir.',
+
+  // ── iPad ─────────────────────────────────────────────────────────────────
+  'Share or Print': 'Paylaş veya Yazdır',
+  'Draw with Apple Pencil only': 'Yalnızca Apple Pencil ile çiz',
+  'A finger scrolls and zooms; the Pencil draws.': 'Parmak kaydırır ve yakınlaştırır; Pencil çizer.',
+  'MaliPDF menu': 'MaliPDF menüsü',
+  Replace: 'Değiştir',
+  'Folder name': 'Klasör adı',
+  'Opening Word, Excel and PowerPoint files is not available on iPad. Export them as PDF first.':
+    'iPad’de Word, Excel ve PowerPoint dosyaları açılamıyor. Önce PDF olarak dışa aktarın.',
+  'Not available on iPad.': 'iPad’de kullanılamıyor.',
 };
 
 type Pattern = readonly [RegExp, (...groups: string[]) => string];
 
 /** Messages with numbers or names in them. First match wins. */
 export const TR_PATTERNS: readonly Pattern[] = [
+  [/^"(.+)" already exists\. Replace it\?$/s, (n) => `"${n}" zaten var. Değiştirilsin mi?`],
   [/^Page (\d+) of (\d+)$/, (a, b) => `Sayfa ${a} / ${b}`],
   [/^Page (\d+)$/, (a) => `Sayfa ${a}`],
   [/^Restored "(.+)"\. Save it to keep the changes\.$/s, (t) => `"${t}" geri yüklendi. Değişiklikleri korumak için kaydedin.`],

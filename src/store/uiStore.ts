@@ -146,6 +146,9 @@ interface UIStore {
   setWorkspaceMode: (mode: WorkspaceMode) => void;
   toggleFocusMode: () => void;
   focusToolbarSide: FocusToolbarSide;
+  /** iPad: only Apple Pencil draws; a finger scrolls and zooms. */
+  pencilOnly: boolean;
+  setPencilOnly: (on: boolean) => void;
   setFocusToolbarSide: (side: FocusToolbarSide) => void;
   focusToolbarCollapsed: boolean;
   setFocusToolbarCollapsed: (collapsed: boolean) => void;
@@ -374,6 +377,8 @@ export const useUIStore = create<UIStore>()(
         })),
         focusToolbarSide: 'left',
         setFocusToolbarSide: (side) => set({ focusToolbarSide: side }),
+        pencilOnly: true,
+        setPencilOnly: (on) => set({ pencilOnly: on }),
         focusToolbarCollapsed: false,
         setFocusToolbarCollapsed: (collapsed) => set({ focusToolbarCollapsed: collapsed }),
         toggleFocusToolbarCollapsed: () => set((state) => ({
@@ -570,6 +575,7 @@ export const useUIStore = create<UIStore>()(
           theme: state.theme,
           sidebarOpen: state.sidebarOpen,
           focusToolbarSide: state.focusToolbarSide,
+          pencilOnly: state.pencilOnly,
           lastShapeTool: state.lastShapeTool,
           favoriteColors: state.favoriteColors,
           recentColors: state.recentColors,

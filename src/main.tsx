@@ -2,6 +2,19 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import './styles/global.css';
+import { isIpadApp } from './platform/native';
+import { createIpadBridge } from './platform/ipadBridge';
+
+// iPad app: the desktop shell's API is provided on top of the iOS plugins,
+// and the page is laid out for touch (no browser zoom; pinch zooms the PDF).
+if (isIpadApp()) {
+  window.electronAPI = createIpadBridge();
+  document.documentElement.classList.add('platform-ipad');
+  document.querySelector('meta[name="viewport"]')?.setAttribute(
+    'content',
+    'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover',
+  );
+}
 
 // A file dropped anywhere that no component handles would make Chromium
 // navigate the window to that file, replacing the app and discarding unsaved

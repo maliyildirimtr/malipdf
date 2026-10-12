@@ -56,6 +56,10 @@ export async function printDocument(docId = useDocumentStore.getState().activeDo
     const assets = useAssetStore.getState().getAssetsForDocument({ docId, instanceId: doc.instanceId });
     const { data } = await exportAnnotatedPdf(doc.sourceData, annotations, { assets, fonts, formValues: useFormStore.getState().getValues(docId) });
 
+    // iPad: the share sheet prints (and sends or saves) the annotated PDF.
+    const share = window.electronAPI?.sharePdf;
+    if (share) return await share(doc.title, data);
+
     const pdf = await loadPdfDocument(data);
     try {
       for (let index = 0; index < pdf.numPages; index++) {

@@ -17,6 +17,8 @@ import { Check, FileText, MoreHorizontal, X } from 'lucide-react';
 import { useDocumentStore } from '../../store/documentStore';
 import { closeDocumentById } from '../../commands';
 import styles from './TopBar.module.css';
+import { isIpadApp } from '../../platform/native';
+import { IpadMenu } from '../../platform/IpadMenu';
 
 const OVERFLOW_MEASUREMENT_TOLERANCE = 1;
 
@@ -226,6 +228,7 @@ export function TopBar() {
 
   return (
     <div className={styles.topBar} ref={topBarRef} onPointerDown={startWindowDrag} onDoubleClick={titleDoubleClick}>
+      {isIpadApp() && <IpadMenu />}
       <div className={styles.tabs} ref={tabsRef} role="tablist" aria-label="Open documents">
         {tabOrder.map((docId) => {
           const doc = documents.get(docId);

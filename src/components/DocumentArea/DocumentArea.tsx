@@ -14,6 +14,7 @@ import { useDocumentStore } from '../../store/documentStore';
 import { useAnnotationStore } from '../../store/annotationStore';
 import { useHistoryStore } from '../../store/historyStore';
 import { useUIStore } from '../../store/uiStore';
+import { isIpadApp } from '../../platform/native';
 import {
   documentSessionStore,
   useDocumentSessionStore,
@@ -471,18 +472,18 @@ export function DocumentArea() {
     pendingScrollRef.current = null;
   }, [activeDoc?.zoom, activeIdentityKey]);
 
-  function onWheel(event: React.WheelEvent<HTMLDivElement>) {
-    if (!activeDoc || !activeIdentity || !(event.ctrlKey || event.metaKey)) return;
-    event.preventDefault();
+  /** Zooms to newZoom keeping the document point under (clientX, clientY) in place. */
+  function zoomAt(clientX: number, clientY: number, requestedZoom: number) {
+    if (!activeDoc || !activeIdentity) return;
     const oldZoom = activeDoc.zoom;
-    const newZoom = Math.max(0.1, Math.min(8, oldZoom * (1 - event.deltaY * 0.001)));
+    const newZoom = Math.max(0.1, Math.min(8, requestedZoom));
     if (oldZoom === newZoom) return;
 
     const container = scrollContainerRef.current;
     if (container) {
       const rect = container.getBoundingClientRect();
-      const cursorX = event.clientX - rect.left;
-      const cursorY = event.clientY - rect.top;
+      const cursorX = clientX - rect.left;
+      const cursorY = clientY - rect.top;
       const ratio = newZoom / oldZoom;
       pendingScrollRef.current = {
         identity: activeIdentity,
@@ -494,12 +495,75 @@ export function DocumentArea() {
     setZoomMode(activeDoc.id, 'custom');
   }
 
+  function onWheel(event: React.WheelEvent<HTMLDivElement>) {
+    if (!activeDoc || !activeIdentity || !(event.ctrlKey || event.metaKey)) return;
+    event.preventDefault();
+    zoomAt(event.clientX, event.clientY, activeDoc.zoom * (1 - event.deltaY * 0.001));
+  }
+
+  // iPad / trackpad pinch (WebKit gesture events): the pages scale live
+  // under the fingers and the zoom is applied when the pinch ends.
+  const zoomAtRef = useRef(zoomAt);
+  zoomAtRef.current = zoomAt;
+  const zoomRef = useRef(activeDoc?.zoom ?? 1);
+  zoomRef.current = activeDoc?.zoom ?? 1;
+  const hasDocument = !!activeDoc;
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container || !('ongesturestart' in window)) return;
+    type GestureEvent = Event & { scale: number; clientX: number; clientY: number };
+    let pinch: { x: number; y: number; scale: number } | null = null;
+    const content = () => container.querySelector<HTMLElement>(`.${styles.pagesContainer}`);
+    const start = (event: Event) => {
+      const e = event as GestureEvent;
+      e.preventDefault();
+      pinch = { x: e.clientX, y: e.clientY, scale: 1 };
+      const pages = content();
+      if (pages) {
+        const rect = container.getBoundingClientRect();
+        pages.style.transformOrigin = `${container.scrollLeft + e.clientX - rect.left - pages.offsetLeft}px ${container.scrollTop + e.clientY - rect.top - pages.offsetTop}px`;
+        pages.style.willChange = 'transform';
+      }
+    };
+    const change = (event: Event) => {
+      const e = event as GestureEvent;
+      e.preventDefault();
+      if (!pinch) return;
+      const zoom = zoomRef.current;
+      pinch.scale = Math.max(0.1 / zoom, Math.min(8 / zoom, e.scale));
+      const pages = content();
+      if (pages) pages.style.transform = `scale(${pinch.scale})`;
+    };
+    const end = (event: Event) => {
+      event.preventDefault();
+      const done = pinch;
+      pinch = null;
+      const pages = content();
+      if (pages) {
+        pages.style.transform = '';
+        pages.style.transformOrigin = '';
+        pages.style.willChange = '';
+      }
+      if (done && Math.abs(done.scale - 1) > 0.01) zoomAtRef.current(done.x, done.y, zoomRef.current * done.scale);
+    };
+    container.addEventListener('gesturestart', start);
+    container.addEventListener('gesturechange', change);
+    container.addEventListener('gestureend', end);
+    return () => {
+      container.removeEventListener('gesturestart', start);
+      container.removeEventListener('gesturechange', change);
+      container.removeEventListener('gestureend', end);
+    };
+  }, [hasDocument]);
+
   const isPanningRef = useRef(false);
   const panPointerIdRef = useRef<number | null>(null);
   const lastPanPosRef = useRef({ x: 0, y: 0 });
 
   function onPointerDown(event: React.PointerEvent<HTMLDivElement>) {
     if (interactionTool !== 'hand' || (event.button !== 0 && event.button !== 1)) return;
+    // iPad with "Apple Pencil only": a finger already scrolls natively.
+    if (event.pointerType === 'touch' && isIpadApp() && useUIStore.getState().pencilOnly) return;
     event.preventDefault();
     isPanningRef.current = true;
     panPointerIdRef.current = event.pointerId;
