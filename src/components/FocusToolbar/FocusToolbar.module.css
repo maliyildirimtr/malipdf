@@ -34,32 +34,6 @@
 }
 
 .focusButton,
-.colorSwatches {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 0 2px;
-}
-
-.colorSwatch {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  border: 2px solid var(--color-bg-surface);
-  box-shadow: 0 0 0 1px var(--color-border);
-  cursor: pointer;
-  transition: transform var(--duration-fast), box-shadow var(--duration-fast);
-}
-
-.colorSwatch:hover {
-  transform: scale(1.1);
-}
-
-.colorSwatchActive {
-  box-shadow: 0 0 0 2px var(--color-accent);
-}
-
 .splitButton {
   position: relative;
   display: flex;
@@ -338,4 +312,34 @@
 .customizeReset:hover {
   background: var(--color-toolbar-control-hover);
   color: var(--color-text-primary);
+}
+
+/* ─── Colours (bottom): 2 × 2, so the tool buttons keep their full size ─── */
+
+.colorSwatches {
+  display: grid;
+  grid-template-columns: repeat(2, 18px);
+  gap: 5px;
+  justify-content: center;
+  flex: 0 0 auto;
+  padding: 4px 0 2px;
+}
+
+.colorSwatch {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid var(--color-bg-surface);
+  box-shadow: 0 0 0 1px var(--color-border);
+  cursor: pointer;
+  transition: transform var(--duration-fast), box-shadow var(--duration-fast);
+}
+
+.colorSwatch:hover {
+  transform: scale(1.12);
+}
+
+.colorSwatchActive {
+  box-shadow: 0 0 0 2px var(--color-accent);
 }
