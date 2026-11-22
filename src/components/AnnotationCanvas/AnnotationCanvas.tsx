@@ -35,6 +35,7 @@ import React, {
 } from 'react';
 import type {
   TextAnnotation,
+  TextOptions,
   Annotation,
   InputPoint,
   ToolType,
@@ -2817,7 +2818,25 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
         />
       )}
 
-      {(() => {
+      {textOverlay && (
+        // The same style bar as a selected text box, while writing one.
+        <FloatingInspector
+          annotation={{
+            id: '__text-being-written', pageIndex, type: 'text', content: '',
+            bounds: { x: textOverlay.pdfX, y: textOverlay.pdfY, width: 0, height: 0 },
+            ...textOverlay.style,
+            opacity: 1, locked: false, createdAt: 0, updatedAt: 0,
+          } as TextAnnotation}
+          transform={transform}
+          identity={identity}
+          pageIndex={pageIndex}
+          canvasRef={interactionRef}
+          anchorRef={textareaRef}
+          onDraftChange={(patch) => useUIStore.getState().updateTextOptions(patch as Partial<TextOptions>)}
+        />
+      )}
+
+      {!textOverlay && (() => {
         const selectedAnnotation = annotations.find(a => a.id === selectedIdsArray[0]);
         if (selectedIdsArray.length === 1 && selectedAnnotation) {
           return (

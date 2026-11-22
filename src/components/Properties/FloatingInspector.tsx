@@ -35,6 +35,12 @@ interface FloatingInspectorProps {
   pageIndex: number;
   /** The full-page element (page-local coordinates start at its top-left). */
   canvasRef: React.RefObject<HTMLElement>;
+  /**
+   * A text box being written (Text tool): the bar sits next to this element
+   * and its changes go to `onDraftChange` instead of a saved annotation.
+   */
+  anchorRef?: React.RefObject<HTMLElement>;
+  onDraftChange?: (patch: Partial<TextAnnotation>) => void;
 }
 
 // Use React.memo so FloatingInspector only re-renders when props actually change
@@ -44,7 +50,17 @@ export const FloatingInspector = React.memo(function FloatingInspector({
   identity,
   pageIndex,
   canvasRef,
+  anchorRef,
+  onDraftChange,
 }: FloatingInspectorProps) {
+  const onDraftChangeRef = useRef(onDraftChange);
+  onDraftChangeRef.current = onDraftChange;
+  /** Text-box style keys only (the box is not an annotation yet). */
+  const draftPatch = (raw: Record<string, unknown>): Partial<TextAnnotation> => {
+    const patch: Record<string, unknown> = {};
+    for (const key of TEXT_STYLE_KEYS) if (key in raw) patch[key] = raw[key];
+    return patch as Partial<TextAnnotation>;
+  };
   const { setTransientStyle } = useSelectionStore();
   const pushHistory = useHistoryStore(state => state.push);
   const updateAnnotation = useAnnotationStore(s => s.updateAnnotation);
@@ -111,12 +127,14 @@ export const FloatingInspector = React.memo(function FloatingInspector({
   }, []); // no deps — reads from ref
 
   const handlePropertyChange = useCallback((raw: Record<string, unknown>) => {
+    if (onDraftChangeRef.current) { onDraftChangeRef.current(draftPatch(raw)); return; }
     const ann = annotationRef.current;
     const patch = buildPatch(raw);
     setTransientStyle(identity, pageIndex, ann.id, patch);
   }, [identity, pageIndex, buildPatch, setTransientStyle]);
 
   const handlePropertyCommit = useCallback((raw: Record<string, unknown>) => {
+    if (onDraftChangeRef.current) { onDraftChangeRef.current(draftPatch(raw)); return; }
     const ann = annotationRef.current;
     const patch = buildPatch(raw);
     // Clear transient first
@@ -148,14 +166,15 @@ export const FloatingInspector = React.memo(function FloatingInspector({
     // Guard: skip if inspector has zero size (not laid out yet)
     if (inspectorRect.width === 0 || inspectorRect.height === 0) return;
 
+    const anchorRect = anchorRef?.current?.getBoundingClientRect();
     const pdfBounds = getAnnotationBounds(annotationRef.current);
     const p1 = pdfToScreen(pdfBounds.x, pdfBounds.y, transform);
     const p2 = pdfToScreen(pdfBounds.x + pdfBounds.width, pdfBounds.y + pdfBounds.height, transform);
 
-    const aLeft = Math.min(p1.x, p2.x);
-    const aTop = Math.min(p1.y, p2.y);
-    const aRight = Math.max(p1.x, p2.x);
-    const aBottom = Math.max(p1.y, p2.y);
+    const aLeft = anchorRect ? anchorRect.left - canvasRect.left : Math.min(p1.x, p2.x);
+    const aTop = anchorRect ? anchorRect.top - canvasRect.top : Math.min(p1.y, p2.y);
+    const aRight = anchorRect ? anchorRect.right - canvasRect.left : Math.max(p1.x, p2.x);
+    const aBottom = anchorRect ? anchorRect.bottom - canvasRect.top : Math.max(p1.y, p2.y);
 
     const anchorBounds = {
       left: canvasRect.left + aLeft,
@@ -176,7 +195,7 @@ export const FloatingInspector = React.memo(function FloatingInspector({
 
     setPosition({ left: computed.left, top: computed.top });
     setPlacement(computed.placement);
-  }, [transform, canvasRef]);
+  }, [transform, canvasRef, anchorRef]);
 
   // Position updates — only depends on annotation.id (not the full object) and transform
   useLayoutEffect(() => {
@@ -193,14 +212,19 @@ export const FloatingInspector = React.memo(function FloatingInspector({
     scheduleRecalc();
 
     window.addEventListener('resize', scheduleRecalc, { passive: true });
+    // A text box being written grows while typing.
+    const anchor = anchorRef?.current;
+    const anchorObserver = anchor && typeof ResizeObserver !== 'undefined' ? new ResizeObserver(scheduleRecalc) : null;
+    if (anchor) anchorObserver?.observe(anchor);
     window.addEventListener('scroll', scheduleRecalc, { passive: true, capture: true });
 
     return () => {
       if (pendingRaf) cancelAnimationFrame(pendingRaf);
       window.removeEventListener('resize', scheduleRecalc);
       window.removeEventListener('scroll', scheduleRecalc, { capture: true });
+      anchorObserver?.disconnect();
     };
-  }, [annotation.id, recalc]); // annotation.id keeps effect stable; recalc re-creates when transform changes
+  }, [annotation.id, recalc, anchorRef]); // annotation.id keeps effect stable; recalc re-creates when transform changes
 
   // Reposition when annotation geometry changes (e.g. after move/resize)
   useEffect(() => {
@@ -281,6 +305,8 @@ export const FloatingInspector = React.memo(function FloatingInspector({
         pointerEvents: 'auto',
       }}
       onPointerDown={(e) => e.stopPropagation()}
+      // Using the bar keeps a text box being written open.
+      data-keeps-selection
     >
       {/* Stroke color */}
       {hasStrokeColor && (

@@ -67,6 +67,7 @@ export function ColorWell({
   const popup = isOpen ? ReactDOM.createPortal(
     <div
       data-colorpicker-popup
+      data-keeps-selection
       style={{
         position: 'fixed',
         top: popupPosition.top,
