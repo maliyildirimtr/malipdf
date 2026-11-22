@@ -534,7 +534,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
 
   // Switching tools ends the current gesture (a stroke in progress is kept).
   useEffect(() => {
-    if (!finishInkIfDrawing()) cancelActiveInteraction();
+    if (!finishGestureKeepingWork()) cancelActiveInteraction();
   }, [interactionTool]);
 
   useEffect(() => {
@@ -1201,7 +1201,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
       if (selectedTool === 'note' || selectedTool === 'select') return;
     }
     // A stroke whose pointerup never arrived: keep it before starting anew.
-    if ((mode.current === 'drawing' || mode.current === 'shapeHold') && e.pointerType !== 'touch') finishInkIfDrawing();
+    if ((mode.current === 'drawing' || mode.current === 'shapeHold' || mode.current === 'erasing') && e.pointerType !== 'touch') finishGestureKeepingWork();
     // Pen hardware: the eraser end erases, the barrel button lassoes.
     const penButton = penButtonTool(e);
     if (e.button !== 0 && !penButton) return; // left button (or pen tip) only
@@ -1717,9 +1717,10 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
   function onPointerUp(e: React.PointerEvent<HTMLDivElement>) {
     if (activePointerIdRef.current !== null && e.pointerId !== activePointerIdRef.current) {
       // Some tablet drivers report the pen lift with another pointer id
-      // (e.g. as the mouse). Still end the stroke instead of losing it.
-      if ((mode.current !== 'drawing' && mode.current !== 'shapeHold') || e.pointerType === 'touch') return;
-      finishInkIfDrawing();
+      // (e.g. as the mouse). Still end the stroke or the eraser sweep
+      // instead of losing it.
+      if ((mode.current !== 'drawing' && mode.current !== 'shapeHold' && mode.current !== 'erasing') || e.pointerType === 'touch') return;
+      finishGestureKeepingWork();
       return;
     }
     const m = mode.current;
@@ -1795,6 +1796,35 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
   }
 
   /**
+   * An eraser sweep that ends in an unusual way (pen lift reported by another
+   * pointer, pointercancel, lost capture, tool switch) is kept: what the user
+   * saw erased stays erased instead of coming back.
+   */
+  function finishEraserIfErasing(): boolean {
+    if (mode.current !== 'erasing') return false;
+    const pointerId = activePointerIdRef.current;
+    if (pointerId !== null && interactionRef.current?.hasPointerCapture(pointerId)) {
+      interactionRef.current.releasePointerCapture(pointerId);
+    }
+    activePointerIdRef.current = null;
+    clearDrawingCanvas();
+    commitEraser();
+    mode.current = 'idle';
+    activePoints.current = [];
+    lastEraserScreenRef.current = null;
+    gestureToolRef.current = null;
+    setIsDrawing(textEditingRef.current);
+    if (!textEditingRef.current) onInteractionPinChange?.(false);
+    redrawAnnotationLayer();
+    return true;
+  }
+
+  /** Ends an ink stroke or an eraser sweep, keeping its result. */
+  function finishGestureKeepingWork(): boolean {
+    return finishInkIfDrawing() || finishEraserIfErasing();
+  }
+
+  /**
    * Keep what was written: a pen/highlighter stroke in progress is committed
    * (not thrown away) when the gesture ends in an unusual way — pointercancel,
    * lost capture, a missing pointerup, or a tool switch.
@@ -1837,7 +1867,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
   }
 
   function onPointerCancel() {
-    if (!finishInkIfDrawing()) cancelActiveInteraction();
+    if (!finishGestureKeepingWork()) cancelActiveInteraction();
   }
 
   // Capture lost without a pointerup/pointercancel (OS focus change, window
@@ -1845,7 +1875,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
   function onLostPointerCapture(e: React.PointerEvent<HTMLDivElement>) {
     if (activePointerIdRef.current !== e.pointerId) return;
     if (mode.current === 'idle' || mode.current === 'freeformDrawing') return;
-    if (!finishInkIfDrawing()) cancelActiveInteraction();
+    if (!finishGestureKeepingWork()) cancelActiveInteraction();
   }
 
   // ── Stroke commit ─────────────────────────────────────────────────────────
