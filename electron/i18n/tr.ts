@@ -915,9 +915,9 @@ export const TR: Readonly<Record<string, string>> = {
   'Each picture goes on its own A4 page. Turning pictures into text needs text recognition (macOS).': 'Her resim kendi A4 sayfasına yerleşir. Resimleri metne çevirmek için metin tanıma (macOS) gerekir.',
 
   // ── Select Text / page number ────────────────────────────────────────────
-  'Select Text': 'Metin Seç',
   Colors: 'Renkler',
-  'Drag over text to select it, or click a word. ⌘C copies it.': 'Seçmek için metnin üzerinde sürükleyin ya da bir kelimeye tıklayın. ⌘C kopyalar.',
+  'Select an annotation to move or resize it. Drag over text to select it; ⌘C copies it.':
+    'Taşımak ya da boyutlandırmak için bir not seçin. Metni seçmek için üzerinde sürükleyin; ⌘C kopyalar.',
   'Copy (⌘C)': 'Kopyala (⌘C)',
   'Highlight the selected text': 'Seçili metni vurgula',
   'Selected text': 'Seçili metin',

@@ -108,7 +108,7 @@ import { isEditableTarget } from '../../commands/keyboardShortcuts';
 import { loadPageTextLayout, peekPageTextLayout } from '../../pdf/pageTextLayout';
 import { addLaserPoint, endLaserTrail, startLaserTrail } from '../Laser/laserTrail';
 import { ERASER_CURSOR, HIGHLIGHTER_CURSOR, LASER_CURSOR, PEN_CURSOR } from './toolCursors';
-import { selectText, type TextSelection } from '../../pdf/textSelection';
+import { glyphAt, selectText, type TextSelection } from '../../pdf/textSelection';
 import type { TextMarkupAnnotation, NoteAnnotation, MeasureAnnotation } from '../../types/annotations';
 import { NOTE_ICON_SIZE } from '../../types/annotations';
 import { NotePopup } from './NotePopup';
@@ -181,7 +181,6 @@ function getCursor(tool: ToolType, mode: InteractionMode): string {
     case 'eraser':      return ERASER_CURSOR;
     case 'text':        return 'text';
     case 'textMarkup':  return 'text';
-    case 'selectText':  return 'text';
     case 'note':        return 'copy';
     case 'snapshot':    return 'crosshair';
     case 'crop':        return 'crosshair';
@@ -327,7 +326,8 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
   const holdTimer        = useRef<ReturnType<typeof setTimeout> | null>(null);
   const holdAnchor       = useRef<{ x: number; y: number } | null>(null);
   const holdShape        = useRef<{ base: RecognizedShape; current: RecognizedShape; snapAt: PdfPoint } | null>(null);
-  const markupDrag       = useRef<{ from: PdfPoint; to: PdfPoint; selection: TextSelection | null } | null>(null);
+  const lastTextClickRef = useRef<{ time: number; x: number; y: number } | null>(null);
+  const markupDrag       = useRef<{ from: PdfPoint; to: PdfPoint; selection: TextSelection | null; wordOnClick?: boolean } | null>(null);
   const shapeStart       = useRef<{ screenX: number; screenY: number; pdfX: number; pdfY: number } | null>(null);
   const selectionStart   = useRef<{ screenX: number; screenY: number } | null>(null);
   const currentEnd       = useRef<{ screenX: number; screenY: number }>({ screenX: 0, screenY: 0 });
@@ -405,7 +405,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
 
   // The text highlight tool needs the page's text positions: load them early.
   useEffect(() => {
-    if (selectedTool === 'textMarkup' || selectedTool === 'selectText') void loadPageTextLayout(identity, pageIndex);
+    if (selectedTool === 'textMarkup' || selectedTool === 'select') void loadPageTextLayout(identity, pageIndex);
   }, [selectedTool, identity, pageIndex]);
 
   const selectionState = useSelectionStore(state => state.getSelection(identity));
@@ -539,7 +539,8 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
   // Switching tools ends the current gesture (a stroke in progress is kept).
   useEffect(() => {
     if (!finishGestureKeepingWork()) cancelActiveInteraction();
-    if (interactionTool !== 'selectText') {
+    if (interactionRef.current) interactionRef.current.style.cursor = '';
+    if (interactionTool !== 'select') {
       const selected = useTextSelectionStore.getState().current;
       if (selected?.docId === docId && selected.pageIndex === pageIndex) useTextSelectionStore.getState().clear();
     }
@@ -1086,7 +1087,12 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     if (!drag) return;
     const layout = peekPageTextLayout(identity, pageIndex);
     drag.selection = layout ? selectText(layout, drag.from, drag.to) : null;
-    if (mode.current === 'textSelectDrag') publishTextSelection(drag.selection, true);
+    if (mode.current === 'textSelectDrag') {
+      // A single click on text only clears; a double-click takes the word.
+      const click = Math.hypot(drag.to.x - drag.from.x, drag.to.y - drag.from.y) < 2;
+      if (click && !drag.wordOnClick) drag.selection = null;
+      publishTextSelection(drag.selection, true);
+    }
     if (!layout) {
       // Still loading: select as soon as the text arrives.
       void loadPageTextLayout(identity, pageIndex).then(() => {
@@ -1099,6 +1105,25 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
   }
 
   // ── Select Text (copy) ────────────────────────────────────────────────────
+
+  /** Is there page text under this point (and no annotation on top of it)? */
+  function isOverText(p: PdfPoint): boolean {
+    const layout = peekPageTextLayout(identity, pageIndex);
+    if (!layout || glyphAt(layout, p, 2) < 0) return false;
+    return !hitTestAnnotations(p, getPageAnnotations(docId, pageIndex), transform, []);
+  }
+
+  /** Select tool: the text cursor (I-beam) over text that can be selected. */
+  function updateHoverCursor(e: React.PointerEvent<HTMLDivElement>) {
+    const layer = interactionRef.current;
+    if (!layer) return;
+    let cursor = '';
+    if (interactionTool === 'select' && e.pointerType !== 'touch') {
+      const { screenX, screenY } = getPagePoint(e);
+      if (isOverText(screenToPdfPoint(screenX, screenY))) cursor = 'text';
+    }
+    if (layer.style.cursor !== cursor) layer.style.cursor = cursor;
+  }
 
   function publishTextSelection(selection: TextSelection | null, dragging: boolean) {
     const store = useTextSelectionStore.getState();
@@ -1417,15 +1442,6 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
       return;
     }
 
-    // ── Select Text: pick text to copy ──
-    if (interactionTool === 'selectText') {
-      mode.current = 'textSelectDrag';
-      markupDrag.current = { from: pdfPt, to: pdfPt, selection: null };
-      useTextSelectionStore.getState().clear();
-      updateMarkupSelection();
-      return;
-    }
-
     // ── Text highlight / underline / strikethrough ──
     if (interactionTool === 'textMarkup') {
       mode.current = 'markupDrag';
@@ -1573,6 +1589,18 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
           schedulePreviewRender();
           return;
         }
+      } else if (!isModifier && interactionTool === 'select' && isOverText(pdfPt)) {
+        // On the page's text: select text (to copy), as in any PDF reader.
+        // A double-click takes the word.
+        useSelectionStore.getState().clearSelection(identity);
+        useTextSelectionStore.getState().clear();
+        mode.current = 'textSelectDrag';
+        // pointerdown's click count is not reliable everywhere: time it here.
+        const last = lastTextClickRef.current;
+        const doubleClick = !!last && e.timeStamp - last.time < 450 && Math.hypot(screenX - last.x, screenY - last.y) < 5;
+        lastTextClickRef.current = doubleClick ? null : { time: e.timeStamp, x: screenX, y: screenY };
+        markupDrag.current = { from: pdfPt, to: pdfPt, selection: null, wordOnClick: doubleClick };
+        updateMarkupSelection();
       } else {
         // Clicked empty space. 
         // We do NOT clear selection immediately.
@@ -1603,7 +1631,10 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     if (isForeignPointer(e)) return;
     shiftKeyRef.current = e.shiftKey;
     const m = mode.current;
-    if (m === 'idle') return;
+    if (m === 'idle') {
+      updateHoverCursor(e);
+      return;
+    }
     e.preventDefault();
 
     const { screenX, screenY } = getPagePoint(e);

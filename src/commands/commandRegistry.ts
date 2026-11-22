@@ -2,7 +2,7 @@ import type { ToolType } from '../types/annotations';
 import type { WorkspaceMode } from '../store/uiStore';
 
 export type CanonicalTool = Extract<ToolType,
-  'select' | 'selectText' | 'hand' | 'pen' | 'highlighter' | 'eraser' | 'text' |
+  'select' | 'hand' | 'pen' | 'highlighter' | 'eraser' | 'text' |
   'line' | 'arrow' | 'rectangle' | 'ellipse' | 'freeform' | 'lasso' | 'textMarkup' | 'laserPointer' | 'note' | 'snapshot' | 'measure' | 'crop' | 'editText'>;
 
 export type ToolCommandId = `tool.${CanonicalTool}`;
@@ -106,7 +106,6 @@ export const APP_COMMANDS = {
   'tool.stamp': unavailableTool('tool.stamp', 'Stamp', 'stamp'),
   'tool.dimension': unavailableTool('tool.dimension', 'Dimension', 'dimension'),
   'tool.lasso': toolCommand('lasso', 'Lasso Select', 'S', 'lasso'),
-  'tool.selectText': toolCommand('selectText', 'Select Text', 'I', 'extractText'),
   'tool.textMarkup': toolCommand('textMarkup', 'Text Highlight', 'U', 'highlighter'),
   'tool.snapshot': toolCommand('snapshot', 'Snapshot', undefined, 'snapshot'),
   'tool.crop': toolCommand('crop', 'Crop Pages', undefined, 'crop'),
@@ -242,11 +241,11 @@ function unavailableTool(id: AppCommandId, label: string, icon: CommandIconId): 
 export interface ToolShortcutDefinition {
   readonly commandId: ToolCommandId;
   readonly tool: CanonicalTool;
-  readonly key: 'V' | 'I' | 'H' | 'P' | 'M' | 'E' | 'T' | 'L' | 'A' | 'R' | 'C' | 'S' | 'U' | 'N' | 'F' | 'K';
+  readonly key: 'V' | 'H' | 'P' | 'M' | 'E' | 'T' | 'L' | 'A' | 'R' | 'C' | 'S' | 'U' | 'N' | 'F' | 'K';
   readonly label: string;
 }
 export const TOOL_SHORTCUTS = [
-  toolShortcut('V', 'select'), toolShortcut('I', 'selectText'), toolShortcut('H', 'hand'), toolShortcut('P', 'pen'),
+  toolShortcut('V', 'select'), toolShortcut('H', 'hand'), toolShortcut('P', 'pen'),
   toolShortcut('M', 'highlighter'), toolShortcut('E', 'eraser'), toolShortcut('T', 'text'),
   toolShortcut('L', 'line'), toolShortcut('A', 'arrow'), toolShortcut('R', 'rectangle'),
   toolShortcut('C', 'ellipse'), toolShortcut('S', 'lasso'), toolShortcut('U', 'textMarkup'), toolShortcut('N', 'note'),

@@ -256,7 +256,6 @@ export type Annotation =
 
 export type ToolType =
   | 'select'
-  | 'selectText'
   | 'hand'
   | 'pen'
   | 'highlighter'

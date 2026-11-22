@@ -34,14 +34,14 @@ describe('native macOS menu schema', () => {
   it('exposes implemented tools and disables planned tools', () => {
     const tools = findTopMenu('Tools');
     for (const id of [
-      'tool.select', 'tool.selectText', 'tool.hand', 'tool.pen', 'tool.highlighter', 'tool.eraser',
+      'tool.select', 'tool.hand', 'tool.pen', 'tool.highlighter', 'tool.eraser',
       'tool.text', 'tool.line', 'tool.arrow', 'tool.rectangle', 'tool.ellipse', 'tool.lasso',
       'tool.note', 'tool.snapshot', 'tool.measure', 'tool.crop', 'tool.editText',
     ]) {
       expect(findCommand(tools.items, id)?.enabled).not.toBe(false);
     }
     for (const id of [
-      'tool.zoom', 'tool.stamp', 'tool.polygon', 'tool.dimension',
+      'tool.extractText', 'tool.zoom', 'tool.stamp', 'tool.polygon', 'tool.dimension',
       'tool.formula',
       'tool.pointer',
     ]) {

@@ -50,7 +50,6 @@ import {
   TextSelect,
   StickyNote,
   TextCursorInput,
-  TextCursor,
   Minimize2,
   Wrench,
   Hash,
@@ -111,7 +110,6 @@ interface ToolDefinition {
 
 const TOOL_DEFINITIONS: Record<ToolType, ToolDefinition> = {
   select: { icon: MousePointer2, commandId: 'tool.select' },
-  selectText: { icon: TextCursor, commandId: 'tool.selectText' },
   hand: { icon: Hand, commandId: 'tool.hand' },
   pen: { icon: Pen, commandId: 'tool.pen' },
   highlighter: { icon: Highlighter, commandId: 'tool.highlighter' },
@@ -346,7 +344,6 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
 
         <ToolbarGroup label="Navigation tools" segmented>
           <ToolButton tool="select" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.select')} />
-          <ToolButton tool="selectText" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.selectText')} />
           <ToolButton tool="hand" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.hand')} />
           <ToolButton tool="lasso" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.lasso')} />
           <ToolButton tool="snapshot" activeTool={activeTool} onCommand={runCommand} enabled={isEnabled('tool.snapshot')} />
@@ -407,7 +404,7 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
         <ToolbarSeparator compact />
 
         <div className={styles.propertyScroller}>
-          {activeTool === 'select' && <PropertyHint>Select an annotation to move or resize it.</PropertyHint>}
+          {activeTool === 'select' && <PropertyHint>Select an annotation to move or resize it. Drag over text to select it; ⌘C copies it.</PropertyHint>}
           {(activeTool === 'lasso' || activeTool === 'select') && (
             <>
               <button type="button" className={styles.shelfButton} disabled={!isEnabled('edit.inkToText')} onClick={() => runCommand('edit.inkToText')} title="Convert Ink to Text (⌥⌘T)">
@@ -450,7 +447,6 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
             </>
           )}
           {activeTool === 'hand' && <PropertyHint>Hold Space to temporarily pan the document.</PropertyHint>}
-          {activeTool === 'selectText' && <PropertyHint>Drag over text to select it, or click a word. ⌘C copies it.</PropertyHint>}
 
           {activeTool === 'pen' && (
             <>

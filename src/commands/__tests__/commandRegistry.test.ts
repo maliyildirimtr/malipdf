@@ -37,7 +37,6 @@ describe('command registry', () => {
   it('defines exactly one canonical shortcut for every primary tool', () => {
     expect(TOOL_SHORTCUTS.map(({ key, tool }) => [key, tool])).toEqual([
       ['V', 'select'],
-      ['I', 'selectText'],
       ['H', 'hand'],
       ['P', 'pen'],
       ['M', 'highlighter'],
@@ -51,8 +50,8 @@ describe('command registry', () => {
       ['F', 'freeform'], ['K', 'laserPointer'],
     ]);
 
-    expect(new Set(TOOL_SHORTCUTS.map(({ key }) => key)).size).toBe(16);
-    expect(new Set(TOOL_SHORTCUTS.map(({ tool }) => tool)).size).toBe(16);
+    expect(new Set(TOOL_SHORTCUTS.map(({ key }) => key)).size).toBe(15);
+    expect(new Set(TOOL_SHORTCUTS.map(({ tool }) => tool)).size).toBe(15);
   });
 
   it.each(TOOL_SHORTCUTS)(
