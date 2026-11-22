@@ -1,7 +1,7 @@
 .pageContainer {
   position: relative;
   flex-shrink: 0;
-  margin: 24px auto;
+  margin: 6px auto; /* 12px between pages */
   display: flex;
   flex-direction: column;
   align-items: center;

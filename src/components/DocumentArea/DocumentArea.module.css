@@ -3,7 +3,10 @@
   overflow: auto;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  /* Not "center": a zoomed page wider than the window would stick out on
+     both sides and its left part could not be scrolled to. The pages are
+     centred inside .pagesContainer instead. */
+  align-items: stretch;
   background: var(--color-canvas-bg);
   position: relative;
 }
