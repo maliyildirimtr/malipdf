@@ -17,6 +17,7 @@
  */
 
 import { useImmersiveFullScreen } from './hooks/useImmersiveFullScreen';
+import { WindowTitleBar } from './components/WindowTitleBar/WindowTitleBar';
 import { useFullScreenTabBar } from './hooks/useFullScreenTabBar';
 import { useFormStore } from './store/formStore';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -120,6 +121,12 @@ function ImportJobOverlay() {
 }
 
 // ─── App component ────────────────────────────────────────────────────────────
+
+/** Windows / Linux: a classic title bar (icon, document name) above the menus. */
+const overlayTitleBar = (() => {
+  const platform = typeof window !== 'undefined' ? window.electronAPI?.platform : undefined;
+  return platform === 'win32' || platform === 'linux';
+})();
 
 export default function App() {
   useImmersiveFullScreen();
@@ -250,6 +257,7 @@ export default function App() {
       data-tabbar-revealed={tabBar.revealed || undefined}
     >
       <div className="app-top-chrome">
+        {overlayTitleBar && <WindowTitleBar />}
         <div className="app-tabbar-slot">
           <TopBar />
         </div>

@@ -37,6 +37,7 @@
 
   /* ── Workspace chrome geometry ─────────────────── */
   --titlebar-height: 44px;
+  --win-titlebar-height: 32px;
   --toolbar-primary-height: 44px;
   --toolbar-properties-height: 34px;
   --statusbar-height: 26px;

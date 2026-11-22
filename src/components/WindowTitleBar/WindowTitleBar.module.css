@@ -1,0 +1,29 @@
+.titleBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--win-titlebar-height);
+  min-height: var(--win-titlebar-height);
+  padding-left: 10px;
+  /* Room for the system's window buttons (Window Controls Overlay). */
+  padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100vw - 138px)) + 8px);
+  background: var(--color-titlebar-bg, var(--color-toolbar-bg));
+  color: var(--color-text-primary);
+  font-size: 12px;
+  user-select: none;
+  -webkit-app-region: drag;
+  order: 0;
+  flex-shrink: 0;
+}
+
+.icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.title {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}

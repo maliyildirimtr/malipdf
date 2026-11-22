@@ -255,9 +255,17 @@
   -webkit-app-region: no-drag;
 }
 
-/* Windows / Linux: the tab bar is the title bar. No window buttons on the
-   left; the system draws them over the right end (Window Controls Overlay). */
+/* Windows / Linux: a separate title bar sits above the menus and the tabs
+   come below them (like other Windows PDF apps), so no window buttons here
+   and no drag area. */
 :global(html.platform-overlay-titlebar) .topBar {
+  height: 36px;
+  min-height: 36px;
   padding-left: 8px;
-  padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100vw - 138px)) + 8px);
+  padding-right: 8px;
+  -webkit-app-region: no-drag;
+}
+
+:global(html.platform-overlay-titlebar) .tabs {
+  -webkit-app-region: no-drag;
 }

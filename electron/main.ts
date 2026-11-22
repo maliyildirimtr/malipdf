@@ -255,7 +255,7 @@ function createWindow(options: { restoreId?: string } = {}): BrowserWindow {
     // window buttons are drawn over its right end (the app has its own menus).
     ...(process.platform === 'darwin'
       ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 16, y: 14 } }
-      : { titleBarStyle: 'hidden' as const, titleBarOverlay: { color: '#121214', symbolColor: '#ffffff', height: 44 } }),
+      : { titleBarStyle: 'hidden' as const, titleBarOverlay: { color: '#121214', symbolColor: '#ffffff', height: 32 } }),
     backgroundColor: '#1a1a1a',
     show: false,
     webPreferences: {
@@ -452,7 +452,7 @@ onTrusted('window:setTitleBarColors', isDev, (event, colors: unknown) => {
   const target = BrowserWindow.fromWebContents(event.sender);
   if (!target || target.isDestroyed()) return;
   try {
-    target.setTitleBarOverlay({ color, symbolColor, height: 44 });
+    target.setTitleBarOverlay({ color, symbolColor, height: 32 });
   } catch {
     // Older systems without a title bar overlay: nothing to colour.
   }
