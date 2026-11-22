@@ -916,6 +916,7 @@ export const TR: Readonly<Record<string, string>> = {
 
   // ── Select Text / page number ────────────────────────────────────────────
   'Select Text': 'Metin Seç',
+  Colors: 'Renkler',
   'Drag over text to select it, or click a word. ⌘C copies it.': 'Seçmek için metnin üzerinde sürükleyin ya da bir kelimeye tıklayın. ⌘C kopyalar.',
   'Copy (⌘C)': 'Kopyala (⌘C)',
   'Highlight the selected text': 'Seçili metni vurgula',

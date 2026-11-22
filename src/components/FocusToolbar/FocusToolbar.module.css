@@ -34,6 +34,32 @@
 }
 
 .focusButton,
+.colorSwatches {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0 2px;
+}
+
+.colorSwatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--color-bg-surface);
+  box-shadow: 0 0 0 1px var(--color-border);
+  cursor: pointer;
+  transition: transform var(--duration-fast), box-shadow var(--duration-fast);
+}
+
+.colorSwatch:hover {
+  transform: scale(1.1);
+}
+
+.colorSwatchActive {
+  box-shadow: 0 0 0 2px var(--color-accent);
+}
+
 .splitButton {
   position: relative;
   display: flex;

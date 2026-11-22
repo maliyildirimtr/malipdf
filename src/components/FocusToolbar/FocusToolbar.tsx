@@ -86,6 +86,23 @@ const ITEM_LABELS: Record<FocusToolbarItem, string> = {
   shapes: 'Shapes',
 } as Record<FocusToolbarItem, string>;
 
+/** One-tap colours at the bottom of the toolbar. */
+const FOCUS_COLORS: ReadonlyArray<{ color: string; label: string }> = [
+  { color: '#000000', label: 'Black' },
+  { color: '#e63946', label: 'Red' },
+  { color: '#1d4ed8', label: 'Blue' },
+  { color: '#16a34a', label: 'Green' },
+];
+
+const SHAPE_TOOLS: readonly ToolType[] = ['line', 'arrow', 'rectangle', 'ellipse', 'freeform', 'roundedRect'];
+
+/** Which tool's colour a swatch changes; tools without a colour switch to the pen. */
+function colorTarget(tool: ToolType): ToolColorFamily | null {
+  if (tool === 'pen' || tool === 'highlighter' || tool === 'text') return tool;
+  if (SHAPE_TOOLS.includes(tool)) return 'shape';
+  return null;
+}
+
 /** Items after which a separator is drawn (navigation | drawing tools). */
 const NAVIGATION_ITEMS: readonly FocusToolbarItem[] = ['select', 'hand', 'lasso', 'laserPointer'];
 
@@ -328,6 +345,40 @@ export function FocusToolbar({ onCommand, canExecute }: FocusToolbarProps) {
       <button type="button" className={`${styles.focusButton} ${styles.exitButton}`} onClick={() => run('view.focusMode')} aria-label="Exit Focus Mode" title="Exit Focus Mode (Esc)">
         <LogOut size={20} aria-hidden="true" />
       </button>
+
+      <Separator />
+      <div className={styles.colorSwatches} role="group" aria-label="Colors">
+        {FOCUS_COLORS.map(({ color, label }) => {
+          const target = colorTarget(activeTool);
+          const current = target === 'pen' ? toolOptions.pen.color
+            : target === 'highlighter' ? toolOptions.highlighter.color
+              : target === 'text' ? toolOptions.text.color
+                : target === 'shape' ? toolOptions.shape.color
+                  : toolOptions.pen.color;
+          const selected = current.toLowerCase() === color;
+          return (
+            <button
+              key={color}
+              type="button"
+              className={`${styles.colorSwatch} ${selected ? styles.colorSwatchActive : ''}`}
+              style={{ background: color }}
+              aria-label={label}
+              aria-pressed={selected}
+              title={label}
+              onClick={() => {
+                if (target === 'highlighter') updateHighlighterOptions({ color });
+                else if (target === 'text') updateTextOptions({ color });
+                else if (target === 'shape') updateShapeOptions({ color });
+                else {
+                  updatePenOptions({ color });
+                  if (target !== 'pen') run('tool.pen');
+                }
+                useUIStore.getState().addRecentColor(color);
+              }}
+            />
+          );
+        })}
+      </div>
     </aside>
   );
 }
