@@ -269,3 +269,9 @@
 :global(html.platform-overlay-titlebar) .tabs {
   -webkit-app-region: no-drag;
 }
+
+/* Tablet mode: taller tabs and a bigger close button. */
+:global(html.tablet-mode) .tabClose {
+  width: 26px;
+  height: 26px;
+}

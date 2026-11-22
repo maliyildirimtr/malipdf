@@ -386,9 +386,11 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
   }, [activeTool]);
   const interactionTool = temporaryTool ?? activeTool;
   const selectedTool = interactionTool; // before per-gesture pen-button overrides
-  // iPad "draw with Apple Pencil only": a finger scrolls the page natively.
-  const pencilOnly = useUIStore(state => state.pencilOnly) && isIpadApp();
-  useStylusScrollGuard(interactionRef, pencilOnly);
+  // Tablet mode / iPad, "draw with the pen only": a finger scrolls and zooms.
+  // iPad scrolls natively; elsewhere DocumentArea pans and pinch-zooms.
+  const pencilOnly = useUIStore(state => state.pencilOnly && (state.tabletMode || isIpadApp()));
+  const nativeFingerScroll = pencilOnly && isIpadApp();
+  useStylusScrollGuard(interactionRef, nativeFingerScroll);
   const addAnnotation = useAnnotationStore(state => state.addAnnotation);
   const replaceAnnotation = useAnnotationStore(state => state.replaceAnnotation);
   const getPageAnnotations = useAnnotationStore(state => state.getPageAnnotations);
@@ -2978,7 +2980,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
           top: 0,
           width: '100%',
           height: '100%',
-          touchAction: pencilOnly ? 'pan-x pan-y' : 'none',
+          touchAction: nativeFingerScroll ? 'pan-x pan-y' : 'none',
           pointerEvents: textEditingRef.current ? 'none' : 'auto',
           zIndex: 20,
         }}

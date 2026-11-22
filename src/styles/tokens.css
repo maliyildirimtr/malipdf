@@ -199,3 +199,11 @@
   --accent-color: var(--color-accent);
   --accent-hover: var(--color-accent-hover);
 }
+
+/* Tablet mode (touch screens, iPad): bigger targets for fingers. */
+html.tablet-mode {
+  --toolbar-button-size: 37px;
+  --focus-toolbar-button-size: 50px;
+  --focus-toolbar-width: 60px;
+  --statusbar-height: 36px;
+}

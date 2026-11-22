@@ -928,6 +928,11 @@ export const TR: Readonly<Record<string, string>> = {
   // ── iPad ─────────────────────────────────────────────────────────────────
   'Share or Print': 'Paylaş veya Yazdır',
   'Draw with Apple Pencil only': 'Yalnızca Apple Pencil ile çiz',
+  'Tablet mode': 'Tablet modu',
+  'For touch screens: bigger buttons; a finger scrolls and pinch-zooms.': 'Dokunmatik ekranlar için: daha büyük düğmeler; parmak kaydırır ve iki parmakla yakınlaştırır.',
+  'Draw with the pen only': 'Yalnızca kalemle çiz',
+  'A finger scrolls and zooms; only the pen (and the mouse) draws.': 'Parmak kaydırır ve yakınlaştırır; yalnızca kalem (ve fare) çizer.',
+  'Tablet mode: bigger buttons; the pen draws, a finger scrolls and pinch-zooms': 'Tablet modu: daha büyük düğmeler; kalem çizer, parmak kaydırır ve iki parmakla yakınlaştırır',
   'A finger scrolls and zooms; the Pencil draws.': 'Parmak kaydırır ve yakınlaştırır; Pencil çizer.',
   'MaliPDF menu': 'MaliPDF menüsü',
   Replace: 'Değiştir',

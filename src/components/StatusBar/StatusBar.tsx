@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight, Columns2, Focus, Maximize2, Scan, Square, type LucideIcon } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Columns2, Focus, Maximize2, Scan, Square, Tablet, type LucideIcon } from 'lucide-react';
 import type { AppCommandId } from '../../commands';
 import { useDocumentStore } from '../../store/documentStore';
 import { useUIStore } from '../../store/uiStore';
@@ -15,6 +15,8 @@ export function StatusBar({ onCommand, canExecute }: StatusBarProps = {}) {
   const activeDoc = activeDocId ? documents.get(activeDocId) : null;
   const splitOpen = useUIStore((s) => s.splitView !== null);
   const focusMode = useUIStore((s) => s.workspaceMode === 'focus');
+  const tabletMode = useUIStore((s) => s.tabletMode);
+  const setTabletMode = useUIStore((s) => s.setTabletMode);
 
   if (!activeDoc) {
     return (
@@ -86,6 +88,16 @@ export function StatusBar({ onCommand, canExecute }: StatusBarProps = {}) {
           <div className={styles.viewControls} role="group" aria-label="Layout">
             <StatusButton commandId="view.splitView" label="Side by Side" shortcut={"⌥⌘\\"} icon={Columns2} onCommand={onCommand} canExecute={canExecute} pressed={splitOpen} />
             <StatusButton commandId="view.focusMode" label="Focus / Teaching Mode" shortcut="⌥⌘F" icon={Focus} onCommand={onCommand} canExecute={canExecute} pressed={focusMode} />
+            <button
+              type="button"
+              className={`${styles.iconButton} ${tabletMode ? styles.iconButtonOn : ''}`}
+              onClick={() => setTabletMode(!tabletMode)}
+              aria-label="Tablet mode"
+              aria-pressed={tabletMode}
+              title="Tablet mode: bigger buttons; the pen draws, a finger scrolls and pinch-zooms"
+            >
+              <Tablet size={14} aria-hidden="true" />
+            </button>
           </div>
           <span className={styles.separator} aria-hidden="true" />
         </>

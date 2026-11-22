@@ -5,6 +5,7 @@ import './styles/global.css';
 import { isIpadApp } from './platform/native';
 import { createIpadBridge } from './platform/ipadBridge';
 import { setUpOverlayTitleBar } from './platform/titleBar';
+import { setUpTabletModeClass } from './platform/touchMode';
 
 // iPad app: the desktop shell's API is provided on top of the iOS plugins,
 // and the page is laid out for touch (no browser zoom; pinch zooms the PDF).
@@ -30,6 +31,8 @@ const logError = (error: unknown) => {
 };
 window.addEventListener('error', (event) => logError(event.error ?? event.message));
 window.addEventListener('unhandledrejection', (event) => logError(event.reason));
+
+setUpTabletModeClass();
 
 // Windows / Linux: the tab bar is the title bar (no separate menu bar).
 const shellPlatform = window.electronAPI?.platform;

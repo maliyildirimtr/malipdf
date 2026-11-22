@@ -15,6 +15,7 @@ import { useAnnotationStore } from '../../store/annotationStore';
 import { useHistoryStore } from '../../store/historyStore';
 import { useUIStore } from '../../store/uiStore';
 import { isIpadApp } from '../../platform/native';
+import { fingerScrollsNow } from '../../platform/touchMode';
 import {
   documentSessionStore,
   useDocumentSessionStore,
@@ -561,7 +562,57 @@ export function DocumentArea() {
   const panPointerIdRef = useRef<number | null>(null);
   const lastPanPosRef = useRef({ x: 0, y: 0 });
 
+  // Tablet mode on a touch-screen PC: one finger pans, two fingers pinch-zoom
+  // (on iPad the system scrolls natively and gesture events zoom).
+  const touchPointsRef = useRef(new Map<number, { x: number; y: number }>());
+  const touchPinchRef = useRef<{ distance: number; scale: number; x: number; y: number } | null>(null);
+
+  function touchPagesElement(): HTMLElement | null {
+    return scrollContainerRef.current?.querySelector<HTMLElement>(`.${styles.pagesContainer}`) ?? null;
+  }
+
+  function startTouchPinch() {
+    const container = scrollContainerRef.current;
+    const [p1, p2] = [...touchPointsRef.current.values()];
+    if (!container || !p1 || !p2) return;
+    const x = (p1.x + p2.x) / 2;
+    const y = (p1.y + p2.y) / 2;
+    touchPinchRef.current = { distance: Math.max(1, Math.hypot(p2.x - p1.x, p2.y - p1.y)), scale: 1, x, y };
+    const pages = touchPagesElement();
+    if (pages) {
+      const rect = container.getBoundingClientRect();
+      pages.style.transformOrigin = `${container.scrollLeft + x - rect.left - pages.offsetLeft}px ${container.scrollTop + y - rect.top - pages.offsetTop}px`;
+      pages.style.willChange = 'transform';
+    }
+  }
+
+  function endTouchPinch() {
+    const pinch = touchPinchRef.current;
+    touchPinchRef.current = null;
+    const pages = touchPagesElement();
+    if (pages) {
+      pages.style.transform = '';
+      pages.style.transformOrigin = '';
+      pages.style.willChange = '';
+    }
+    if (pinch && activeDoc && Math.abs(pinch.scale - 1) > 0.01) zoomAt(pinch.x, pinch.y, activeDoc.zoom * pinch.scale);
+  }
+
   function onPointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    if (event.pointerType === 'touch' && !isIpadApp() && fingerScrollsNow()) {
+      event.preventDefault();
+      touchPointsRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      scrollContainerRef.current?.setPointerCapture(event.pointerId);
+      if (touchPointsRef.current.size === 2) {
+        isPanningRef.current = false;
+        startTouchPinch();
+      } else if (touchPointsRef.current.size === 1) {
+        isPanningRef.current = true;
+        panPointerIdRef.current = event.pointerId;
+        lastPanPosRef.current = { x: event.clientX, y: event.clientY };
+      }
+      return;
+    }
     if (interactionTool !== 'hand' || (event.button !== 0 && event.button !== 1)) return;
     // iPad with "Apple Pencil only": a finger already scrolls natively.
     if (event.pointerType === 'touch' && isIpadApp() && useUIStore.getState().pencilOnly) return;
@@ -573,13 +624,45 @@ export function DocumentArea() {
   }
 
   function onPointerMove(event: React.PointerEvent<HTMLDivElement>) {
+    const touch = touchPointsRef.current.get(event.pointerId);
+    if (touch) {
+      touch.x = event.clientX;
+      touch.y = event.clientY;
+      const pinch = touchPinchRef.current;
+      if (pinch && touchPointsRef.current.size >= 2 && activeDoc) {
+        const [p1, p2] = [...touchPointsRef.current.values()];
+        const zoom = activeDoc.zoom;
+        pinch.scale = Math.max(0.1 / zoom, Math.min(8 / zoom, Math.hypot(p2.x - p1.x, p2.y - p1.y) / pinch.distance));
+        const pages = touchPagesElement();
+        if (pages) pages.style.transform = `scale(${pinch.scale})`;
+        return;
+      }
+    }
     if (!isPanningRef.current || !scrollContainerRef.current) return;
+    if (touch && panPointerIdRef.current !== event.pointerId) return;
     scrollContainerRef.current.scrollLeft -= event.clientX - lastPanPosRef.current.x;
     scrollContainerRef.current.scrollTop -= event.clientY - lastPanPosRef.current.y;
     lastPanPosRef.current = { x: event.clientX, y: event.clientY };
   }
 
   function onPointerUp(event: React.PointerEvent<HTMLDivElement>) {
+    if (touchPointsRef.current.delete(event.pointerId)) {
+      if (scrollContainerRef.current?.hasPointerCapture(event.pointerId)) {
+        scrollContainerRef.current.releasePointerCapture(event.pointerId);
+      }
+      if (touchPinchRef.current && touchPointsRef.current.size < 2) endTouchPinch();
+      // One finger left after a pinch: it pans from where it is.
+      const [left] = [...touchPointsRef.current.entries()];
+      if (left) {
+        isPanningRef.current = true;
+        panPointerIdRef.current = left[0];
+        lastPanPosRef.current = { ...left[1] };
+      } else {
+        isPanningRef.current = false;
+        panPointerIdRef.current = null;
+      }
+      return;
+    }
     if (!isPanningRef.current) return;
     isPanningRef.current = false;
     if (scrollContainerRef.current?.hasPointerCapture(event.pointerId)) {
