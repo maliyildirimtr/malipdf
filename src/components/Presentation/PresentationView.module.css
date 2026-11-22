@@ -94,6 +94,12 @@
   background: rgba(255, 255, 255, 0.18);
 }
 
+.swatches {
+  display: flex;
+  align-items: center;
+  gap: inherit;
+}
+
 .controls .swatch {
   width: 20px;
   height: 20px;

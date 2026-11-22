@@ -6,6 +6,7 @@
  * when the show ends and there is ink, you choose to keep it (added to the
  * document as annotations, one undo step) or discard it.
  */
+import { QuickColorSwatches } from '../QuickColors/QuickColorSwatches';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowRight, MousePointer2, ChevronLeft, ChevronRight, ChevronUp, Circle, Eraser, Highlighter, Minus, Pen, Pointer, Settings2, Square, Trash2, Type, Undo2, X, type LucideIcon } from 'lucide-react';
 import { useUIStore, PRESENTATION_TOOLS, type PresentationTool } from '../../store/uiStore';
@@ -62,8 +63,6 @@ const TOOL_NAMES: Record<PresentationTool, string> = {
   select: 'Select', laser: 'Laser', pen: 'Pen', highlighter: 'Highlighter', eraser: 'Eraser', text: 'Text', shapes: 'Shapes',
 };
 
-const PEN_COLORS = ['#e63946', '#1d4ed8', '#16a34a', '#111111', '#ffffff'];
-const HIGHLIGHT_COLORS = ['#ffeb3b', '#7bed9f', '#74c0fc', '#ffa8a8'];
 
 /** Shift: squares and circles; lines and arrows in 45° steps (as on the page). */
 function constrainEnd(tool: ShapeTool, start: { x: number; y: number }, end: { x: number; y: number }) {
@@ -371,6 +370,8 @@ function PresentationSurface() {
     const onKey = (e: KeyboardEvent) => {
       shiftRef.current = e.shiftKey;
       if ((e.target as HTMLElement | null)?.tagName === 'TEXTAREA') return;
+      // The colour palette is open: Esc closes it, not the show.
+      if (e.key === 'Escape' && document.querySelector('[data-colorpicker-popup]')) return;
       if (keepPrompt) {
         if (e.key === 'Enter') finishClose(true);
         else if (e.key === 'Escape') finishClose(false);
@@ -623,7 +624,6 @@ function PresentationSurface() {
   const cursor = !controlsVisible && tool === 'laser'
     ? undefined
     : tool === 'select' ? 'default' : tool === 'text' ? 'text' : tool === 'pen' || isShapeTool(tool) ? PEN_CURSOR : tool === 'highlighter' ? HIGHLIGHTER_CURSOR : tool === 'eraser' ? ERASER_CURSOR : LASER_CURSOR;
-  const colors = tool === 'highlighter' ? HIGHLIGHT_COLORS : PEN_COLORS;
   const activeColor = tool === 'highlighter' ? toolOptions.highlighter.color
     : tool === 'text' ? toolOptions.text.color
       : isShapeTool(tool) ? toolOptions.shape.color : toolOptions.pen.color;
@@ -632,7 +632,11 @@ function PresentationSurface() {
     if (tool === 'highlighter') ui.updateHighlighterOptions({ color });
     else if (tool === 'text') ui.updateTextOptions({ color });
     else if (isShapeTool(tool)) ui.updateShapeOptions({ color });
-    else ui.updatePenOptions({ color });
+    else {
+      // Select, Hand, Laser, Eraser: a colour means "draw with this".
+      ui.updatePenOptions({ color });
+      if (tool !== 'pen') setTool('pen');
+    }
   };
   const currentShape: ShapeTool = isShapeTool(tool) ? tool : (SHAPES.some((x) => x.tool === lastShapeTool) ? lastShapeTool as ShapeTool : 'rectangle');
   const CurrentShapeIcon = SHAPES.find((x) => x.tool === currentShape)!.icon;
@@ -702,22 +706,16 @@ function PresentationSurface() {
           const { label, icon: Icon } = TOOL_BUTTONS[t];
           return <ToolButton key={t} label={label} active={tool === t} onClick={() => setTool(t)}><Icon size={17} /></ToolButton>;
         })}
-        {(tool === 'pen' || tool === 'highlighter' || tool === 'text' || isShapeTool(tool)) && (
-          <>
-            <span className={styles.divider} />
-            {colors.map((c) => (
-              <button
-                key={c}
-                type="button"
-                className={`${styles.swatch} ${activeColor === c ? styles.swatchActive : ''}`}
-                style={{ background: c }}
-                aria-label={`Colour ${c}`}
-                aria-pressed={activeColor === c}
-                onClick={() => setColor(c)}
-              />
-            ))}
-          </>
-        )}
+        {/* Always shown (also with Select / Hand / Laser), so the bar keeps its size. */}
+        <span className={styles.divider} />
+        <QuickColorSwatches
+          currentColor={activeColor}
+          onPick={setColor}
+          placement="above"
+          className={styles.swatches}
+          swatchClassName={styles.swatch}
+          activeClassName={styles.swatchActive}
+        />
         <span className={styles.divider} />
         <button type="button" onClick={undoInk} disabled={undoStack.current.length === 0} aria-label="Undo ink (⌘Z)" title="Undo ink (⌘Z)"><Undo2 size={17} /></button>
         <button type="button" onClick={clearPageInk} disabled={!pageHasInk} aria-label="Erase all ink on this page (Delete)" title="Erase all ink on this page (Delete)"><Trash2 size={17} /></button>

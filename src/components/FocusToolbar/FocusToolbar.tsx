@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import ReactDOM from 'react-dom';
 import {
   ArrowRight,
   ChevronLeft,
@@ -37,7 +36,7 @@ import {
 } from '../../store/uiStore';
 import type { ToolType } from '../../types/annotations';
 import { ColorWell } from '../MainRibbon/ColorWell';
-import { ColorPickerPopup } from '../Properties/ColorPickerPopup';
+import { QuickColorSwatches } from '../QuickColors/QuickColorSwatches';
 import { OpacityControl } from '../MainRibbon/PropertyControls';
 import { TOOL_WIDTH_CONSTRAINTS } from '../../constants/toolConstraints';
 import { WidthControl } from '../Properties/WidthControl';
@@ -97,44 +96,21 @@ function colorTarget(tool: ToolType): ToolColorFamily | null {
   return null;
 }
 
-/** Names for the default colours (others show their hex code). */
-const COLOR_NAMES: Record<string, string> = { '#000000': 'Black', '#e63946': 'Red', '#1d4ed8': 'Blue', '#16a34a': 'Green' };
-
 /**
- * The four colours under Undo / Redo. A click colours the current tool;
- * a double-click opens the palette and the chosen colour replaces that one.
+ * The four colours under Undo / Redo. A click colours the current tool (or
+ * switches to the pen in that colour); a double-click changes the colour.
  */
 function FocusColorSwatches({ activeTool, side, onPenNeeded }: {
   activeTool: ToolType;
   side: 'left' | 'right';
   onPenNeeded: () => void;
 }) {
-  const focusColors = useUIStore((state) => state.focusColors);
   const toolOptions = useUIStore((state) => state.toolOptions);
-  const [editing, setEditing] = useState<{ index: number; top: number; left: number } | null>(null);
-
-  useEffect(() => {
-    if (!editing) return;
-    const close = (event: PointerEvent) => {
-      const target = event.target as Element | null;
-      if (target?.closest('[data-colorpicker-popup], [data-focus-color]')) return;
-      setEditing(null);
-    };
-    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') setEditing(null); };
-    window.addEventListener('pointerdown', close);
-    window.addEventListener('keydown', escape);
-    return () => {
-      window.removeEventListener('pointerdown', close);
-      window.removeEventListener('keydown', escape);
-    };
-  }, [editing]);
-
   const target = colorTarget(activeTool);
   const currentColor = (target === 'highlighter' ? toolOptions.highlighter.color
     : target === 'text' ? toolOptions.text.color
       : target === 'shape' ? toolOptions.shape.color
         : toolOptions.pen.color).toLowerCase();
-
   const apply = (color: string) => {
     const ui = useUIStore.getState();
     if (target === 'highlighter') ui.updateHighlighterOptions({ color });
@@ -145,59 +121,15 @@ function FocusColorSwatches({ activeTool, side, onPenNeeded }: {
       if (target !== 'pen') onPenNeeded();
     }
   };
-
-  const openPalette = (index: number, button: HTMLElement) => {
-    const rect = button.getBoundingClientRect();
-    const bar = button.closest('aside')?.getBoundingClientRect() ?? rect;
-    const width = 250;
-    const height = 430;
-    const left = side === 'left' ? bar.right + 10 : bar.left - width - 10;
-    const top = Math.max(8, Math.min(rect.top - 40, window.innerHeight - height - 8));
-    setEditing({ index, top, left: Math.max(8, Math.min(left, window.innerWidth - width - 8)) });
-  };
-
   return (
-    <div className={styles.colorSwatches} role="group" aria-label="Colors">
-      {focusColors.map((color, index) => {
-        const label = COLOR_NAMES[color] ?? color;
-        const selected = currentColor === color;
-        return (
-          <button
-            key={index}
-            type="button"
-            data-focus-color
-            className={`${styles.colorSwatch} ${selected ? styles.colorSwatchActive : ''}`}
-            style={{ background: color }}
-            aria-label={label}
-            aria-pressed={selected}
-            title={`${label} — double-click to change`}
-            onClick={() => {
-              apply(color);
-              useUIStore.getState().addRecentColor(color);
-            }}
-            onDoubleClick={(event) => openPalette(index, event.currentTarget)}
-          />
-        );
-      })}
-      {editing && ReactDOM.createPortal(
-        <div
-          data-colorpicker-popup
-          style={{ position: 'fixed', top: editing.top, left: editing.left, zIndex: 20000 }}
-          onPointerDown={(event) => event.stopPropagation()}
-        >
-          <ColorPickerPopup
-            currentColor={focusColors[editing.index]}
-            onColorSelect={(color) => {
-              useUIStore.getState().setFocusColor(editing.index, color);
-              apply(color);
-            }}
-            onColorCommit={(color) => useUIStore.getState().addRecentColor(color)}
-            onClose={() => setEditing(null)}
-          />
-        </div>,
-        document.body,
-      )}
-    </div>
+    <QuickColorSwatches
+      currentColor={currentColor}
+      onPick={apply}
+      placement={side === 'left' ? 'right' : 'left'}
+      className={styles.colorSwatches}
+      swatchClassName={styles.colorSwatch}
+      activeClassName={styles.colorSwatchActive}
+    />
   );
 }
 
