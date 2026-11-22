@@ -52,7 +52,7 @@ export async function openDocumentBytes(
     activePageIndex: 0,
     pageCount,
     zoom: 1,
-    zoomMode: 'fitWidth',
+    zoomMode: 'fitPage', // the whole page shows when a document opens
     scrollTop: 0,
     scrollLeft: 0,
     pageRotations: {},

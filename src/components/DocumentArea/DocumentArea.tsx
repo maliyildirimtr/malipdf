@@ -428,31 +428,32 @@ export function DocumentArea() {
   // ── Fit modes ─────────────────────────────────────────────────────────────
 
   // Refit when the area changes size (window resize, side-by-side pane, sidebar).
-  const [containerWidth, setContainerWidth] = useState(0);
+  const [containerSize, setContainerSize] = useState('');
   useEffect(() => {
     const el = scrollContainerRef.current;
     if (!el || typeof ResizeObserver === 'undefined') return;
     let raf = 0;
     const observer = new ResizeObserver(() => {
       cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => setContainerWidth(el.clientWidth));
+      raf = requestAnimationFrame(() => setContainerSize(`${el.clientWidth}x${el.clientHeight}`));
     });
     observer.observe(el);
     return () => { observer.disconnect(); cancelAnimationFrame(raf); };
   }, [activeIdentityKey]);
 
+  // Fit Width and Fit Page (the default when a document opens) keep fitting.
   useEffect(() => {
-    if (!activeDoc || !activeSession || activeDoc.zoomMode !== 'fitWidth') return;
+    if (!activeDoc || !activeSession || (activeDoc.zoomMode !== 'fitWidth' && activeDoc.zoomMode !== 'fitPage')) return;
     const pageIndex = activeDoc.activePageIndex;
     const page = activeSession.pages.get(pageIndex)?.loadedPage?.page;
-    if (!page || !scrollContainerRef.current) return;
-    const newScale = calcFitWidthScale(
-      page,
-      scrollContainerRef.current.clientWidth,
-      activeDoc.pageRotations[pageIndex] || 0,
-    );
+    const container = scrollContainerRef.current;
+    if (!page || !container) return;
+    const rotation = activeDoc.pageRotations[pageIndex] || 0;
+    const newScale = activeDoc.zoomMode === 'fitPage'
+      ? calcFitPageScale(page, container.clientWidth, container.clientHeight, rotation)
+      : calcFitWidthScale(page, container.clientWidth, rotation);
     if (Math.abs(newScale - activeDoc.zoom) > 0.001) setZoom(activeDoc.id, newScale);
-  }, [activeDoc, activeSession, setZoom, containerWidth]);
+  }, [activeDoc, activeSession, setZoom, containerSize]);
 
   // ── Zoom and pan ──────────────────────────────────────────────────────────
 
