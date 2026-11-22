@@ -44,7 +44,7 @@ env:
 
 jobs:
   build-mac-app-store:
-    runs-on: macos-14
+    runs-on: macos-15
 
     steps:
       - name: Checkout
@@ -100,7 +100,7 @@ jobs:
           path: store/MaliPDF-MacAppStore.pkg
 
   build-macos-dmg:
-    runs-on: macos-14
+    runs-on: macos-15
 
     steps:
       - name: Checkout
