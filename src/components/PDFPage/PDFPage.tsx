@@ -160,7 +160,10 @@ const PDFPage = React.memo<PDFPageProps>(function PDFPage({
     <div
       ref={setSlotRef}
       className={styles.pageContainer}
-      style={{ width, height }}
+      // No fixed height: the page plus its number below it. (A fixed page
+      // height squeezed the page to make room for the number, cutting off
+      // the bottom of every page.)
+      style={{ width }}
       data-doc-id={docId}
       data-instance-id={instanceId}
       data-page-index={pageIndex}

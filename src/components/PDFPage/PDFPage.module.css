@@ -10,6 +10,7 @@
 
 .pageSurface {
   position: relative;
+  flex-shrink: 0; /* never squeezed: the whole page always shows */
   background: #ffffff;
   box-shadow:
     0 2px 8px var(--color-page-shadow),
