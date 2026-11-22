@@ -254,3 +254,10 @@
   padding-left: 8px;
   -webkit-app-region: no-drag;
 }
+
+/* Windows / Linux: the tab bar is the title bar. No window buttons on the
+   left; the system draws them over the right end (Window Controls Overlay). */
+:global(html.platform-overlay-titlebar) .topBar {
+  padding-left: 8px;
+  padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100vw - 138px)) + 8px);
+}

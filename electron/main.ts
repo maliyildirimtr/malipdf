@@ -250,8 +250,12 @@ function createWindow(options: { restoreId?: string } = {}): BrowserWindow {
     title: 'MaliPDF',
     // Windows / Linux taskbar icon (macOS uses the app bundle or the Dock icon).
     ...(process.platform !== 'darwin' && appIconPath() ? { icon: appIconPath() } : {}),
-    titleBarStyle: 'hiddenInset',
-    trafficLightPosition: { x: 16, y: 14 },
+    // macOS: traffic lights over the tab bar. Windows / Linux: no separate
+    // title bar or menu bar either — the tab bar is the title bar and the
+    // window buttons are drawn over its right end (the app has its own menus).
+    ...(process.platform === 'darwin'
+      ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 16, y: 14 } }
+      : { titleBarStyle: 'hidden' as const, titleBarOverlay: { color: '#121214', symbolColor: '#ffffff', height: 44 } }),
     backgroundColor: '#1a1a1a',
     show: false,
     webPreferences: {
@@ -264,6 +268,9 @@ function createWindow(options: { restoreId?: string } = {}): BrowserWindow {
       spellcheck: false,
     },
   });
+
+  // The menu stays (for its keyboard shortcuts) but its bar is not shown.
+  if (process.platform !== 'darwin') window.setMenuBarVisibility?.(false);
 
   const state: WindowState = { readyForFiles: false, allowClose: false, restoreId: options.restoreId ?? null };
   windowStates.set(window, state);
@@ -434,6 +441,21 @@ onTrusted('window:titleDoubleClick', isDev, (event) => {
   else if (action === 'None') return;
   else if (window.isMaximized()) window.unmaximize();
   else window.maximize();
+});
+
+// Windows / Linux: the window buttons follow the app's light or dark theme.
+onTrusted('window:setTitleBarColors', isDev, (event, colors: unknown) => {
+  if (process.platform === 'darwin' || !colors || typeof colors !== 'object') return;
+  const { color, symbolColor } = colors as { color?: unknown; symbolColor?: unknown };
+  const hex = /^#[0-9a-f]{6}$/i;
+  if (typeof color !== 'string' || typeof symbolColor !== 'string' || !hex.test(color) || !hex.test(symbolColor)) return;
+  const target = BrowserWindow.fromWebContents(event.sender);
+  if (!target || target.isDestroyed()) return;
+  try {
+    target.setTitleBarOverlay({ color, symbolColor, height: 44 });
+  } catch {
+    // Older systems without a title bar overlay: nothing to colour.
+  }
 });
 
 // Settings ▸ Language. The menu and native dialogs follow it.

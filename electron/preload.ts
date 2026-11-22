@@ -63,6 +63,10 @@ export interface ElectronAPI {
   writeClipboardImage: (png: ArrayBuffer) => Promise<boolean>;
   chooseFolder: (title?: string) => Promise<string | null>;
   setLanguage: (language: string) => void;
+  /** 'darwin', 'win32' or 'linux'. */
+  platform: string;
+  /** Windows / Linux: colours of the window buttons drawn over the tab bar. */
+  setTitleBarColors: (colors: { color: string; symbolColor: string }) => void;
   moveTabToNewWindow: (docId: string) => Promise<boolean>;
   windowDragBy: (dx: number, dy: number) => void;
   windowTitleDoubleClick: () => void;
@@ -132,6 +136,8 @@ const electronAPI: ElectronAPI = {
   writeClipboardImage: (png) => ipcRenderer.invoke('clipboard:writeImage', png),
   chooseFolder: (title) => ipcRenderer.invoke('dialog:chooseFolder', title),
   setLanguage: (language) => ipcRenderer.send('app:setLanguage', language),
+  platform: process.platform,
+  setTitleBarColors: (colors) => ipcRenderer.send('window:setTitleBarColors', colors),
   moveTabToNewWindow: (docId) => ipcRenderer.invoke('window:moveTabToNewWindow', docId),
   windowDragBy: (dx, dy) => ipcRenderer.send('window:dragBy', dx, dy),
   windowTitleDoubleClick: () => ipcRenderer.send('window:titleDoubleClick'),

@@ -256,6 +256,7 @@ export type Annotation =
 
 export type ToolType =
   | 'select'
+  | 'selectText'
   | 'hand'
   | 'pen'
   | 'highlighter'
@@ -530,6 +531,9 @@ declare global {
       writeClipboardImage?: (png: ArrayBuffer) => Promise<boolean>;
       chooseFolder?: (title?: string) => Promise<string | null>;
       setLanguage?: (language: string) => void;
+      /** Desktop shell's platform: 'darwin', 'win32' or 'linux'. */
+      platform?: string;
+      setTitleBarColors?: (colors: { color: string; symbolColor: string }) => void;
       windowDragBy?: (dx: number, dy: number) => void;
       windowTitleDoubleClick?: () => void;
       moveTabToNewWindow?: (docId: string) => Promise<boolean>;
