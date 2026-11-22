@@ -10,6 +10,8 @@ export function useInterfaceLanguage(): void {
 
   useLayoutEffect(() => {
     translator ??= new DomTranslator(document.body);
+    const platform = window.electronAPI?.platform;
+    translator.setPcShortcuts(platform === 'win32' || platform === 'linux');
     translator.setLanguage(language);
     document.documentElement.lang = language;
     window.electronAPI?.setLanguage?.(language);

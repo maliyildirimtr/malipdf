@@ -11,6 +11,7 @@
  * [data-no-translate] or [translate="no"] (tab titles, notes, search hits…).
  */
 import { translate, type Language, type TranslationScope } from '../../electron/i18n';
+import { toPcShortcuts } from './pcShortcuts';
 
 const ATTRIBUTES = ['title', 'aria-label', 'placeholder', 'alt', 'label'] as const;
 const SKIP_SELECTOR = '[data-no-translate], [translate="no"], textarea, script, style, .katex, math-field, [contenteditable="true"]';
@@ -24,6 +25,8 @@ interface Remembered {
 
 export class DomTranslator {
   private language: Language = 'en';
+  /** Windows / Linux: ⌘S is shown as Ctrl+S. */
+  private pcShortcuts = false;
   private readonly texts = new WeakMap<Text, Remembered>();
   private readonly attrs = new WeakMap<Element, Map<string, Remembered>>();
   private observer: MutationObserver | null = null;
@@ -37,8 +40,17 @@ export class DomTranslator {
     this.language = language;
     this.skipCache = new WeakMap();
     this.visit(this.root);
-    if (language === 'en') this.stop();
+    if (language === 'en' && !this.pcShortcuts) this.stop();
     else this.start();
+  }
+
+  setPcShortcuts(on: boolean): void {
+    if (on === this.pcShortcuts) return;
+    this.pcShortcuts = on;
+    this.skipCache = new WeakMap();
+    this.visit(this.root);
+    if (on) this.start();
+    else if (this.language === 'en') this.stop();
   }
 
   dispose(): void {
@@ -145,8 +157,9 @@ export class DomTranslator {
    */
   private resolve(remembered: Remembered | undefined, current: string, scope: TranslationScope | undefined, remember: (value: Remembered) => void): string | null {
     const source = remembered && remembered.shown === current ? remembered.source : current;
-    if (!/[A-Za-z]/.test(source)) return null;
-    const shown = translate(this.language, source, scope);
+    if (!/[A-Za-z⌘⌥⇧⌃]/.test(source)) return null;
+    const translated = translate(this.language, source, scope);
+    const shown = this.pcShortcuts ? toPcShortcuts(translated) : translated;
     if (shown === source && !remembered) return null;
     remember({ source, shown });
     return shown;
