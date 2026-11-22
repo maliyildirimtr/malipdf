@@ -28,7 +28,6 @@ import {
   Monitor,
   MoreHorizontal,
   MonitorPlay,
-  Moon,
   Sigma,
   MousePointer2,
   Target as LaserIcon,
@@ -181,7 +180,6 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
     updateEraserOptions,
     laserOptions,
     updateLaserOptions,
-    pageTheme,
     updateTextOptions,
     updateShapeOptions,
     workspaceMode,
@@ -390,7 +388,6 @@ export function MainRibbon({ onCommand, canExecute }: MainRibbonProps) {
           </div>
           <CommandButton commandId="view.rotateCCW" label="Rotate View Left" shortcut="⌘[" icon={RotateCcw} onCommand={runCommand} enabled={isEnabled('view.rotateCCW')} />
           <CommandButton commandId="view.rotateCW" label="Rotate View Right" shortcut="⌘]" icon={RotateCw} onCommand={runCommand} enabled={isEnabled('view.rotateCW')} />
-          <CommandButton commandId="view.nightMode" label="Night Mode" shortcut="⌥⌘D" icon={Moon} onCommand={runCommand} enabled pressed={pageTheme === 'dark'} />
           <CommandButton commandId="app.settings" label="Settings" shortcut="⌘," icon={Settings} onCommand={runCommand} enabled />
         </ToolbarGroup>
       </div>
