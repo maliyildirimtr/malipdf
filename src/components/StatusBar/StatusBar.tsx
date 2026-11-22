@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { ChevronLeft, ChevronRight, Columns2, Focus, Maximize2, Scan, Square, type LucideIcon } from 'lucide-react';
 import type { AppCommandId } from '../../commands';
 import { useDocumentStore } from '../../store/documentStore';
@@ -55,9 +55,12 @@ export function StatusBar({ onCommand, canExecute }: StatusBarProps = {}) {
         >
           <ChevronLeft size={14} aria-hidden="true" />
         </button>
-        <span className={styles.pageCount} aria-live="polite">
-          Page {activePageIndex + 1} of {pageCount}
-        </span>
+        <PageNumberField
+          key={docId}
+          pageIndex={activePageIndex}
+          pageCount={pageCount}
+          onGo={goToPage}
+        />
         <button
           className={styles.iconButton}
           onClick={() => goToPage(activePageIndex + 1)}
@@ -93,6 +96,60 @@ export function StatusBar({ onCommand, canExecute }: StatusBarProps = {}) {
       <span className={styles.separator} aria-hidden="true" />
       <span className={styles.brand}>MaliPDF</span>
     </footer>
+  );
+}
+
+/** "Page [ 3 ] of 12": type a page number and press Enter to go there. */
+function PageNumberField({ pageIndex, pageCount, onGo }: {
+  pageIndex: number;
+  pageCount: number;
+  onGo: (pageIndex: number) => void;
+}) {
+  const [draft, setDraft] = useState(String(pageIndex + 1));
+  const [editing, setEditing] = useState(false);
+  useEffect(() => {
+    if (!editing) setDraft(String(pageIndex + 1));
+  }, [pageIndex, editing]);
+
+  const go = () => {
+    const page = Number.parseInt(draft, 10);
+    if (Number.isFinite(page)) onGo(Math.max(1, Math.min(pageCount, page)) - 1);
+    setEditing(false);
+  };
+
+  return (
+    <label className={styles.pageCount}>
+      <span>Page</span>
+      <input
+        className={styles.pageInput}
+        type="text"
+        inputMode="numeric"
+        value={draft}
+        size={Math.max(2, String(pageCount).length)}
+        aria-label="Go to page"
+        title="Go to page (type a number, then Enter)"
+        onFocus={(event) => { setEditing(true); event.currentTarget.select(); }}
+        onChange={(event) => setDraft(event.target.value.replace(/\D/g, ''))}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            go();
+            event.currentTarget.blur();
+          } else if (event.key === 'Escape') {
+            event.preventDefault();
+            setEditing(false);
+            setDraft(String(pageIndex + 1));
+            event.currentTarget.blur();
+          }
+        }}
+        onBlur={() => {
+          setEditing(false);
+          setDraft(String(pageIndex + 1));
+        }}
+        data-no-translate
+      />
+      <span>{`of ${pageCount}`}</span>
+    </label>
   );
 }
 

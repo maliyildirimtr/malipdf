@@ -914,6 +914,16 @@ export const TR: Readonly<Record<string, string>> = {
   'Each picture goes on its own A4 page.': 'Her resim kendi A4 sayfasına yerleşir.',
   'Each picture goes on its own A4 page. Turning pictures into text needs text recognition (macOS).': 'Her resim kendi A4 sayfasına yerleşir. Resimleri metne çevirmek için metin tanıma (macOS) gerekir.',
 
+  // ── Select Text / page number ────────────────────────────────────────────
+  'Select Text': 'Metin Seç',
+  'Drag over text to select it, or click a word. ⌘C copies it.': 'Seçmek için metnin üzerinde sürükleyin ya da bir kelimeye tıklayın. ⌘C kopyalar.',
+  'Copy (⌘C)': 'Kopyala (⌘C)',
+  'Highlight the selected text': 'Seçili metni vurgula',
+  'Selected text': 'Seçili metin',
+  'This page has no selectable text (it may be a scan). Use Page ▸ Recognize Text on This Page first.':
+    'Bu sayfada seçilebilir metin yok (taranmış olabilir). Önce Sayfa ▸ Bu Sayfadaki Metni Tanı komutunu kullanın.',
+  'Go to page (type a number, then Enter)': 'Sayfaya git (numarayı yazıp Enter’a basın)',
+
   // ── iPad ─────────────────────────────────────────────────────────────────
   'Share or Print': 'Paylaş veya Yazdır',
   'Draw with Apple Pencil only': 'Yalnızca Apple Pencil ile çiz',
@@ -930,6 +940,7 @@ type Pattern = readonly [RegExp, (...groups: string[]) => string];
 
 /** Messages with numbers or names in them. First match wins. */
 export const TR_PATTERNS: readonly Pattern[] = [
+  [/^of (\d+)$/, (n) => `/ ${n}`],
   [/^"(.+)" already exists\. Replace it\?$/s, (n) => `"${n}" zaten var. Değiştirilsin mi?`],
   [/^Page (\d+) of (\d+)$/, (a, b) => `Sayfa ${a} / ${b}`],
   [/^Page (\d+)$/, (a) => `Sayfa ${a}`],

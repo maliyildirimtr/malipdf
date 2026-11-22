@@ -112,6 +112,8 @@ import { selectText, type TextSelection } from '../../pdf/textSelection';
 import type { TextMarkupAnnotation, NoteAnnotation, MeasureAnnotation } from '../../types/annotations';
 import { NOTE_ICON_SIZE } from '../../types/annotations';
 import { NotePopup } from './NotePopup';
+import { TextSelectionOverlay } from './TextSelectionOverlay';
+import { useTextSelectionStore } from '../../store/textSelectionStore';
 import { isIpadApp } from '../../platform/native';
 import { fingerNavigates, useStylusScrollGuard } from '../../platform/pencilInput';
 import type { TextEditAnnotation } from '../../types/annotations';
@@ -140,6 +142,7 @@ type InteractionMode =
   | 'selectDrag'    // rubber-band selection
   | 'lassoDrag'     // free-form lasso selection
   | 'markupDrag'    // text highlight / underline / strikethrough selection
+  | 'textSelectDrag' // Select Text tool: text to copy
   | 'snapshotDrag'  // Snapshot tool: region to copy as an image
   | 'measureDrag'   // Measure tool: distance line
   | 'laser'         // laser pointer (not saved)
@@ -178,6 +181,7 @@ function getCursor(tool: ToolType, mode: InteractionMode): string {
     case 'eraser':      return ERASER_CURSOR;
     case 'text':        return 'text';
     case 'textMarkup':  return 'text';
+    case 'selectText':  return 'text';
     case 'note':        return 'copy';
     case 'snapshot':    return 'crosshair';
     case 'crop':        return 'crosshair';
@@ -401,7 +405,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
 
   // The text highlight tool needs the page's text positions: load them early.
   useEffect(() => {
-    if (selectedTool === 'textMarkup') void loadPageTextLayout(identity, pageIndex);
+    if (selectedTool === 'textMarkup' || selectedTool === 'selectText') void loadPageTextLayout(identity, pageIndex);
   }, [selectedTool, identity, pageIndex]);
 
   const selectionState = useSelectionStore(state => state.getSelection(identity));
@@ -535,6 +539,10 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
   // Switching tools ends the current gesture (a stroke in progress is kept).
   useEffect(() => {
     if (!finishGestureKeepingWork()) cancelActiveInteraction();
+    if (interactionTool !== 'selectText') {
+      const selected = useTextSelectionStore.getState().current;
+      if (selected?.docId === docId && selected.pageIndex === pageIndex) useTextSelectionStore.getState().clear();
+    }
   }, [interactionTool]);
 
   useEffect(() => {
@@ -1078,15 +1086,50 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     if (!drag) return;
     const layout = peekPageTextLayout(identity, pageIndex);
     drag.selection = layout ? selectText(layout, drag.from, drag.to) : null;
+    if (mode.current === 'textSelectDrag') publishTextSelection(drag.selection, true);
     if (!layout) {
       // Still loading: select as soon as the text arrives.
       void loadPageTextLayout(identity, pageIndex).then(() => {
-        if (markupDrag.current === drag && mode.current === 'markupDrag') {
+        if (markupDrag.current === drag && (mode.current === 'markupDrag' || mode.current === 'textSelectDrag')) {
           updateMarkupSelection();
           schedulePreviewRender();
         }
       });
     }
+  }
+
+  // ── Select Text (copy) ────────────────────────────────────────────────────
+
+  function publishTextSelection(selection: TextSelection | null, dragging: boolean) {
+    const store = useTextSelectionStore.getState();
+    if (selection) store.setSelection({ docId, instanceId, pageIndex, selection, dragging });
+    else store.clear();
+  }
+
+  function commitTextSelect() {
+    const drag = markupDrag.current;
+    markupDrag.current = null;
+    if (!drag) return;
+    publishTextSelection(drag.selection, false);
+    if (!drag.selection) {
+      const layout = peekPageTextLayout(identity, pageIndex);
+      if (layout && layout.glyphs.length === 0) {
+        notifyUser('info', 'This page has no selectable text (it may be a scan). Use Page ▸ Recognize Text on This Page first.');
+      }
+    }
+  }
+
+  /** The Highlight button on selected text. */
+  function highlightTextSelection(selection: TextSelection) {
+    const options = toolOptions.textMarkup;
+    const ann: TextMarkupAnnotation = {
+      ...markupFromSelection(selection, nanoid()),
+      markup: 'highlight',
+      opacity: options.markup === 'highlight' ? options.opacity : 0.45,
+    };
+    addAnnotation(docId, ann);
+    pushHistory(makeAddAction(docId, ann));
+    useTextSelectionStore.getState().clear();
   }
 
   function markupFromSelection(selection: TextSelection, id: string): TextMarkupAnnotation {
@@ -1374,6 +1417,15 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
       return;
     }
 
+    // ── Select Text: pick text to copy ──
+    if (interactionTool === 'selectText') {
+      mode.current = 'textSelectDrag';
+      markupDrag.current = { from: pdfPt, to: pdfPt, selection: null };
+      useTextSelectionStore.getState().clear();
+      updateMarkupSelection();
+      return;
+    }
+
     // ── Text highlight / underline / strikethrough ──
     if (interactionTool === 'textMarkup') {
       mode.current = 'markupDrag';
@@ -1563,7 +1615,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
       return;
     }
 
-    if (m === 'markupDrag') {
+    if (m === 'markupDrag' || m === 'textSelectDrag') {
       if (markupDrag.current) {
         markupDrag.current.to = pdfPt;
         updateMarkupSelection();
@@ -1754,6 +1806,8 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
       commitLasso(e);
     } else if (m === 'markupDrag') {
       commitMarkup();
+    } else if (m === 'textSelectDrag') {
+      commitTextSelect();
     } else if (m === 'snapshotDrag') {
       commitSnapshot();
     } else if (m === 'measureDrag') {
@@ -2330,6 +2384,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
 
     activePointerIdRef.current = null;
     if (mode.current === 'laser') endLaserTrail();
+    if (mode.current === 'textSelectDrag') useTextSelectionStore.getState().clear();
     clearHoldTimer();
     holdShape.current = null;
     mode.current = 'idle';
@@ -2834,6 +2889,14 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
           </div>
         </div>
       )}
+
+      <TextSelectionOverlay
+        docId={docId}
+        instanceId={instanceId}
+        pageIndex={pageIndex}
+        transform={transform}
+        onHighlight={highlightTextSelection}
+      />
 
       {openNote && openNote.docId === docId && openNote.pageIndex === pageIndex && (() => {
         const note = annotations.find((a) => a.id === openNote.annotationId);

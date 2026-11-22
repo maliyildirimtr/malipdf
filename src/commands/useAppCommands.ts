@@ -2,6 +2,7 @@ import { errorMessage, notifyUser } from '../utils/notify';
 import { useCallback, useEffect } from 'react';
 import { useDocumentStore } from '../store/documentStore';
 import { useHistoryStore, makeRemoveAction, makeBatchAction } from '../store/historyStore';
+import { selectedPdfText } from '../store/textSelectionStore';
 import { useUIStore } from '../store/uiStore';
 import { useSelectionStore } from '../store/selectionStore';
 import { useDocumentSessionStore, documentSessionStore } from '../store/documentSessionStore';
@@ -595,6 +596,13 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
     // ⌘C / ⌘X arrive as DOM copy/cut events (native Edit menu roles), so text
     // fields keep their normal behaviour and annotations use the same keys.
     function onCopyOrCut(event: ClipboardEvent) {
+      // Text picked with the Select Text tool goes on the clipboard as text.
+      const pdfText = event.type === 'copy' && !isEditableTarget(event.target) ? selectedPdfText() : '';
+      if (pdfText) {
+        event.clipboardData?.setData('text/plain', pdfText);
+        event.preventDefault();
+        return;
+      }
       const selection = getActiveSelection();
       if (isEditableTarget(event.target) || !selection) return;
       // Copying text highlights puts their text on the clipboard for other apps.
