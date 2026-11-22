@@ -178,6 +178,9 @@ interface UIStore {
   toggleToolbarTool: (tool: ToolType) => void;
   /** Buttons shown in the Focus Mode toolbar (customizable). */
   focusToolbarItems: FocusToolbarItem[];
+  /** The four colours at the bottom of the Focus Mode toolbar (double-click to change). */
+  focusColors: string[];
+  setFocusColor: (index: number, color: string) => void;
   toggleFocusToolbarItem: (item: FocusToolbarItem) => void;
   resetFocusToolbarItems: () => void;
   /** Tools shown in the presentation toolbar (customizable). */
@@ -311,6 +314,9 @@ export function shapeStyleKey(tool: ToolType): ShapeStyleKey | null {
   }
 }
 
+/** Black, red, blue, green. */
+export const DEFAULT_FOCUS_COLORS: readonly string[] = ['#000000', '#e63946', '#1d4ed8', '#16a34a'];
+
 export const useUIStore = create<UIStore>()(
   subscribeWithSelector(
     persist(
@@ -441,6 +447,13 @@ export const useUIStore = create<UIStore>()(
 
         hiddenToolbarTools: [],
         focusToolbarItems: [...DEFAULT_FOCUS_TOOLBAR_ITEMS],
+        focusColors: [...DEFAULT_FOCUS_COLORS],
+        setFocusColor: (index, color) => set((state) => {
+          if (index < 0 || index >= state.focusColors.length || !/^#[0-9a-f]{6}$/i.test(color)) return {};
+          const focusColors = [...state.focusColors];
+          focusColors[index] = color.toLowerCase();
+          return { focusColors };
+        }),
         toggleFocusToolbarItem: (item) => set((state) => ({
           focusToolbarItems: toggleInOrder(state.focusToolbarItems, item, FOCUS_TOOLBAR_ITEMS),
         })),
@@ -567,7 +580,11 @@ export const useUIStore = create<UIStore>()(
           };
           const focusToolbarItems = pick(saved.focusToolbarItems, FOCUS_TOOLBAR_ITEMS, current.focusToolbarItems);
           const presentationTools = pick(saved.presentationTools, PRESENTATION_TOOLS, current.presentationTools);
-          return { ...current, ...saved, language, focusToolbarItems, presentationTools, toolOptions: toolOptions as unknown as ToolOptions };
+          const focusColors = Array.isArray(saved.focusColors) && saved.focusColors.length === DEFAULT_FOCUS_COLORS.length
+            && saved.focusColors.every((c) => typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c))
+            ? saved.focusColors
+            : current.focusColors;
+          return { ...current, ...saved, language, focusToolbarItems, presentationTools, focusColors, toolOptions: toolOptions as unknown as ToolOptions };
         },
         // Only persist tool options, theme and favorite colors — not transient UI state
         partialize: (state) => ({
@@ -584,6 +601,7 @@ export const useUIStore = create<UIStore>()(
           shapeStyles: state.shapeStyles,
           hiddenToolbarTools: state.hiddenToolbarTools,
           focusToolbarItems: state.focusToolbarItems,
+          focusColors: state.focusColors,
           presentationTools: state.presentationTools,
           notePageStyle: state.notePageStyle,
           laserOptions: state.laserOptions,

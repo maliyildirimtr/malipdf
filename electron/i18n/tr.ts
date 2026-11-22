@@ -941,6 +941,7 @@ type Pattern = readonly [RegExp, (...groups: string[]) => string];
 
 /** Messages with numbers or names in them. First match wins. */
 export const TR_PATTERNS: readonly Pattern[] = [
+  [/^(.+) — double-click to change$/, (c) => `${({ Black: 'Siyah', Red: 'Kırmızı', Blue: 'Mavi', Green: 'Yeşil' } as Record<string, string>)[c] ?? c} — değiştirmek için çift tıklayın`],
   [/^of (\d+)$/, (n) => `/ ${n}`],
   [/^"(.+)" already exists\. Replace it\?$/s, (n) => `"${n}" zaten var. Değiştirilsin mi?`],
   [/^Page (\d+) of (\d+)$/, (a, b) => `Sayfa ${a} / ${b}`],

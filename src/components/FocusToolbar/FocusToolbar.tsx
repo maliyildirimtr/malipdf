@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import ReactDOM from 'react-dom';
 import {
   ArrowRight,
   ChevronLeft,
@@ -36,6 +37,7 @@ import {
 } from '../../store/uiStore';
 import type { ToolType } from '../../types/annotations';
 import { ColorWell } from '../MainRibbon/ColorWell';
+import { ColorPickerPopup } from '../Properties/ColorPickerPopup';
 import { OpacityControl } from '../MainRibbon/PropertyControls';
 import { TOOL_WIDTH_CONSTRAINTS } from '../../constants/toolConstraints';
 import { WidthControl } from '../Properties/WidthControl';
@@ -86,14 +88,6 @@ const ITEM_LABELS: Record<FocusToolbarItem, string> = {
   shapes: 'Shapes',
 } as Record<FocusToolbarItem, string>;
 
-/** One-tap colours at the bottom of the toolbar. */
-const FOCUS_COLORS: ReadonlyArray<{ color: string; label: string }> = [
-  { color: '#000000', label: 'Black' },
-  { color: '#e63946', label: 'Red' },
-  { color: '#1d4ed8', label: 'Blue' },
-  { color: '#16a34a', label: 'Green' },
-];
-
 const SHAPE_TOOLS: readonly ToolType[] = ['line', 'arrow', 'rectangle', 'ellipse', 'freeform', 'roundedRect'];
 
 /** Which tool's colour a swatch changes; tools without a colour switch to the pen. */
@@ -101,6 +95,110 @@ function colorTarget(tool: ToolType): ToolColorFamily | null {
   if (tool === 'pen' || tool === 'highlighter' || tool === 'text') return tool;
   if (SHAPE_TOOLS.includes(tool)) return 'shape';
   return null;
+}
+
+/** Names for the default colours (others show their hex code). */
+const COLOR_NAMES: Record<string, string> = { '#000000': 'Black', '#e63946': 'Red', '#1d4ed8': 'Blue', '#16a34a': 'Green' };
+
+/**
+ * The four colours under Undo / Redo. A click colours the current tool;
+ * a double-click opens the palette and the chosen colour replaces that one.
+ */
+function FocusColorSwatches({ activeTool, side, onPenNeeded }: {
+  activeTool: ToolType;
+  side: 'left' | 'right';
+  onPenNeeded: () => void;
+}) {
+  const focusColors = useUIStore((state) => state.focusColors);
+  const toolOptions = useUIStore((state) => state.toolOptions);
+  const [editing, setEditing] = useState<{ index: number; top: number; left: number } | null>(null);
+
+  useEffect(() => {
+    if (!editing) return;
+    const close = (event: PointerEvent) => {
+      const target = event.target as Element | null;
+      if (target?.closest('[data-colorpicker-popup], [data-focus-color]')) return;
+      setEditing(null);
+    };
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') setEditing(null); };
+    window.addEventListener('pointerdown', close);
+    window.addEventListener('keydown', escape);
+    return () => {
+      window.removeEventListener('pointerdown', close);
+      window.removeEventListener('keydown', escape);
+    };
+  }, [editing]);
+
+  const target = colorTarget(activeTool);
+  const currentColor = (target === 'highlighter' ? toolOptions.highlighter.color
+    : target === 'text' ? toolOptions.text.color
+      : target === 'shape' ? toolOptions.shape.color
+        : toolOptions.pen.color).toLowerCase();
+
+  const apply = (color: string) => {
+    const ui = useUIStore.getState();
+    if (target === 'highlighter') ui.updateHighlighterOptions({ color });
+    else if (target === 'text') ui.updateTextOptions({ color });
+    else if (target === 'shape') ui.updateShapeOptions({ color });
+    else {
+      ui.updatePenOptions({ color });
+      if (target !== 'pen') onPenNeeded();
+    }
+  };
+
+  const openPalette = (index: number, button: HTMLElement) => {
+    const rect = button.getBoundingClientRect();
+    const bar = button.closest('aside')?.getBoundingClientRect() ?? rect;
+    const width = 250;
+    const height = 430;
+    const left = side === 'left' ? bar.right + 10 : bar.left - width - 10;
+    const top = Math.max(8, Math.min(rect.top - 40, window.innerHeight - height - 8));
+    setEditing({ index, top, left: Math.max(8, Math.min(left, window.innerWidth - width - 8)) });
+  };
+
+  return (
+    <div className={styles.colorSwatches} role="group" aria-label="Colors">
+      {focusColors.map((color, index) => {
+        const label = COLOR_NAMES[color] ?? color;
+        const selected = currentColor === color;
+        return (
+          <button
+            key={index}
+            type="button"
+            data-focus-color
+            className={`${styles.colorSwatch} ${selected ? styles.colorSwatchActive : ''}`}
+            style={{ background: color }}
+            aria-label={label}
+            aria-pressed={selected}
+            title={`${label} — double-click to change`}
+            onClick={() => {
+              apply(color);
+              useUIStore.getState().addRecentColor(color);
+            }}
+            onDoubleClick={(event) => openPalette(index, event.currentTarget)}
+          />
+        );
+      })}
+      {editing && ReactDOM.createPortal(
+        <div
+          data-colorpicker-popup
+          style={{ position: 'fixed', top: editing.top, left: editing.left, zIndex: 20000 }}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <ColorPickerPopup
+            currentColor={focusColors[editing.index]}
+            onColorSelect={(color) => {
+              useUIStore.getState().setFocusColor(editing.index, color);
+              apply(color);
+            }}
+            onColorCommit={(color) => useUIStore.getState().addRecentColor(color)}
+            onClose={() => setEditing(null)}
+          />
+        </div>,
+        document.body,
+      )}
+    </div>
+  );
 }
 
 /** Items after which a separator is drawn (navigation | drawing tools). */
@@ -292,6 +390,11 @@ export function FocusToolbar({ onCommand, canExecute }: FocusToolbarProps) {
       <Separator />
       <FocusCommandButton commandId="history.undo" label="Undo" icon={Undo2} run={run} enabled={canExecute('history.undo')} />
       <FocusCommandButton commandId="history.redo" label="Redo" icon={Redo2} run={run} enabled={canExecute('history.redo')} />
+      <FocusColorSwatches
+        activeTool={activeTool}
+        side={focusToolbarSide}
+        onPenNeeded={() => run('tool.pen')}
+      />
       <Separator />
 
       {openPanel === 'properties' && (
@@ -346,39 +449,6 @@ export function FocusToolbar({ onCommand, canExecute }: FocusToolbarProps) {
         <LogOut size={20} aria-hidden="true" />
       </button>
 
-      <Separator />
-      <div className={styles.colorSwatches} role="group" aria-label="Colors">
-        {FOCUS_COLORS.map(({ color, label }) => {
-          const target = colorTarget(activeTool);
-          const current = target === 'pen' ? toolOptions.pen.color
-            : target === 'highlighter' ? toolOptions.highlighter.color
-              : target === 'text' ? toolOptions.text.color
-                : target === 'shape' ? toolOptions.shape.color
-                  : toolOptions.pen.color;
-          const selected = current.toLowerCase() === color;
-          return (
-            <button
-              key={color}
-              type="button"
-              className={`${styles.colorSwatch} ${selected ? styles.colorSwatchActive : ''}`}
-              style={{ background: color }}
-              aria-label={label}
-              aria-pressed={selected}
-              title={label}
-              onClick={() => {
-                if (target === 'highlighter') updateHighlighterOptions({ color });
-                else if (target === 'text') updateTextOptions({ color });
-                else if (target === 'shape') updateShapeOptions({ color });
-                else {
-                  updatePenOptions({ color });
-                  if (target !== 'pen') run('tool.pen');
-                }
-                useUIStore.getState().addRecentColor(color);
-              }}
-            />
-          );
-        })}
-      </div>
     </aside>
   );
 }
