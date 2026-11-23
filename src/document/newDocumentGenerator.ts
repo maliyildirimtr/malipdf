@@ -1,6 +1,7 @@
 import { PDFDocument, PDFPage, rgb, setGraphicsState } from 'pdf-lib';
 import { convertToPt } from './pageSizes';
 import { drawNoteTemplate, type NoteTemplateId } from './noteTemplates';
+import { getNotebookCover, renderCoverPngBytes, renderCustomPhotoCoverPngBytes } from './notebookCovers';
 
 export type BackgroundSpacing = 5 | 8 | 10;
 export type BackgroundWeight = 'light' | 'normal' | 'strong';
@@ -30,6 +31,12 @@ export interface NewDocumentSpec {
   heightPt: number;
   background: PageBackground;
   pageCount: number;
+  /** Optional notebook cover ID to prepend as Page 1. */
+  coverId?: string | null;
+  /** Optional custom photo data URL to prepend as Page 1 cover. */
+  customCoverDataUrl?: string | null;
+  /** Optional title printed on the cover page. */
+  coverTitle?: string;
 }
 
 function getWeightThickness(weight: BackgroundWeight): number {
@@ -193,7 +200,33 @@ export async function generateNewDocument(spec: NewDocumentSpec): Promise<Uint8A
   }
 
   const doc = await PDFDocument.create();
-  const { widthPt, heightPt, background, pageCount } = spec;
+  const { widthPt, heightPt, background, pageCount, coverId, customCoverDataUrl, coverTitle } = spec;
+
+  const coverDef = getNotebookCover(coverId);
+  if (customCoverDataUrl) {
+    const coverPage = doc.addPage([widthPt, heightPt]);
+    const pngBytes = await renderCustomPhotoCoverPngBytes(customCoverDataUrl, widthPt, heightPt);
+    if (pngBytes) {
+      const embedded = await doc.embedPng(pngBytes);
+      coverPage.drawImage(embedded, { x: 0, y: 0, width: widthPt, height: heightPt });
+    }
+  } else if (coverDef) {
+    const coverPage = doc.addPage([widthPt, heightPt]);
+    const pngBytes = await renderCoverPngBytes(coverDef.id, coverTitle ?? '', widthPt, heightPt);
+    if (pngBytes) {
+      const embedded = await doc.embedPng(pngBytes);
+      coverPage.drawImage(embedded, { x: 0, y: 0, width: widthPt, height: heightPt });
+    } else {
+      // Non-DOM fallback (e.g. Node unit tests)
+      coverPage.drawRectangle({
+        x: 0,
+        y: 0,
+        width: widthPt,
+        height: heightPt,
+        color: hexToPdfRgb(coverDef.colors[0]),
+      });
+    }
+  }
 
   for (let i = 0; i < Math.max(1, pageCount); i++) {
     const page = doc.addPage([widthPt, heightPt]);

@@ -13,6 +13,161 @@
   width: 220px;
 }
 
+.sidebarTablet {
+  width: 46px;
+}
+
+.sidebarTablet.sidebarExpanded {
+  width: 224px;
+}
+
+.sidebarCollapsed,
+.sidebarTablet.sidebarCollapsed {
+  width: 0;
+  border-right-color: transparent;
+}
+
+.sidebarTablet .panelTabs {
+  width: 46px;
+  gap: 4px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.sidebarTablet .panelTabs::-webkit-scrollbar {
+  display: none;
+}
+
+.sidebarTablet .panelTab {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  color: #1d5d9f;
+}
+
+:global([data-theme="dark"]) .sidebarTablet .panelTab {
+  color: #5ca4f5;
+}
+
+.railBottomGroup {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding-top: 8px;
+}
+
+.railCollapseBtn {
+  margin-top: auto;
+  color: var(--color-accent);
+}
+
+.railDivider {
+  width: 22px;
+  height: 1px;
+  background: var(--color-border);
+  margin: 6px 0;
+  flex-shrink: 0;
+}
+
+.railUtilityBtn {
+  position: relative;
+}
+
+.railDirtyDot::after {
+  content: '';
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: #f59e0b;
+}
+
+.railMorePopover {
+  position: fixed;
+  left: 52px;
+  bottom: 20px;
+  min-width: 228px;
+  padding: 6px;
+  border-radius: 16px;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-xl);
+  z-index: 960;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.railMoreItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 38px;
+  padding: 0 12px;
+  border-radius: 10px;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.railMoreItem:hover {
+  background: var(--color-bg-hover);
+}
+
+.railMoreDivider {
+  height: 1px;
+  background: var(--color-border);
+  margin: 4px 8px;
+}
+
+.edgeNotchBtn {
+  position: fixed;
+  left: 0;
+  bottom: max(76px, calc(env(safe-area-inset-bottom) + 56px));
+  width: 26px;
+  height: 92px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 2px 0 0;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-left: none;
+  border-radius: 0 14px 14px 0;
+  background: rgba(34, 41, 54, 0.86);
+  color: #5ca4f5;
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  box-shadow: 4px 8px 22px rgba(0, 0, 0, 0.28);
+  cursor: pointer;
+  z-index: 46;
+  transition: width 140ms ease, background 140ms ease, color 140ms ease;
+}
+
+.edgeNotchBtn:hover {
+  width: 32px;
+  background: rgba(24, 32, 46, 0.94);
+  color: #7bb8ff;
+}
+
+:global([data-theme="light"]) .edgeNotchBtn {
+  background: rgba(46, 54, 68, 0.84);
+  color: #6ab0ff;
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+:global([data-theme="light"]) .edgeNotchBtn:hover {
+  background: rgba(30, 38, 52, 0.94);
+}
+
 /* ── Icon tab strip (leftmost column) ─────────── */
 
 .panelTabs {

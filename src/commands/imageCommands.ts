@@ -134,7 +134,7 @@ export async function insertImageFromFile(): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = 'image/png,image/jpeg,image/webp';
+    input.accept = 'image/png,image/jpeg,image/heic,image/heif,image/webp,image/gif';
     input.style.display = 'none';
     input.onchange = async () => {
       try {
@@ -238,6 +238,87 @@ export async function captureRegionToImage(): Promise<boolean> {
 
   // Fallback to screen capture
   return await captureScreenToImage();
+}
+
+/**
+ * Opens the device camera (rear camera on iPad/iOS via `capture="environment"`)
+ * and inserts the taken photo onto the active page.
+ */
+export async function insertImageFromCamera(): Promise<boolean> {
+  const target = createInsertTargetSnapshot();
+  if (!target || typeof document === 'undefined') return false;
+
+  return new Promise<boolean>((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.setAttribute('capture', 'environment');
+    input.style.display = 'none';
+    let settled = false;
+    const finish = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      input.remove();
+      resolve(ok);
+    };
+    input.onchange = async () => {
+      try {
+        const file = input.files?.[0];
+        if (!file) { finish(false); return; }
+        const buffer = await file.arrayBuffer();
+        if (!isInsertTargetValid(target)) { finish(false); return; }
+        finish(await insertImageFromBytes(buffer, file.type || 'image/jpeg'));
+      } catch (err) {
+        notifyUser('error', `Image could not be inserted: ${errorMessage(err)}`);
+        finish(false);
+      }
+    };
+    input.oncancel = () => finish(false);
+    document.body.appendChild(input);
+    input.click();
+  });
+}
+
+/**
+ * Pastes an image from the system clipboard onto the active page.
+ * Works natively on iPad (Capacitor Clipboard), Electron, and modern browsers.
+ */
+export async function pasteImageFromClipboard(): Promise<boolean> {
+  const target = createInsertTargetSnapshot();
+  if (!target) return false;
+
+  // 1. Native shell (iPad Capacitor Clipboard or Electron)
+  if (window.electronAPI?.readClipboardImage) {
+    try {
+      const clip = await window.electronAPI.readClipboardImage();
+      if (clip?.data && clip.data.byteLength > 0) {
+        if (!isInsertTargetValid(target)) return false;
+        return await insertImageFromBytes(clip.data, clip.mimeType || 'image/png');
+      }
+    } catch {
+      // Fall through to Web Clipboard API
+    }
+  }
+
+  // 2. Web Clipboard API
+  if (typeof navigator !== 'undefined' && navigator.clipboard?.read) {
+    try {
+      const items = await navigator.clipboard.read();
+      for (const item of items) {
+        const imageType = item.types.find((t) => t.startsWith('image/'));
+        if (!imageType) continue;
+        const blob = await item.getType(imageType);
+        const buffer = await blob.arrayBuffer();
+        if (!isInsertTargetValid(target)) return false;
+        return await insertImageFromBytes(buffer, imageType);
+      }
+    } catch {
+      // Clipboard permission denied or unsupported
+    }
+  }
+
+  notifyUser('info', 'No image found on clipboard.');
+  return false;
 }
 
 // ─── Formulas ────────────────────────────────────────────────────────────────

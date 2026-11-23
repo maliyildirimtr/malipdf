@@ -8,7 +8,33 @@ import type {
   SidebarPanel,
   Theme,
   SelectionState,
+  PenStyle,
 } from '../types/annotations';
+
+export type TabletFavoriteToolKind =
+  | 'pen'
+  | 'highlighter'
+  | 'eraser'
+  | 'text'
+  | 'note'
+  | 'line'
+  | 'arrow'
+  | 'rectangle'
+  | 'ellipse'
+  | 'freeform'
+  | 'laserPointer';
+
+export interface TabletFavoriteTool {
+  id: string;
+  tool: TabletFavoriteToolKind;
+  color: string;
+  size: number;
+  opacity?: number;
+  penStyle?: PenStyle;
+  eraserMode?: 'object' | 'stroke';
+}
+
+const TABLET_FAVORITES_MAX = 10;
 
 export type WorkspaceMode = 'normal' | 'focus';
 export type FocusToolbarSide = 'left' | 'right';
@@ -174,6 +200,12 @@ interface UIStore {
   removePenPreset: (id: string) => void;
   applyPenPreset: (id: string) => void;
 
+  /** Right-edge quick favorite tool shortcuts for Tablet / iPadOS workspace. */
+  tabletFavoriteTools: TabletFavoriteTool[];
+  addTabletFavoriteTool: (tool: TabletFavoriteToolKind) => void;
+  removeTabletFavoriteTool: (id: string) => void;
+  applyTabletFavoriteTool: (id: string) => void;
+
   /** Saved signatures (trimmed transparent PNG data URLs), newest first. */
   signatures: SavedSignature[];
   addSignature: (dataUrl: string) => string | null;
@@ -200,6 +232,9 @@ interface UIStore {
   setSidebarOpen: (open: boolean) => void;
   toggleSidebar: () => void;
   setActiveSidebarPanel: (panel: SidebarPanel) => void;
+  /** Tablet / iPadOS: collapses the left icon rail completely down to an edge notch. */
+  tabletRailHidden: boolean;
+  setTabletRailHidden: (hidden: boolean) => void;
 
   // Theme
   theme: Theme;
@@ -453,6 +488,159 @@ export const useUIStore = create<UIStore>()(
           return { toolOptions, activeTool: preset.tool };
         }),
 
+        tabletFavoriteTools: [],
+        addTabletFavoriteTool: (tool) => set((state) => {
+          let entry: Omit<TabletFavoriteTool, 'id'>;
+          if (tool === 'pen') {
+            entry = {
+              tool,
+              color: normalizeColor(state.toolOptions.pen.color),
+              size: state.toolOptions.pen.width,
+              opacity: state.toolOptions.pen.opacity,
+              penStyle: state.toolOptions.pen.penStyle ?? 'ballpoint',
+            };
+          } else if (tool === 'highlighter') {
+            entry = {
+              tool,
+              color: normalizeColor(state.toolOptions.highlighter.color),
+              size: state.toolOptions.highlighter.width,
+              opacity: state.toolOptions.highlighter.opacity,
+            };
+          } else if (tool === 'eraser') {
+            entry = {
+              tool,
+              color: '#64748b',
+              size: state.toolOptions.eraser.size,
+              eraserMode: state.toolOptions.eraser.mode,
+            };
+          } else if (tool === 'text') {
+            entry = {
+              tool,
+              color: normalizeColor(state.toolOptions.text.color),
+              size: state.toolOptions.text.fontSize,
+            };
+          } else if (tool === 'note') {
+            entry = {
+              tool,
+              color: normalizeColor(state.toolOptions.note.color),
+              size: 1,
+            };
+          } else if (tool === 'laserPointer') {
+            entry = {
+              tool,
+              color: normalizeColor(state.laserOptions.color),
+              size: state.laserOptions.width,
+            };
+          } else {
+            entry = {
+              tool,
+              color: normalizeColor(state.toolOptions.shape.color),
+              size: state.toolOptions.shape.strokeWidth,
+              opacity: state.toolOptions.shape.opacity,
+            };
+          }
+
+          const duplicate = state.tabletFavoriteTools.some(
+            (f) =>
+              f.tool === entry.tool &&
+              f.color === entry.color &&
+              f.size === entry.size &&
+              f.penStyle === entry.penStyle &&
+              f.eraserMode === entry.eraserMode,
+          );
+          if (duplicate) return state;
+
+          const created: TabletFavoriteTool = {
+            ...entry,
+            id: `tfav-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`,
+          };
+          return {
+            tabletFavoriteTools: [...state.tabletFavoriteTools, created].slice(-TABLET_FAVORITES_MAX),
+          };
+        }),
+        removeTabletFavoriteTool: (id) => set((state) => ({
+          tabletFavoriteTools: state.tabletFavoriteTools.filter((f) => f.id !== id),
+        })),
+        applyTabletFavoriteTool: (id) => set((state) => {
+          const fav = state.tabletFavoriteTools.find((f) => f.id === id);
+          if (!fav) return state;
+          if (fav.tool === 'pen') {
+            return {
+              activeTool: 'pen',
+              toolOptions: {
+                ...state.toolOptions,
+                pen: {
+                  ...state.toolOptions.pen,
+                  color: fav.color,
+                  width: fav.size,
+                  opacity: fav.opacity ?? state.toolOptions.pen.opacity,
+                  penStyle: fav.penStyle ?? 'ballpoint',
+                },
+              },
+            };
+          }
+          if (fav.tool === 'highlighter') {
+            return {
+              activeTool: 'highlighter',
+              toolOptions: {
+                ...state.toolOptions,
+                highlighter: {
+                  ...state.toolOptions.highlighter,
+                  color: fav.color,
+                  width: fav.size,
+                  opacity: fav.opacity ?? state.toolOptions.highlighter.opacity,
+                },
+              },
+            };
+          }
+          if (fav.tool === 'eraser') {
+            return {
+              activeTool: 'eraser',
+              toolOptions: {
+                ...state.toolOptions,
+                eraser: {
+                  ...state.toolOptions.eraser,
+                  size: fav.size,
+                  mode: fav.eraserMode ?? state.toolOptions.eraser.mode,
+                },
+              },
+            };
+          }
+          if (fav.tool === 'text') {
+            return {
+              activeTool: 'text',
+              toolOptions: {
+                ...state.toolOptions,
+                text: { ...state.toolOptions.text, color: fav.color, fontSize: fav.size },
+              },
+            };
+          }
+          if (fav.tool === 'note') {
+            return {
+              activeTool: 'note',
+              toolOptions: { ...state.toolOptions, note: { ...state.toolOptions.note, color: fav.color } },
+            };
+          }
+          if (fav.tool === 'laserPointer') {
+            return {
+              activeTool: 'laserPointer',
+              laserOptions: { ...state.laserOptions, color: fav.color, width: fav.size },
+            };
+          }
+          return {
+            activeTool: fav.tool,
+            toolOptions: {
+              ...state.toolOptions,
+              shape: {
+                ...state.toolOptions.shape,
+                color: fav.color,
+                strokeWidth: fav.size,
+                opacity: fav.opacity ?? state.toolOptions.shape.opacity,
+              },
+            },
+          };
+        }),
+
         hiddenToolbarTools: [],
         focusToolbarItems: [...DEFAULT_FOCUS_TOOLBAR_ITEMS],
         focusColors: [...DEFAULT_FOCUS_COLORS],
@@ -479,9 +667,20 @@ export const useUIStore = create<UIStore>()(
 
         sidebarOpen: false,
         activeSidebarPanel: 'pages',
-        setSidebarOpen: (open) => set({ sidebarOpen: open }),
-        toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
-        setActiveSidebarPanel: (panel) => set({ activeSidebarPanel: panel }),
+        setSidebarOpen: (open) => set((s) => ({
+          sidebarOpen: open,
+          tabletRailHidden: open ? false : s.tabletRailHidden,
+        })),
+        toggleSidebar: () => set((s) => ({
+          sidebarOpen: !s.sidebarOpen,
+          tabletRailHidden: !s.sidebarOpen ? false : s.tabletRailHidden,
+        })),
+        setActiveSidebarPanel: (panel) => set({ activeSidebarPanel: panel, tabletRailHidden: false }),
+        tabletRailHidden: false,
+        setTabletRailHidden: (hidden) => set((s) => ({
+          tabletRailHidden: hidden,
+          sidebarOpen: hidden ? false : s.sidebarOpen,
+        })),
 
         theme: 'light',
         resolvedTheme: 'light',
@@ -599,6 +798,7 @@ export const useUIStore = create<UIStore>()(
           toolOptions: state.toolOptions,
           theme: state.theme,
           sidebarOpen: state.sidebarOpen,
+          tabletRailHidden: state.tabletRailHidden,
           focusToolbarSide: state.focusToolbarSide,
           pencilOnly: state.pencilOnly,
           tabletMode: state.tabletMode,
@@ -606,6 +806,7 @@ export const useUIStore = create<UIStore>()(
           favoriteColors: state.favoriteColors,
           recentColors: state.recentColors,
           penPresets: state.penPresets,
+          tabletFavoriteTools: state.tabletFavoriteTools,
           signatures: state.signatures,
           shapeStyles: state.shapeStyles,
           hiddenToolbarTools: state.hiddenToolbarTools,

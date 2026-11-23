@@ -5,7 +5,41 @@ import { normalizeAndCreateImageAsset } from '../../pdf/imageUtils';
 import { imagesToPdf, type ImagePageSize, type PreparedImage } from '../../pdf/imagesToPdf';
 import { openDocumentBytes } from '../../document/openDocumentBytes';
 import { errorMessage, notifyUser } from '../../utils/notify';
+import { isTabletMode } from '../../platform/touchMode';
+import { ensurePdfExtension, sanitizeFileName } from '../../platform/ipadLibrary';
+import { useLibraryStore } from '../../store/libraryStore';
 import styles from './NewDocumentDialog.module.css';
+
+function pickBrowserImages(): Promise<Array<{ name: string; mimeType: string; data: ArrayBuffer }> | null> {
+  return new Promise((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/png,image/jpeg,image/heic,image/heif,image/webp,image/gif';
+    input.multiple = true;
+    input.style.display = 'none';
+    let settled = false;
+    const finish = (res: Array<{ name: string; mimeType: string; data: ArrayBuffer }> | null) => {
+      if (settled) return;
+      settled = true;
+      input.remove();
+      resolve(res);
+    };
+    input.onchange = async () => {
+      if (!input.files?.length) { finish(null); return; }
+      const list = await Promise.all(
+        Array.from(input.files).map(async (file) => ({
+          name: file.name,
+          mimeType: file.type || 'image/png',
+          data: await file.arrayBuffer(),
+        })),
+      );
+      finish(list);
+    };
+    input.oncancel = () => finish(null);
+    document.body.appendChild(input);
+    input.click();
+  });
+}
 
 interface Item { id: string; name: string; url: string; image: PreparedImage }
 
@@ -27,7 +61,9 @@ export function ImagesToPdfDialog() {
   }, [open]);
 
   const addImages = async () => {
-    const files = await window.electronAPI?.openImages?.();
+    const files = window.electronAPI?.openImages
+      ? await window.electronAPI.openImages()
+      : await pickBrowserImages();
     if (!files || files.length === 0) return;
     setBusy(true);
     const added: Item[] = [];
@@ -80,8 +116,25 @@ export function ImagesToPdfDialog() {
     }
     try {
       const bytes = await imagesToPdf(items.map((i) => i.image), size, margin);
-      const name = items.length === 1 ? items[0].name.replace(/\.[^.]+$/, '') : 'Images';
-      await openDocumentBytes(`${name}.pdf`, null, bytes.buffer as ArrayBuffer, { markDirty: true });
+      const rawName = items.length === 1 ? items[0].name.replace(/\.[^.]+$/, '') : 'Images';
+      const fileName = ensurePdfExtension(sanitizeFileName(rawName));
+      if (isTabletMode()) {
+        const saved = await useLibraryStore.getState().upsertDocument({
+          title: fileName,
+          bytes,
+          kind: 'pdf',
+          pageCount: items.length,
+        });
+        await openDocumentBytes(
+          saved.title,
+          saved.filePath,
+          bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
+          { restoreEditable: false },
+        );
+        useLibraryStore.getState().setActiveView('workspace');
+      } else {
+        await openDocumentBytes(fileName, null, bytes.buffer as ArrayBuffer, { markDirty: true });
+      }
       setOpen(false);
     } catch (error) {
       notifyUser('error', `The PDF could not be made: ${errorMessage(error)}`);

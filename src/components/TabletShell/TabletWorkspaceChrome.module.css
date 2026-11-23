@@ -1,0 +1,1021 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   iPadOS Document Workspace Chrome — Single-Row Nav + Floating Tool Dock
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.topChrome {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  z-index: 40;
+  background: var(--tw-bar-bg);
+  border-bottom: 1px solid var(--tw-border);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+:global([data-theme="dark"]) .topChrome,
+:global([data-theme="dark"]) .bottomPill,
+:global([data-theme="dark"]) .popover,
+:global([data-theme="dark"]) .toolSheet,
+:global([data-theme="dark"]) .favoritesRail {
+  --tw-bar-bg: rgba(16, 23, 35, 0.92);
+  --tw-dock-bg: rgba(24, 32, 46, 0.94);
+  --tw-popover-bg: rgba(24, 32, 46, 0.97);
+  --tw-surface: rgba(255, 255, 255, 0.08);
+  --tw-surface-hover: rgba(255, 255, 255, 0.14);
+  --tw-border: rgba(255, 255, 255, 0.10);
+  --tw-text: rgba(255, 255, 255, 0.93);
+  --tw-text-muted: rgba(255, 255, 255, 0.60);
+  --tw-accent: #4c93e6;
+  --tw-accent-bg: rgba(45, 120, 196, 0.22);
+  --tw-shadow: 0 14px 36px rgba(0, 0, 0, 0.50);
+}
+
+:global([data-theme="light"]) .topChrome,
+:global([data-theme="light"]) .bottomPill,
+:global([data-theme="light"]) .popover,
+:global([data-theme="light"]) .toolSheet,
+:global([data-theme="light"]) .favoritesRail {
+  --tw-bar-bg: rgba(251, 252, 255, 0.94);
+  --tw-dock-bg: rgba(243, 246, 251, 0.96);
+  --tw-popover-bg: rgba(255, 255, 255, 0.98);
+  --tw-surface: rgba(16, 48, 84, 0.06);
+  --tw-surface-hover: rgba(16, 48, 84, 0.11);
+  --tw-border: rgba(16, 48, 84, 0.10);
+  --tw-text: #0d1f36;
+  --tw-text-muted: rgba(13, 31, 54, 0.60);
+  --tw-accent: #1d5d9f;
+  --tw-accent-bg: rgba(29, 93, 159, 0.13);
+  --tw-shadow: 0 14px 34px rgba(13, 31, 54, 0.16);
+}
+
+/* ── Single Unified Top Bar (54px, never wraps) ──────────────────────────── */
+
+.navBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  height: 54px;
+  padding: 0 10px;
+}
+
+.navLeft {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.navCenter {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.navRight {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  max-width: 220px;
+}
+
+@media (max-width: 900px) {
+  .libraryBackLabel {
+    display: none;
+  }
+
+  .libraryBackBtn {
+    padding: 0 9px;
+  }
+}
+
+.libraryBackBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 38px;
+  padding: 0 12px 0 8px;
+  border-radius: 11px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--tw-accent);
+  background: var(--tw-accent-bg);
+  border: none;
+  cursor: pointer;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.libraryBackBtn:hover {
+  filter: brightness(1.06);
+}
+
+.iconBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  color: var(--tw-text);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.accentIconBtn {
+  color: var(--tw-accent);
+}
+
+.iconBtn:hover:not(:disabled) {
+  background: var(--tw-surface);
+}
+
+.iconBtn:disabled {
+  opacity: 0.34;
+  cursor: default;
+}
+
+.iconBtnActive {
+  background: var(--tw-accent-bg);
+  color: var(--tw-accent);
+}
+
+.saveDirtyDot {
+  position: relative;
+}
+
+.saveDirtyDot::after {
+  content: '';
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #f59e0b;
+}
+
+/* ── Compact Document Tabs Strip ──────────────────────────────────────────── */
+
+.tabsStrip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 2px 0;
+}
+
+.tabsStrip::-webkit-scrollbar {
+  display: none;
+}
+
+.tabPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  min-width: 72px;
+  max-width: 210px;
+  padding: 0 6px 0 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--tw-text-muted);
+  background: var(--tw-surface);
+  border: 1px solid transparent;
+  flex: 0 1 auto;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.tabPillActive {
+  color: var(--tw-text);
+  font-weight: 600;
+  background: var(--tw-dock-bg);
+  border-color: var(--tw-border);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.10);
+}
+
+.tabDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--tw-accent);
+  flex-shrink: 0;
+}
+
+.tabLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tabCloseBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  border: none;
+  background: transparent;
+  color: var(--tw-text-muted);
+  cursor: pointer;
+}
+
+.tabCloseBtn:hover {
+  background: var(--tw-surface-hover);
+  color: var(--tw-text);
+}
+
+/* ── Row 2: Single-Row Sleek Tool Dock (48px, horizontally scrollable) ────── */
+
+.toolDockWrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 12px 7px;
+  border-top: 1px solid var(--tw-border);
+  background: var(--tw-dock-bg);
+}
+
+.toolDock {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 2px;
+}
+
+.toolDock::-webkit-scrollbar {
+  display: none;
+}
+
+.toolBtn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 40px;
+  height: 38px;
+  padding: 0 8px;
+  border-radius: 10px;
+  color: var(--tw-text);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.toolBtn:hover {
+  background: var(--tw-surface);
+}
+
+.toolBtnActive {
+  background: var(--tw-accent-bg);
+  color: var(--tw-accent);
+}
+
+/* Subtle bottom-right chevron cue showing active tool can be tapped again for options */
+.toolOptionsCue {
+  position: absolute;
+  right: 3px;
+  bottom: 2px;
+  opacity: 0.72;
+  pointer-events: none;
+}
+
+.toolColorBar {
+  position: absolute;
+  left: 9px;
+  right: 9px;
+  bottom: 3px;
+  height: 3px;
+  border-radius: 999px;
+  pointer-events: none;
+}
+
+.dockDivider {
+  width: 1px;
+  height: 22px;
+  background: var(--tw-border);
+  margin: 0 5px;
+  flex-shrink: 0;
+}
+
+.swatchRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 4px;
+  flex-shrink: 0;
+}
+
+.colorDot {
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  border: 2px solid rgba(128, 128, 128, 0.35);
+  cursor: pointer;
+  transition: transform 120ms ease;
+  flex-shrink: 0;
+}
+
+.colorDotActive {
+  transform: scale(1.18);
+  box-shadow: 0 0 0 2px var(--tw-dock-bg), 0 0 0 4px var(--tw-accent);
+}
+
+.widthPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 11px;
+  border-radius: 10px;
+  background: var(--tw-surface);
+  border: 1px solid var(--tw-border);
+  color: var(--tw-text);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.widthPill:hover {
+  background: var(--tw-surface-hover);
+}
+
+.widthSample {
+  border-radius: 999px;
+  background: currentColor;
+}
+
+/* ── Floating Popovers (Shapes / Tool Style / More Actions) ───────────────── */
+
+.popover {
+  position: fixed;
+  min-width: 232px;
+  max-width: 300px;
+  padding: 10px;
+  border-radius: 16px;
+  background: var(--tw-popover-bg);
+  border: 1px solid var(--tw-border);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  box-shadow: var(--tw-shadow);
+  z-index: 950;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--tw-text);
+}
+
+.popoverItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--tw-text);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.popoverItem:hover:not(:disabled) {
+  background: var(--tw-surface);
+}
+
+.popoverItem:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.popoverItemActive {
+  background: var(--tw-accent-bg);
+  color: var(--tw-accent);
+  font-weight: 600;
+}
+
+.popoverDivider {
+  height: 1px;
+  background: var(--tw-border);
+  margin: 3px 6px;
+}
+
+.popoverSectionLabel {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--tw-text-muted);
+  padding: 4px 6px 0;
+}
+
+.sliderRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 6px;
+}
+
+.sliderRow input[type='range'] {
+  flex: 1;
+}
+
+.sliderVal {
+  min-width: 38px;
+  text-align: right;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--tw-text-muted);
+}
+
+.shapeGrid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+  padding: 4px;
+}
+
+.colorPaletteGrid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+  padding: 4px 6px;
+}
+
+.chipRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 2px 4px;
+}
+
+.chipBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 34px;
+  padding: 0 11px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--tw-text);
+  background: var(--tw-surface);
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+.chipBtn:hover {
+  background: var(--tw-surface-hover);
+}
+
+.chipBtnActive {
+  background: var(--tw-accent-bg);
+  color: var(--tw-accent);
+  border-color: var(--tw-accent);
+  font-weight: 600;
+}
+
+.toggleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 38px;
+  padding: 0 8px;
+  border-radius: 10px;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--tw-text);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+}
+
+.toggleRow:hover {
+  background: var(--tw-surface);
+}
+
+.togglePill {
+  width: 38px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--tw-surface-hover);
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  transition: background 140ms ease;
+  flex-shrink: 0;
+}
+
+.togglePillOn {
+  background: var(--tw-accent);
+  justify-content: flex-end;
+}
+
+.toggleKnob {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28);
+}
+
+.strokePreviewBox {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 44px;
+  margin: 2px 4px 4px;
+  border-radius: 11px;
+  background: var(--tw-surface);
+  overflow: hidden;
+}
+
+.popoverHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 6px 4px;
+}
+
+.popoverTitle {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--tw-text);
+}
+
+.popoverHint {
+  font-size: 11px;
+  color: var(--tw-text-muted);
+}
+
+/* ── Upgraded iPadOS Visual Tool Sheet (Sapphire Banner + Visual Pen Cards) ─ */
+
+.toolSheet {
+  position: fixed;
+  width: 348px;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 126px);
+  border-radius: 22px;
+  background: var(--tw-popover-bg);
+  border: 1px solid var(--tw-border);
+  backdrop-filter: blur(26px);
+  -webkit-backdrop-filter: blur(26px);
+  box-shadow: 0 22px 54px rgba(0, 0, 0, 0.42);
+  z-index: 950;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  color: var(--tw-text);
+}
+
+.sheetBanner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px 12px 18px;
+  background: linear-gradient(135deg, #246bb5 0%, #154a87 100%);
+  color: #ffffff;
+  flex-shrink: 0;
+}
+
+.sheetBannerTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.sheetDoneBtn {
+  height: 32px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: none;
+  background: rgba(219, 238, 255, 0.92);
+  color: #0f3666;
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 120ms ease, background 120ms ease;
+}
+
+.sheetDoneBtn:hover {
+  background: #ffffff;
+  transform: scale(1.03);
+}
+
+.sheetBody {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  overflow-y: auto;
+}
+
+.sheetTabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sheetTabBtn {
+  height: 32px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: var(--tw-text-muted);
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease;
+}
+
+.sheetTabBtn:hover {
+  color: var(--tw-text);
+}
+
+.sheetTabBtnActive {
+  background: #1b5c9e;
+  color: #ffffff;
+}
+
+.penStyleGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.penStyleCard {
+  display: flex;
+  flex-direction: column;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 2px solid transparent;
+  background: #ffffff;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.14);
+  cursor: pointer;
+  padding: 0;
+  transition: transform 130ms ease, border-color 130ms ease, box-shadow 130ms ease;
+}
+
+.penStyleCard:hover {
+  transform: translateY(-2px);
+}
+
+.penStyleCardActive {
+  border-color: #3b82d6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 214, 0.35), 0 6px 16px rgba(21, 74, 135, 0.28);
+}
+
+.penStyleStroke {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 46px;
+  width: 100%;
+  background: #ffffff;
+}
+
+.penStyleFooter {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 3px 4px;
+  background: linear-gradient(180deg, #5ea0e0 0%, #3b7ec2 100%);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.15;
+  text-align: center;
+}
+
+.penStyleCardActive .penStyleFooter {
+  background: linear-gradient(180deg, #256bb5 0%, #154a87 100%);
+}
+
+.colorTray {
+  padding: 10px;
+  border-radius: 16px;
+  background: var(--tw-surface);
+  border: 1px solid var(--tw-border);
+}
+
+.colorTrayGrid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 9px;
+  justify-items: center;
+}
+
+.rainbowColorBtn {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: conic-gradient(#ef4444, #f59e0b, #eab308, #22c55e, #06b6d4, #3b82f6, #a855f7, #ec4899, #ef4444);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.24);
+  overflow: hidden;
+}
+
+.rainbowColorInput {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  width: 100%;
+  height: 100%;
+}
+
+.swatchCircle {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 2px solid rgba(128, 128, 128, 0.26);
+  cursor: pointer;
+  transition: transform 120ms ease;
+}
+
+.swatchCircle:hover {
+  transform: scale(1.1);
+}
+
+.swatchCircleActive {
+  transform: scale(1.16);
+  box-shadow: 0 0 0 2px var(--tw-popover-bg), 0 0 0 4px var(--tw-accent);
+}
+
+.sliderCard {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: var(--tw-surface);
+  border: 1px solid var(--tw-border);
+}
+
+.sliderCardRow {
+  display: grid;
+  grid-template-columns: 78px 1fr 40px;
+  align-items: center;
+  gap: 10px;
+}
+
+.sliderCardLabel {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--tw-accent);
+}
+
+.sliderCardRow input[type='range'] {
+  width: 100%;
+  height: 6px;
+  accent-color: #1d5d9f;
+}
+
+.sliderCardRow input[type='range']::-webkit-slider-thumb {
+  width: 24px;
+  height: 18px;
+  border-radius: 999px;
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.16);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.26);
+}
+
+.favAddBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  align-self: center;
+  min-width: 196px;
+  height: 40px;
+  padding: 0 20px;
+  border-radius: 999px;
+  border: 1px solid var(--tw-border);
+  background: var(--tw-surface);
+  color: var(--tw-accent);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 140ms ease, transform 120ms ease;
+}
+
+.favAddBtn:hover {
+  background: var(--tw-surface-hover);
+  transform: scale(1.02);
+}
+
+.favStarBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+  color: #ffffff;
+}
+
+/* ── Top-Right Floating Favorite Tools Vertical Rail ──────────────────────── */
+
+.favoritesRail {
+  position: fixed;
+  top: 68px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  z-index: 44;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.favoritesRailFocus {
+  top: 18px;
+}
+
+.favShortcutWrap {
+  position: relative;
+}
+
+.favShortcutBtn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  width: 50px;
+  height: 50px;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.32);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+  cursor: pointer;
+  transition: transform 150ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 150ms ease;
+  padding: 0;
+}
+
+.favShortcutBtn:hover {
+  transform: scale(1.08);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.36);
+}
+
+.favShortcutBtnActive {
+  transform: scale(1.1);
+  box-shadow: 0 0 0 3px var(--tw-accent, #2d78c4), 0 10px 24px rgba(21, 74, 135, 0.45);
+}
+
+.favShortcutSize {
+  font-size: 10.5px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.favRemoveBtn {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 19px;
+  height: 19px;
+  border-radius: 999px;
+  border: 1.5px solid #ffffff;
+  background: #1e293b;
+  color: #ffffff;
+  cursor: pointer;
+  opacity: 0;
+  transform: scale(0.8);
+  transition: opacity 120ms ease, transform 120ms ease;
+  padding: 0;
+}
+
+.favShortcutWrap:hover .favRemoveBtn,
+.favRemoveBtnVisible {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.favEditToggleBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  border: 1px solid var(--tw-border);
+  background: var(--tw-popover-bg);
+  color: var(--tw-text-muted);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+}
+
+.favEditToggleBtn:hover,
+.favEditToggleBtnActive {
+  color: var(--tw-accent);
+  border-color: var(--tw-accent);
+}
+
+/* ── Minimal Floating Bottom Page & Zoom Pill ─────────────────────────────── */
+
+.bottomPill {
+  position: fixed;
+  left: 50%;
+  bottom: max(14px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 42px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--tw-popover-bg);
+  border: 1px solid var(--tw-border);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+  box-shadow: var(--tw-shadow);
+  color: var(--tw-text);
+  z-index: 45;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.pillBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: var(--tw-text);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.pillBtn:hover:not(:disabled) {
+  background: var(--tw-surface);
+}
+
+.pillBtn:disabled {
+  opacity: 0.34;
+  cursor: default;
+}
+
+.pillPageText {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 0 6px;
+  white-space: nowrap;
+}
+
+.pillDivider {
+  width: 1px;
+  height: 18px;
+  background: var(--tw-border);
+  margin: 0 3px;
+}

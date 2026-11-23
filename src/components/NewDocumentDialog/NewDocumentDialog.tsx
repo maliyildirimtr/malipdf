@@ -1,13 +1,18 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Minus, Plus, File as FileIcon } from 'lucide-react';
+import { Minus, Plus, File as FileIcon, ImagePlus, X } from 'lucide-react';
 import { useUIStore } from '../../store/uiStore';
 import { useDocumentStore } from '../../store/documentStore';
 import { getNextUntitledName } from '../../document/untitledNaming';
 import { generateNewDocument, type PageBackground, type BackgroundSpacing, type BackgroundWeight } from '../../document/newDocumentGenerator';
 import { getCanonicalPageDimensions, type PageSizePreset, type Orientation, type Unit, ISO_A_MM, ISO_B_MM, ISO_C_MM, NA_INCH, SCREEN_PT } from '../../document/pageSizes';
 import { openDocumentBytes } from '../../document/openDocumentBytes';
+import { isTabletMode } from '../../platform/touchMode';
+import { ensurePdfExtension, sanitizeFileName } from '../../platform/ipadLibrary';
+import { useLibraryStore } from '../../store/libraryStore';
 import { NOTE_TEMPLATES, type NoteTemplateId } from '../../document/noteTemplates';
+import { COVER_CATEGORIES, NOTEBOOK_COVERS, getNotebookCover } from '../../document/notebookCovers';
 import { TemplateThumbnail } from './TemplateThumbnail';
+import { CoverThumbnail } from './CoverThumbnail';
 import styles from './NewDocumentDialog.module.css';
 
 export type PaperType = Exclude<PageBackground['type'], 'template'>;
@@ -92,10 +97,79 @@ export function BackgroundThumbnail({
   );
 }
 
+function makeDefaultNotebookTitle(): string {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `New Note ${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}-${pad(now.getMinutes())}`;
+}
+
+function PaperMiniPreview({
+  type,
+  template,
+  spacing,
+  color,
+}: {
+  type: PaperType;
+  template: NoteTemplateId | null;
+  spacing: BackgroundSpacing;
+  color: string;
+}) {
+  const lines: React.ReactNode[] = [];
+  if (template === 'cornell') {
+    lines.push(<line key="h1" x1={0} y1={14} x2={104} y2={14} stroke={color} strokeWidth="1" />);
+    lines.push(<line key="v1" x1={32} y1={14} x2={32} y2={112} stroke={color} strokeWidth="1" />);
+    lines.push(<line key="h2" x1={0} y1={112} x2={104} y2={112} stroke={color} strokeWidth="1" />);
+    for (let y = 24; y < 110; y += 9) {
+      lines.push(<line key={`c${y}`} x1={36} y1={y} x2={98} y2={y} stroke={color} strokeWidth="0.6" opacity={0.55} />);
+    }
+  } else if (template === 'weekly') {
+    for (let y = 18; y < 134; y += 17) {
+      lines.push(<line key={`w${y}`} x1={8} y1={y} x2={96} y2={y} stroke={color} strokeWidth="0.8" opacity={0.7} />);
+    }
+    lines.push(<line key="wv" x1={52} y1={18} x2={52} y2={120} stroke={color} strokeWidth="0.8" opacity={0.7} />);
+  } else if (template) {
+    for (let y = 20; y < 130; y += 11) {
+      lines.push(<line key={`t${y}`} x1={12} y1={y} x2={92} y2={y} stroke={color} strokeWidth="0.7" opacity={0.65} />);
+    }
+  } else if (type !== 'blank') {
+    const step = spacing * 1.9;
+    if (type === 'grid' || type === 'millimetric') {
+      for (let x = step; x < 104; x += step) {
+        lines.push(<line key={`v${x}`} x1={x} y1={0} x2={x} y2={138} stroke={color} strokeWidth="0.6" opacity={0.6} />);
+      }
+    }
+    if (type === 'grid' || type === 'lined' || type === 'millimetric') {
+      for (let y = step; y < 138; y += step) {
+        lines.push(<line key={`h${y}`} x1={0} y1={y} x2={104} y2={y} stroke={color} strokeWidth="0.6" opacity={0.6} />);
+      }
+    }
+    if (type === 'dotted') {
+      for (let x = step; x < 104; x += step) {
+        for (let y = step; y < 138; y += step) {
+          lines.push(<circle key={`d${x}-${y}`} cx={x} cy={y} r={0.9} fill={color} opacity={0.7} />);
+        }
+      }
+    }
+  }
+
+  return (
+    <svg viewBox="0 0 104 138" width="104" height="138" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <rect x="0" y="0" width="104" height="138" fill="#ffffff" />
+      {lines}
+    </svg>
+  );
+}
+
 export function NewDocumentDialog() {
   const isOpen = useUIStore((state) => state.newDocumentDialogOpen);
   const setIsOpen = useUIStore((state) => state.setNewDocumentDialogOpen);
   const documents = useDocumentStore((state) => state.documents);
+
+  const [docTitle, setDocTitle] = useState<string>('');
+  const [activeTab, setActiveTab] = useState<'paper' | 'cover'>('paper');
+  const [coverId, setCoverId] = useState<string | null>(null);
+  const [customCoverUrl, setCustomCoverUrl] = useState<string | null>(null);
+  const coverFileInputRef = useRef<HTMLInputElement>(null);
 
   const [preset, setPreset] = useState<PageSizePreset>('A4');
   const [orientation, setOrientation] = useState<Orientation>('Portrait');
@@ -118,9 +192,14 @@ export function NewDocumentDialog() {
 
   useEffect(() => {
     if (isOpen) {
+      setDocTitle(isTabletMode() ? makeDefaultNotebookTitle() : '');
+      setActiveTab('paper');
+      setCoverId(null);
+      setCustomCoverUrl(null);
       setPreset('A4');
       setOrientation('Portrait');
       setBgType('blank');
+      setTemplate(null);
       setBgSpacing(5);
       setBgColor('#999999');
       setBgOpacity(1.0);
@@ -134,6 +213,39 @@ export function NewDocumentDialog() {
   if (!isOpen) return null;
 
   const isCustom = preset === 'Custom';
+  const selectedCover = getNotebookCover(coverId);
+
+  const handlePickCustomCover = async () => {
+    if (window.electronAPI?.openImage) {
+      const picked = await window.electronAPI.openImage();
+      if (!picked?.data) return;
+      const blob = new Blob([picked.data], { type: picked.mimeType || 'image/jpeg' });
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (typeof reader.result === 'string') {
+          setCustomCoverUrl(reader.result);
+          setCoverId(null);
+        }
+      };
+      reader.readAsDataURL(blob);
+      return;
+    }
+    coverFileInputRef.current?.click();
+  };
+
+  const handleCustomCoverInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setCustomCoverUrl(reader.result);
+        setCoverId(null);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
   const handleCreate = async () => {
     if (pageCount < 1 || pageCount > 500) {
@@ -181,17 +293,41 @@ export function NewDocumentDialog() {
         }
       }
 
+      const existingTitles = Array.from(documents.values()).map(doc => doc.title);
+      const trimmedTitle = docTitle.trim();
+      const name = trimmedTitle
+        ? ensurePdfExtension(sanitizeFileName(trimmedTitle))
+        : getNextUntitledName(existingTitles);
+
       const pdfBytes = await generateNewDocument({
         widthPt,
         heightPt,
         background,
         pageCount,
+        coverId,
+        customCoverDataUrl: customCoverUrl,
+        coverTitle: trimmedTitle || name.replace(/\.pdf$/i, ''),
       });
 
-      const existingTitles = Array.from(documents.values()).map(doc => doc.title);
-      const name = getNextUntitledName(existingTitles);
+      const totalPages = pageCount + (selectedCover || customCoverUrl ? 1 : 0);
 
-      await openDocumentBytes(name, null, pdfBytes.buffer as ArrayBuffer);
+      if (isTabletMode()) {
+        const saved = await useLibraryStore.getState().upsertDocument({
+          title: name,
+          bytes: pdfBytes,
+          kind: 'notebook',
+          pageCount: totalPages,
+        });
+        await openDocumentBytes(
+          saved.title,
+          saved.filePath,
+          pdfBytes.buffer.slice(pdfBytes.byteOffset, pdfBytes.byteOffset + pdfBytes.byteLength) as ArrayBuffer,
+          { restoreEditable: false },
+        );
+        useLibraryStore.getState().setActiveView('workspace');
+      } else {
+        await openDocumentBytes(name, null, pdfBytes.buffer as ArrayBuffer);
+      }
       setIsOpen(false);
     } catch (error) {
       console.error('Failed to create new document:', error);
@@ -229,6 +365,130 @@ export function NewDocumentDialog() {
         </div>
 
         <div className={styles.content}>
+          {/* ── Document Title Input ── */}
+          <div className={styles.titleInputRow}>
+            <input
+              type="text"
+              className={styles.titleInput}
+              placeholder="Document name"
+              value={docTitle}
+              onChange={(e) => setDocTitle(e.target.value)}
+            />
+            {docTitle && (
+              <button
+                type="button"
+                className={styles.titleClearBtn}
+                aria-label="Clear name"
+                onClick={() => setDocTitle('')}
+              >
+                <X size={13} />
+              </button>
+            )}
+          </div>
+
+          {/* ── Dual Live Preview: Paper (Kağıt) & Cover (Kapak) ── */}
+          <div className={styles.dualPreviewRow}>
+            <button
+              type="button"
+              className={`${styles.previewCardBtn} ${activeTab === 'paper' ? styles.previewCardActive : ''}`}
+              aria-pressed={activeTab === 'paper'}
+              onClick={() => setActiveTab('paper')}
+            >
+              <div className={styles.previewCardFrame}>
+                <PaperMiniPreview type={bgType} template={template} spacing={bgSpacing} color={bgColor} />
+                <span className={styles.previewPillLabel}>Paper</span>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              className={`${styles.previewCardBtn} ${activeTab === 'cover' ? styles.previewCardActive : ''}`}
+              aria-pressed={activeTab === 'cover'}
+              onClick={() => setActiveTab('cover')}
+            >
+              <div className={styles.previewCardFrame}>
+                {customCoverUrl ? (
+                  <img src={customCoverUrl} alt="" className={styles.customCoverImg} />
+                ) : selectedCover ? (
+                  <CoverThumbnail cover={selectedCover} width={104} height={138} title={docTitle} />
+                ) : (
+                  <div className={styles.noCoverChecker} />
+                )}
+                <span className={styles.previewPillLabel}>Cover</span>
+              </div>
+            </button>
+          </div>
+
+          <input
+            ref={coverFileInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/heic,image/heif,image/webp,image/gif"
+            style={{ display: 'none' }}
+            onChange={handleCustomCoverInputChange}
+          />
+
+          {activeTab === 'cover' ? (
+            <div className={styles.coverGalleryPanel}>
+              {COVER_CATEGORIES.map((cat, idx) => {
+                const covers = NOTEBOOK_COVERS.filter((c) => c.category === cat.id);
+                return (
+                  <div key={cat.id} className={styles.section}>
+                    <div className={styles.coverGalleryHeader}>
+                      <span className={styles.coverCatTitle}>
+                        <span className={styles.coverCatAccent} />
+                        <span>{cat.label}</span>
+                      </span>
+                      {idx === 0 && (
+                        <div className={styles.coverHeaderActions}>
+                          <button
+                            type="button"
+                            className={styles.photoCoverBtn}
+                            onClick={() => void handlePickCustomCover()}
+                          >
+                            <ImagePlus size={14} />
+                            <span>Choose Photo…</span>
+                          </button>
+                          <button
+                            type="button"
+                            className={styles.resetCoverBtn}
+                            onClick={() => {
+                              setCoverId(null);
+                              setCustomCoverUrl(null);
+                            }}
+                          >
+                            {coverId || customCoverUrl ? 'Reset' : 'No Cover'}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    <div className={styles.coverGrid}>
+                      {covers.map((cover) => {
+                        const isSelected = !customCoverUrl && coverId === cover.id;
+                        return (
+                          <button
+                            key={cover.id}
+                            type="button"
+                            className={`${styles.coverItemBtn} ${isSelected ? styles.coverItemSelected : ''}`}
+                            aria-pressed={isSelected}
+                            onClick={() => {
+                              setCustomCoverUrl(null);
+                              setCoverId(isSelected ? null : cover.id);
+                            }}
+                          >
+                            <div className={styles.coverItemFrame}>
+                              <CoverThumbnail cover={cover} width={100} height={134} />
+                            </div>
+                            <span className={styles.coverItemLabel}>{cover.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <>
           <div className={styles.section}>
             <div className={styles.sectionHeader}>PAGE BACKGROUND</div>
             <div className={styles.thumbnailRow}>
@@ -432,6 +692,8 @@ export function NewDocumentDialog() {
               </button>
             </div>
           </div>
+            </>
+          )}
         </div>
 
         <div className={styles.footer}>

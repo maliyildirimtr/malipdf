@@ -60,4 +60,44 @@ if (ipadOnly !== project) {
   added.push('iPad only');
 }
 
+// App Store Connect requires PrivacyInfo.xcprivacy declaring Required Reason APIs
+// used by WebKit / Capacitor (UserDefaults and file timestamps).
+const privacyPath = path.join(root, 'ios/App/App/PrivacyInfo.xcprivacy');
+if (!fs.existsSync(privacyPath)) {
+  const privacyManifest = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+\t<key>NSPrivacyTracking</key>
+\t<false/>
+\t<key>NSPrivacyTrackingDomains</key>
+\t<array/>
+\t<key>NSPrivacyCollectedDataTypes</key>
+\t<array/>
+\t<key>NSPrivacyAccessedAPITypes</key>
+\t<array>
+\t\t<dict>
+\t\t\t<key>NSPrivacyAccessedAPIType</key>
+\t\t\t<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+\t\t\t<key>NSPrivacyAccessedAPITypeReasons</key>
+\t\t\t<array>
+\t\t\t\t<string>CA92.1</string>
+\t\t\t</array>
+\t\t</dict>
+\t\t<dict>
+\t\t\t<key>NSPrivacyAccessedAPIType</key>
+\t\t\t<string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+\t\t\t<key>NSPrivacyAccessedAPITypeReasons</key>
+\t\t\t<array>
+\t\t\t\t<string>C617.1</string>
+\t\t\t</array>
+\t\t</dict>
+\t</array>
+</dict>
+</plist>
+`;
+  fs.writeFileSync(privacyPath, privacyManifest);
+  added.push('PrivacyInfo.xcprivacy');
+}
+
 console.log(added.length ? `Updated: ${added.join(', ')}` : 'Already set up.');

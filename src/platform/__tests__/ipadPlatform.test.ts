@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { fingerNavigates, PALM_AFTER_PENCIL_MS, StylusScrollGuard } from '../pencilInput';
 import { base64ToBytes, bytesToBase64, isIpadApp } from '../native';
+import { displayDocName, ensurePdfExtension, sanitizeFileName } from '../ipadLibrary';
 
 const pencil = { touchType: 'stylus' } as unknown as Touch;
 const finger = { touchType: 'direct' } as unknown as Touch;
@@ -41,5 +42,18 @@ describe('iPad bridge helpers', () => {
 
   it('is off outside the iPad app', () => {
     expect(isIpadApp()).toBe(false);
+  });
+});
+
+describe('iPad library filename helpers', () => {
+  it('sanitizes disallowed filesystem characters and falls back cleanly', () => {
+    expect(sanitizeFileName('Lecture 1: Intro/Notes*?.pdf')).toBe('Lecture 1- Intro-Notes--.pdf');
+    expect(sanitizeFileName('   ')).toBe('Untitled');
+  });
+
+  it('adds .pdf extension only once and strips it for display', () => {
+    expect(ensurePdfExtension('Linear Algebra')).toBe('Linear Algebra.pdf');
+    expect(ensurePdfExtension('Linear Algebra.PDF')).toBe('Linear Algebra.PDF');
+    expect(displayDocName('Linear Algebra.pdf')).toBe('Linear Algebra');
   });
 });

@@ -27,8 +27,14 @@ import { PageSidebar } from './components/PageSidebar/PageSidebar';
 import { DocumentArea } from './components/DocumentArea/DocumentArea';
 import { StatusBar } from './components/StatusBar/StatusBar';
 import { FocusToolbar } from './components/FocusToolbar/FocusToolbar';
+import { TabletLibrary } from './components/TabletShell/TabletLibrary';
+import { TabletBottomPagePill, TabletFavoritesRail, TabletWorkspaceTopChrome } from './components/TabletShell/TabletWorkspaceChrome';
 import { useUIStore } from './store/uiStore';
 import { useDocumentStore } from './store/documentStore';
+import { useLibraryStore } from './store/libraryStore';
+import { isIpadApp, onNative } from './platform/native';
+import { isIpadPreviewUrl } from './platform/touchMode';
+import { autoSaveDirtyTabletDocuments } from './commands/saveCommands';
 import { useAnnotationStore } from './store/annotationStore';
 import { useAssetStore } from './store/assetStore';
 import { useImportJobStore } from './store/importJobStore';
@@ -131,9 +137,70 @@ const overlayTitleBar = (() => {
 export default function App() {
   useImmersiveFullScreen();
   const tabBar = useFullScreenTabBar();
-  const { theme, resolvedTheme, setResolvedTheme, workspaceMode } = useUIStore();
+  const { theme, resolvedTheme, setResolvedTheme, workspaceMode, tabletMode } = useUIStore();
   const { documents, activeDocId } = useDocumentStore();
   const { docAnnotations } = useAnnotationStore();
+  const tabletActiveView = useLibraryStore((state) => state.activeView);
+  const setTabletActiveView = useLibraryStore((state) => state.setActiveView);
+  const isTabletUI = isIpadApp() || tabletMode || isIpadPreviewUrl();
+  const showTabletLibrary = isTabletUI && (tabletActiveView === 'library' || !activeDocId);
+
+  const prevActiveDocIdRef = useRef<string | null>(activeDocId);
+  useEffect(() => {
+    const prev = prevActiveDocIdRef.current;
+    prevActiveDocIdRef.current = activeDocId;
+    if (!isTabletUI) return;
+    // Opening a document switches straight to the workspace; closing the last one returns home.
+    if (activeDocId && activeDocId !== prev) {
+      setTabletActiveView('workspace');
+    } else if (!activeDocId) {
+      setTabletActiveView('library');
+    }
+  }, [activeDocId, isTabletUI, setTabletActiveView]);
+
+  // Ensure iPad "Open in MaliPDF" files arriving while on the Home Library open immediately.
+  useEffect(() => {
+    if (!showTabletLibrary) return;
+    const stopOpenFiles = window.electronAPI?.onOpenFiles?.((files) => {
+      void (async () => {
+        const { openDocumentBytes } = await import('./document/openDocumentBytes');
+        for (const file of files) {
+          const bytes = new Uint8Array(file.data);
+          const saved = await useLibraryStore.getState().upsertDocument({
+            title: file.name,
+            filePath: file.filePath || undefined,
+            bytes,
+            kind: 'pdf',
+            writeBytes: !isIpadApp(),
+          });
+          await openDocumentBytes(saved.title, saved.filePath, file.data);
+        }
+      })();
+    });
+    window.electronAPI?.readyForFiles?.();
+    return () => { stopOpenFiles?.(); };
+  }, [showTabletLibrary]);
+
+  // iPadOS / Tablet auto-save when switching apps, locking screen, or closing tab.
+  useEffect(() => {
+    if (!isTabletUI) return;
+    const flush = () => { void autoSaveDirtyTabletDocuments(); };
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') flush();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pagehide', flush);
+    const stopNative = isIpadApp()
+      ? onNative('App', 'appStateChange', (state: { isActive?: boolean }) => {
+          if (state && state.isActive === false) flush();
+        })
+      : () => {};
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pagehide', flush);
+      stopNative();
+    };
+  }, [isTabletUI]);
 
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [isExporting, setIsExporting] = useState(false);
@@ -255,31 +322,51 @@ export default function App() {
       data-workspace-mode={workspaceMode}
       data-fullscreen={tabBar.fullScreen || undefined}
       data-tabbar-revealed={tabBar.revealed || undefined}
+      data-tablet-ui={isTabletUI ? 'true' : undefined}
     >
-      <div className="app-top-chrome">
-        {overlayTitleBar && <WindowTitleBar />}
-        <div className="app-tabbar-slot">
-          <TopBar />
-        </div>
-        <MainRibbon onCommand={executeCommand} canExecute={canExecute} />
-      </div>
-      <div
-        className="main-layout"
-        id="document-workspace"
-        role="tabpanel"
-        aria-labelledby={activeDocId ? `document-tab-${activeDocId}` : undefined}
-        aria-label={activeDocId ? undefined : 'MaliPDF document workspace'}
-      >
-        <div className="app-sidebar-chrome">
-          <PageSidebar />
-        </div>
-        <DocumentArea />
-        <SplitView />
-      </div>
-      <div className="app-status-chrome">
-        <StatusBar onCommand={executeCommand} canExecute={canExecute} />
-      </div>
-      <FocusToolbar onCommand={executeCommand} canExecute={canExecute} />
+      {showTabletLibrary ? (
+        <TabletLibrary />
+      ) : (
+        <>
+          <div className="app-top-chrome">
+            {isTabletUI ? (
+              <TabletWorkspaceTopChrome onCommand={executeCommand} canExecute={canExecute} />
+            ) : (
+              <>
+                {overlayTitleBar && <WindowTitleBar />}
+                <div className="app-tabbar-slot">
+                  <TopBar />
+                </div>
+                <MainRibbon onCommand={executeCommand} canExecute={canExecute} />
+              </>
+            )}
+          </div>
+          <div
+            className="main-layout"
+            id="document-workspace"
+            role="tabpanel"
+            aria-labelledby={activeDocId ? `document-tab-${activeDocId}` : undefined}
+            aria-label={activeDocId ? undefined : 'MaliPDF document workspace'}
+          >
+            <div className="app-sidebar-chrome">
+              <PageSidebar onCommand={executeCommand} />
+            </div>
+            <DocumentArea />
+            <SplitView />
+          </div>
+          {isTabletUI ? (
+            <>
+              <TabletFavoritesRail />
+              {workspaceMode !== 'focus' && <TabletBottomPagePill onCommand={executeCommand} />}
+            </>
+          ) : (
+            <div className="app-status-chrome">
+              <StatusBar onCommand={executeCommand} canExecute={canExecute} />
+            </div>
+          )}
+          <FocusToolbar onCommand={executeCommand} canExecute={canExecute} />
+        </>
+      )}
       
       <NewDocumentDialog />
       <NotePageDialog />

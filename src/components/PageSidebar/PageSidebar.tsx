@@ -4,16 +4,25 @@ import React, { useCallback, useEffect, useRef } from 'react';
 import {
   AlignLeft,
   Bookmark,
+  ChevronLeft,
+  ChevronRight,
   Copy,
   Download,
   FileInput,
   FilePlus,
+  Focus,
+  Hand,
+  Monitor,
+  MonitorPlay,
   NotebookPen,
   LayoutGrid,
   MessageSquare,
+  PenLine,
   RotateCcw,
   RotateCw,
+  Ruler as RulerIcon,
   Search,
+  Settings,
   Trash2,
 } from 'lucide-react';
 import { usePageSelectionStore } from '../../store/pageSelectionStore';
@@ -51,6 +60,10 @@ import {
   type DocumentIdentity,
 } from '../../types/documentSession';
 import type { SidebarPanel } from '../../types/annotations';
+import type { AppCommandId } from '../../commands';
+import { useRulerStore } from '../../store/rulerStore';
+import { isIpadApp } from '../../platform/native';
+import { isIpadPreviewUrl } from '../../platform/touchMode';
 import styles from './PageSidebar.module.css';
 
 const PANELS: { id: SidebarPanel; icon: React.ReactNode; label: string }[] = [
@@ -70,13 +83,24 @@ function evictThumbnailOnlyPage(identity: DocumentIdentity, pageIndex: number): 
   }
 }
 
-export function PageSidebar() {
+export function PageSidebar({ onCommand }: { onCommand?: (commandId: AppCommandId) => void } = {}) {
   const {
     sidebarOpen,
     activeSidebarPanel,
     setActiveSidebarPanel,
     setSidebarOpen,
+    activeTool,
+    pencilOnly,
+    setPencilOnly,
+    tabletMode,
+    setTabletMode,
+    tabletRailHidden,
+    setTabletRailHidden,
+    setSettingsOpen,
   } = useUIStore();
+  const rulerVisible = useRulerStore((s) => s.visible);
+  const isTabletUI = isIpadApp() || tabletMode || isIpadPreviewUrl();
+  const railCollapsed = isTabletUI && tabletRailHidden;
   const { documents, activeDocId, setActivePage } = useDocumentStore();
   const activeDoc = activeDocId ? documents.get(activeDocId) : null;
   const retainedThumbnails = useRef<CanvasBufferLru | null>(null);
@@ -110,28 +134,123 @@ export function PageSidebar() {
   ));
 
   return (
-    <div className={`${styles.sidebar} ${sidebarOpen ? styles.sidebarExpanded : ''}`}>
-      <div className={styles.panelTabs}>
-        {PANELS.map((panel) => (
-          <button
-            key={panel.id}
-            className={`${styles.panelTab} ${sidebarOpen && activeSidebarPanel === panel.id ? styles.panelTabActive : ''}`}
-            onClick={() => {
-              if (sidebarOpen && activeSidebarPanel === panel.id) {
-                setSidebarOpen(false);
-              } else {
-                setActiveSidebarPanel(panel.id);
-                setSidebarOpen(true);
-              }
-            }}
-            title={panel.label}
-            aria-label={panel.label}
-            aria-pressed={sidebarOpen && activeSidebarPanel === panel.id}
-          >
-            {panel.icon}
-          </button>
-        ))}
-      </div>
+    <>
+      <div
+        className={`${styles.sidebar} ${sidebarOpen ? styles.sidebarExpanded : ''} ${railCollapsed ? styles.sidebarCollapsed : ''} ${isTabletUI ? styles.sidebarTablet : ''}`}
+      >
+        <div className={styles.panelTabs}>
+          {isTabletUI && (
+            <>
+              <button
+                type="button"
+                className={`${styles.panelTab} ${activeTool === 'hand' ? styles.panelTabActive : ''}`}
+                onClick={() => onCommand?.('tool.hand')}
+                title="Hand"
+                aria-label="Hand"
+                aria-pressed={activeTool === 'hand'}
+              >
+                <Hand size={18} />
+              </button>
+              <button
+                type="button"
+                className={`${styles.panelTab} ${pencilOnly ? styles.panelTabActive : ''}`}
+                onClick={() => setPencilOnly(!pencilOnly)}
+                title={pencilOnly ? 'Apple Pencil only (finger scrolls)' : 'Finger & Pencil draw'}
+                aria-label="Draw with Apple Pencil only"
+                aria-pressed={pencilOnly}
+              >
+                <PenLine size={18} />
+              </button>
+              <button
+                type="button"
+                className={`${styles.panelTab} ${rulerVisible ? styles.panelTabActive : ''}`}
+                onClick={() => onCommand?.('view.ruler')}
+                title="Ruler"
+                aria-label="Ruler"
+                aria-pressed={rulerVisible}
+              >
+                <RulerIcon size={18} />
+              </button>
+              <div className={styles.railDivider} />
+            </>
+          )}
+
+          {PANELS.map((panel) => (
+            <button
+              key={panel.id}
+              className={`${styles.panelTab} ${sidebarOpen && activeSidebarPanel === panel.id ? styles.panelTabActive : ''}`}
+              onClick={() => {
+                if (sidebarOpen && activeSidebarPanel === panel.id) {
+                  setSidebarOpen(false);
+                } else {
+                  setActiveSidebarPanel(panel.id);
+                  setSidebarOpen(true);
+                }
+              }}
+              title={panel.label}
+              aria-label={panel.label}
+              aria-pressed={sidebarOpen && activeSidebarPanel === panel.id}
+            >
+              {panel.icon}
+            </button>
+          ))}
+
+          {isTabletUI && (
+            <>
+              <div className={styles.railDivider} />
+              <button
+                type="button"
+                className={styles.panelTab}
+                onClick={() => onCommand?.('view.focusMode')}
+                title="Focus Mode"
+                aria-label="Focus Mode"
+              >
+                <Focus size={18} />
+              </button>
+              <button
+                type="button"
+                className={styles.panelTab}
+                onClick={() => onCommand?.('view.presentation')}
+                title="Presentation Mode"
+                aria-label="Presentation Mode"
+              >
+                <MonitorPlay size={18} />
+              </button>
+
+              <div className={styles.railBottomGroup}>
+                {!isIpadApp() && (
+                  <button
+                    type="button"
+                    className={styles.panelTab}
+                    onClick={() => setTabletMode(false)}
+                    title="Desktop Mode"
+                    aria-label="Desktop Mode"
+                  >
+                    <Monitor size={17} />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className={styles.panelTab}
+                  onClick={() => setSettingsOpen(true)}
+                  title="Settings"
+                  aria-label="Settings"
+                >
+                  <Settings size={18} />
+                </button>
+                <button
+                  type="button"
+                  className={styles.panelTab}
+                  onClick={() => setTabletRailHidden(true)}
+                  title="Hide sidebar"
+                  aria-label="Hide sidebar"
+                >
+                  <ChevronLeft size={19} />
+                </button>
+              </div>
+            </>
+          )}
+        </div>
 
       {sidebarOpen && <div className={styles.panelContent}>
         {activeSidebarPanel === 'pages' && activeDoc && identity && (
@@ -177,7 +296,20 @@ export function PageSidebar() {
           <div className={styles.emptyPanel}><span>No document open</span></div>
         )}
       </div>}
-    </div>
+      </div>
+
+      {railCollapsed && (
+        <button
+          type="button"
+          className={styles.edgeNotchBtn}
+          onClick={() => setTabletRailHidden(false)}
+          title="Show sidebar"
+          aria-label="Show sidebar"
+        >
+          <ChevronRight size={18} strokeWidth={2.5} />
+        </button>
+      )}
+    </>
   );
 }
 

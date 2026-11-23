@@ -5,6 +5,9 @@ import { buildAnnotationsMap, exportAnnotatedPdf, loadDefaultExportFonts } from 
 import { useAssetStore } from '../store/assetStore';
 import { useFormStore } from '../store/formStore';
 import { removeRecoverySnapshot } from '../document/autoSave';
+import { useLibraryStore } from '../store/libraryStore';
+import { PREVIEW_PREFIX } from '../platform/ipadLibrary';
+import { isTabletMode } from '../platform/touchMode';
 
 async function performSave(docId: string, saveAs: boolean): Promise<boolean> {
   const { documents, updateDocument } = useDocumentStore.getState();
@@ -29,17 +32,37 @@ async function performSave(docId: string, saveAs: boolean): Promise<boolean> {
     const exportResult = await exportAnnotatedPdf(doc.sourceData, annotations, { assets, fonts, editable: true, bookmarks: doc.bookmarks, formValues: useFormStore.getState().getValues(docId) });
 
     let filePath = doc.filePath;
-    if (saveAs || !filePath) {
-      const selectedPath = await window.electronAPI.saveFile(filePath || doc.title);
-      if (!selectedPath) {
-        updateDocument(docId, { saveStatus: 'idle' });
-        return false;
-      }
-      filePath = selectedPath;
-    }
+    const isBrowserTabletSave = !window.electronAPI?.writeFile && (isTabletMode() || filePath?.startsWith(PREVIEW_PREFIX));
 
-    const ok = await window.electronAPI.writeFile(filePath, exportResult.data.buffer as ArrayBuffer);
-    if (!ok) throw new Error('Failed to write PDF to disk.');
+    if (isBrowserTabletSave) {
+      const saved = await useLibraryStore.getState().upsertDocument({
+        title: doc.title,
+        filePath: saveAs ? undefined : filePath,
+        bytes: exportResult.data,
+        pageCount: doc.pageCount,
+        writeBytes: true,
+      });
+      filePath = saved.filePath;
+    } else {
+      if (saveAs || !filePath) {
+        const selectedPath = await window.electronAPI.saveFile(filePath || doc.title);
+        if (!selectedPath) {
+          updateDocument(docId, { saveStatus: 'idle' });
+          return false;
+        }
+        filePath = selectedPath;
+      }
+
+      const ok = await window.electronAPI.writeFile(filePath, exportResult.data.buffer as ArrayBuffer);
+      if (!ok) throw new Error('Failed to write PDF to disk.');
+
+      void useLibraryStore.getState().recordDocumentSaved(
+        filePath,
+        filePath.split(/[\\/]/).pop() || doc.title,
+        exportResult.data,
+        doc.pageCount,
+      );
+    }
 
     // We do NOT update sourceData here to avoid double-flattening.
     // The runtime source data remains the original PDF, with live annotations layered on top.
@@ -83,6 +106,20 @@ export async function saveAllDocuments() {
       if (!success) {
         break; // Stop remaining saves if one fails or is cancelled
       }
+    }
+  }
+}
+
+/**
+ * Quietly saves dirty documents that already belong to a known library/disk path
+ * (never prompts for Save As). Used on iPadOS when returning to the Library or
+ * when the app moves to the background so annotations are never lost.
+ */
+export async function autoSaveDirtyTabletDocuments(): Promise<void> {
+  const { documents } = useDocumentStore.getState();
+  for (const doc of documents.values()) {
+    if (doc.currentStateId !== doc.savedStateId && doc.filePath && doc.saveStatus !== 'saving') {
+      await performSave(doc.id, false);
     }
   }
 }
