@@ -26,7 +26,7 @@ env:
 
 jobs:
   build-ipad:
-    runs-on: macos-15
+    runs-on: macos-26
 
     steps:
       - name: Checkout
@@ -37,6 +37,30 @@ jobs:
         with:
           node-version: 22
           cache: npm
+
+      - name: Select Xcode 26+
+        run: |
+          ls -d /Applications/Xcode*.app
+          latest="$(node -e '
+            const fs = require("fs");
+            const dirs = fs.readdirSync("/Applications")
+              .filter(n => /^Xcode_2[6-9](\.\d+)*\.app$/.test(n))
+              .sort((a, b) => {
+                const pa = a.match(/\d+/g).map(Number);
+                const pb = b.match(/\d+/g).map(Number);
+                for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+                  const d = (pa[i] || 0) - (pb[i] || 0);
+                  if (d) return d;
+                }
+                return 0;
+              });
+            if (dirs.length) process.stdout.write("/Applications/" + dirs[dirs.length - 1]);
+          ')"
+          if [[ -n "$latest" ]]; then
+            echo "Selecting $latest"
+            sudo xcode-select -s "$latest"
+          fi
+          xcodebuild -version
 
       - name: Check secrets
         env:
