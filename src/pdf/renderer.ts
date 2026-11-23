@@ -22,9 +22,36 @@ import { computeSafeCanvasOutputScale } from './canvasMemory';
 
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { BundledCMapReaderFactory, BundledStandardFontDataFactory } from './pdfjsAssets';
+import { isIpadApp } from '../platform/native';
 
 // Use local worker bundled via Vite to avoid CORS and offline issues in Electron
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+
+// On iOS Capacitor (custom URL scheme malipdf://localhost), WKWebView reports
+// an opaque ("null") origin and serves .mjs assets without a JS MIME type in
+// some Capacitor versions, causing pdf.js module workers to hang or fail.
+// Loading the worker via Vite's dynamic ES import (emitted as a standard .js
+// chunk) and registering globalThis.pdfjsWorker lets pdf.js run reliably
+// offline on iPadOS with zero worker hangs.
+let ipadWorkerInit: Promise<void> | null = null;
+async function ensurePdfWorkerReady(): Promise<void> {
+  if (!isIpadApp()) return;
+  const g = globalThis as unknown as { pdfjsWorker?: { WorkerMessageHandler?: unknown } };
+  if (g.pdfjsWorker?.WorkerMessageHandler) return;
+  if (!ipadWorkerInit) {
+    ipadWorkerInit = import('pdfjs-dist/build/pdf.worker.min.mjs')
+      .then((mod) => {
+        if (mod?.WorkerMessageHandler) {
+          g.pdfjsWorker = { WorkerMessageHandler: mod.WorkerMessageHandler };
+        }
+      })
+      .catch((error) => {
+        ipadWorkerInit = null;
+        console.error('Failed to initialize iPad pdf.js worker module:', error);
+      });
+  }
+  await ipadWorkerInit;
+}
 
 // Re-export coordinate helpers for backward compatibility
 // All new code should import directly from coordinateTransform.ts
@@ -63,6 +90,7 @@ export interface ThumbnailRender {
 // ─── Document loading ─────────────────────────────────────────────────────────
 
 export async function loadPdfDocument(data: Uint8Array): Promise<PDFDocumentProxy> {
+  await ensurePdfWorkerReady();
   const loadingTask = pdfjs.getDocument({
     data: data.slice(0), // Copy to avoid detached buffer issues
     // CMaps and standard fonts ship with the app (offline, CSP-compatible).

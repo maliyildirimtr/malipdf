@@ -203,7 +203,8 @@ export async function loadLibraryMeta(): Promise<LibraryMetadata> {
         items: Array.isArray(parsed.items) ? parsed.items : [],
       };
     } catch {
-      return { ...EMPTY_LIBRARY_META, folders: [], items: [] };
+      // Fall through to localStorage backup if the metadata file doesn't exist yet
+      // or the native plugin is unavailable.
     }
   }
 
@@ -232,18 +233,18 @@ export async function saveLibraryMeta(meta: LibraryMetadata): Promise<void> {
         encoding: 'utf8',
         data: serialized,
       });
+      return;
     } catch (error) {
-      console.error('Failed to persist iPad library metadata:', error);
+      console.error('Failed to persist iPad library metadata to Filesystem, falling back to localStorage:', error);
     }
-    return;
   }
 
   try {
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem(LOCAL_META_KEY, serialized);
     }
-  } catch (error) {
-    // If thumbnail data URLs exceed localStorage quota, strip oldest thumbnails and retry.
+  } catch {
+    // If thumbnail data URLs exceed localStorage quota, strip thumbnails and retry.
     try {
       const slim: LibraryMetadata = {
         ...meta,
@@ -251,20 +252,24 @@ export async function saveLibraryMeta(meta: LibraryMetadata): Promise<void> {
       };
       localStorage.setItem(LOCAL_META_KEY, JSON.stringify(slim));
     } catch {
-      console.error('Failed to persist local library metadata:', error);
+      console.error('Failed to persist local library metadata.');
     }
   }
 }
 
 export async function writeLibraryPdfBytes(filePath: string, bytes: Uint8Array): Promise<void> {
   if (isIpadApp()) {
-    await callNative('Filesystem', 'writeFile', {
-      path: relativeDocumentsPath(filePath),
-      directory: DOCUMENTS,
-      recursive: true,
-      data: bytesToBase64(bytes),
-    });
-    return;
+    try {
+      await callNative('Filesystem', 'writeFile', {
+        path: relativeDocumentsPath(filePath),
+        directory: DOCUMENTS,
+        recursive: true,
+        data: bytesToBase64(bytes),
+      });
+      return;
+    } catch (error) {
+      console.error('Failed to write PDF to iPad Documents, falling back to IndexedDB:', error);
+    }
   }
   await idbPut(filePath, bytes);
 }
@@ -278,7 +283,7 @@ export async function readLibraryPdfBytes(filePath: string): Promise<Uint8Array 
       });
       return base64ToBytes(res.data);
     } catch {
-      return null;
+      // Fall back to IndexedDB if the file was stored there.
     }
   }
   return idbGet(filePath);
@@ -367,37 +372,50 @@ export async function renderPdfCoverThumbnail(
   targetWidth = 300,
 ): Promise<{ dataUrl: string; pageCount: number } | null> {
   if (typeof document === 'undefined') return null;
-  let proxy: Awaited<ReturnType<typeof loadPdfDocument>> | null = null;
-  try {
-    proxy = await loadPdfDocument(bytes);
-    const pageCount = proxy.numPages;
-    const page = await proxy.getPage(1);
-    const baseViewport = page.getViewport({ scale: 1 });
-    const scale = Math.min(2, Math.max(0.2, targetWidth / Math.max(1, baseViewport.width)));
-    const viewport = page.getViewport({ scale });
 
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.max(1, Math.round(viewport.width));
-    canvas.height = Math.max(1, Math.round(viewport.height));
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return null;
+  const renderWork = async (): Promise<{ dataUrl: string; pageCount: number } | null> => {
+    let proxy: Awaited<ReturnType<typeof loadPdfDocument>> | null = null;
+    try {
+      proxy = await loadPdfDocument(bytes);
+      const pageCount = proxy.numPages;
+      const page = await proxy.getPage(1);
+      const baseViewport = page.getViewport({ scale: 1 });
+      const scale = Math.min(2, Math.max(0.2, targetWidth / Math.max(1, baseViewport.width)));
+      const viewport = page.getViewport({ scale });
 
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(viewport.width));
+      canvas.height = Math.max(1, Math.round(viewport.height));
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return null;
 
-    const task = page.render({ canvasContext: ctx, viewport });
-    await task.promise;
-    page.cleanup();
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.78);
-    canvas.width = 0;
-    canvas.height = 0;
-    return { dataUrl, pageCount };
-  } catch {
-    return null;
-  } finally {
-    if (proxy) {
-      await proxy.destroy().catch(() => {});
+      const task = page.render({ canvasContext: ctx, viewport });
+      await task.promise;
+      page.cleanup();
+
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.78);
+      canvas.width = 0;
+      canvas.height = 0;
+      return { dataUrl, pageCount };
+    } catch {
+      return null;
+    } finally {
+      if (proxy) {
+        await proxy.destroy().catch(() => {});
+      }
     }
+  };
+
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const timeout = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), 6000);
+  });
+  try {
+    return await Promise.race([renderWork(), timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }

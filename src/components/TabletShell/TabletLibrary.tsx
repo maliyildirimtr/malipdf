@@ -293,19 +293,28 @@ export function TabletLibrary() {
   const handleImportPdfs = async () => {
     setFabOpen(false);
     if (isIpadApp() && window.electronAPI?.openFile) {
-      const files = await window.electronAPI.openFile('pdf');
-      if (!files?.length) return;
-      for (const file of files) {
-        const bytes = new Uint8Array(file.data);
-        const saved = await upsertDocument({
-          title: file.name,
-          filePath: file.filePath || undefined,
-          bytes,
-          kind: 'pdf',
-        });
-        await openDocumentBytes(saved.title, saved.filePath, bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
+      try {
+        const files = await window.electronAPI.openFile('pdf');
+        if (!files?.length) return;
+        for (const file of files) {
+          const bytes = new Uint8Array(file.data);
+          const saved = await upsertDocument({
+            title: file.name,
+            filePath: file.filePath || undefined,
+            bytes,
+            kind: 'pdf',
+          });
+          await openDocumentBytes(
+            saved.title,
+            saved.filePath,
+            bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
+          );
+        }
+        setActiveView('workspace');
+      } catch (error) {
+        console.error('Failed to import PDF on iPad:', error);
+        notifyUser('error', `Could not open PDF: ${error instanceof Error ? error.message : String(error)}`);
       }
-      setActiveView('workspace');
       return;
     }
     fileInputRef.current?.click();
@@ -315,24 +324,29 @@ export function TabletLibrary() {
     const files = event.target.files ? Array.from(event.target.files) : [];
     event.target.value = '';
     if (!files.length) return;
-    let openedAny = false;
-    for (const file of files) {
-      if (!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf') continue;
-      const buf = await file.arrayBuffer();
-      const bytes = new Uint8Array(buf);
-      const saved = await upsertDocument({
-        title: file.name,
-        bytes,
-        kind: 'pdf',
-      });
-      await openDocumentBytes(
-        saved.title,
-        saved.filePath,
-        bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
-      );
-      openedAny = true;
+    try {
+      let openedAny = false;
+      for (const file of files) {
+        if (!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf') continue;
+        const buf = await file.arrayBuffer();
+        const bytes = new Uint8Array(buf);
+        const saved = await upsertDocument({
+          title: file.name,
+          bytes,
+          kind: 'pdf',
+        });
+        await openDocumentBytes(
+          saved.title,
+          saved.filePath,
+          bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
+        );
+        openedAny = true;
+      }
+      if (openedAny) setActiveView('workspace');
+    } catch (error) {
+      console.error('Failed to open selected PDF:', error);
+      notifyUser('error', `Could not open PDF: ${error instanceof Error ? error.message : String(error)}`);
     }
-    if (openedAny) setActiveView('workspace');
   };
 
   const handleQuickNote = async () => {

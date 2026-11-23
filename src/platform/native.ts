@@ -27,14 +27,32 @@ export function isIpadApp(): boolean {
   return capacitor()?.getPlatform?.() === 'ios';
 }
 
-/** Calls a native plugin method; rejects when the plugin is not installed. */
+const NATIVE_TIMEOUT_MS = 10_000;
+const INTERACTIVE_PLUGINS = new Set(['Share', 'Browser']);
+
+/** Calls a native plugin method; rejects when the plugin is not installed or times out. */
 export function callNative<T = any>(plugin: string, method: string, options: Record<string, unknown> = {}): Promise<T> {
   const cap = capacitor();
   if (!cap) return Promise.reject(new Error('Not running in the iPad app.'));
   const proxy = cap.Plugins?.[plugin];
-  if (typeof proxy?.[method] === 'function') return Promise.resolve(proxy[method](options));
-  if (cap.nativePromise) return cap.nativePromise(plugin, method, options);
-  return Promise.reject(new Error(`${plugin} is not available.`));
+  let promise: Promise<T>;
+  if (typeof proxy?.[method] === 'function') {
+    promise = Promise.resolve(proxy[method](options));
+  } else if (cap.nativePromise) {
+    promise = cap.nativePromise(plugin, method, options);
+  } else {
+    return Promise.reject(new Error(`${plugin} is not available.`));
+  }
+
+  if (INTERACTIVE_PLUGINS.has(plugin)) return promise;
+
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${plugin}.${method} timed out.`)), NATIVE_TIMEOUT_MS);
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
 }
 
 /** Listens to a native plugin event. Returns a function that stops listening. */
@@ -56,7 +74,7 @@ export function onNative(plugin: string, eventName: string, listener: Listener):
 export function bytesToBase64(data: ArrayBuffer | Uint8Array): string {
   const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
   let binary = '';
-  const chunk = 0x8000;
+  const chunk = 0x4000;
   for (let i = 0; i < bytes.length; i += chunk) {
     binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk) as unknown as number[]);
   }

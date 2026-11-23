@@ -103,7 +103,14 @@ function pickFiles(accept: string, multiple: boolean): Promise<File[] | null> {
     input.type = 'file';
     input.accept = accept;
     input.multiple = multiple;
-    input.style.display = 'none';
+    // Avoid display:none — iPadOS WKWebView can ignore programmatic .click() on hidden inputs.
+    input.style.position = 'fixed';
+    input.style.left = '-9999px';
+    input.style.top = '0';
+    input.style.width = '1px';
+    input.style.height = '1px';
+    input.style.opacity = '0';
+    input.style.pointerEvents = 'none';
     let settled = false;
     const finish = (files: File[] | null) => {
       if (settled) return;

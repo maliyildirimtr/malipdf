@@ -81,7 +81,9 @@ jobs:
       - name: Install dependencies
         run: |
           npm ci
-          npm install --no-save $CAPACITOR
+          # Omit --no-save so Capacitor plugins are recorded in the runner's
+          # package.json and discovered/linked by `npx cap sync ios`.
+          npm install --no-package-lock $CAPACITOR
 
       - name: Build web app
         run: GITHUB_SHA="$(git rev-parse HEAD)" npm run build:vite
@@ -91,6 +93,9 @@ jobs:
           npx cap add ios
           node scripts/iosSetup.mjs
           npx cap sync ios
+          echo "=== Linked Capacitor plugins ==="
+          cat ios/App/App/capacitor.config.json
+          grep -qi "Filesystem" ios/App/App/capacitor.config.json
 
       - name: App icon
         run: |
