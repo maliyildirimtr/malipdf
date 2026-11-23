@@ -84,6 +84,10 @@ import { projectOntoEdge, snapEdgeFor, useRulerStore, type EdgeLine } from '../.
 import { buildReplayPlan, replayFrame, type ReplayItem } from '../../pdf/inkReplay';
 import { REPLAY_INK_EVENT, type ReplayInkDetail } from './replayEvents';
 import { FloatingInspector } from '../Properties/FloatingInspector';
+import { LassoActionBar } from '../Properties/LassoActionBar';
+import { moveSelectionToPage } from '../../commands/clipboardCommands';
+import { playEraseSound, playShapeSnapSound, playWritingTick } from '../../utils/inkSounds';
+import { isTabletMode } from '../../platform/touchMode';
 import { getAnnotationBounds, getGroupBounds } from '../../pdf/annotationGeometry';
 import { translateAnnotation, scaleAnnotationFromBounds, computeResizeTargetBounds } from '../../pdf/annotationTransform';
 import {
@@ -377,6 +381,9 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
   // Narrow selectors: whole-store subscriptions re-rendered every mounted page
   // on any unrelated UI / annotation / history change.
   const toolOptions = useUIStore(state => state.toolOptions);
+  const lassoOptions = useUIStore(state => state.lassoOptions);
+  const writingSoundEnabled = useUIStore(state => state.writingSoundEnabled);
+  const soundEffectsEnabled = useUIStore(state => state.soundEffectsEnabled);
   const activeTool = useUIStore(state => state.activeTool);
   const temporaryTool = useUIStore(state => state.temporaryTool);
   const setIsDrawing = useUIStore(state => state.setIsDrawing);
@@ -827,14 +834,24 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
         ctx.save();
         ctx.scale(dpr, dpr);
         ctx.beginPath();
-        ctx.moveTo(pts[0].x, pts[0].y);
-        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
-        ctx.closePath();
-        ctx.fillStyle = 'rgba(0, 122, 255, 0.08)';
+        if (lassoOptions.mode === 'rectangle') {
+          const a = pts[0];
+          const b = pts[pts.length - 1];
+          const rx = Math.min(a.x, b.x);
+          const ry = Math.min(a.y, b.y);
+          const rw = Math.abs(b.x - a.x);
+          const rh = Math.abs(b.y - a.y);
+          ctx.rect(rx, ry, rw, rh);
+        } else {
+          ctx.moveTo(pts[0].x, pts[0].y);
+          for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+          ctx.closePath();
+        }
+        ctx.fillStyle = 'rgba(245, 198, 120, 0.22)';
         ctx.fill();
-        ctx.setLineDash([5, 4]);
-        ctx.lineWidth = 1.25;
-        ctx.strokeStyle = '#007aff';
+        ctx.setLineDash([6, 4]);
+        ctx.lineWidth = 1.4;
+        ctx.strokeStyle = '#1d5d9f';
         ctx.stroke();
         ctx.restore();
       }
@@ -1044,12 +1061,14 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
 
   /** (Re)start the hold timer when the pen has moved away from where it rested. */
   function armHoldToShape(x: number, y: number, force = false) {
-    if (gestureToolRef.current !== 'pen' || toolOptions.pen.holdToShape === false) return;
+    const delayMode = toolOptions.pen.holdToShapeDelay ?? (toolOptions.pen.holdToShape === false ? 'off' : 'default');
+    if (gestureToolRef.current !== 'pen' || delayMode === 'off' || toolOptions.pen.holdToShape === false) return;
+    const delayMs = delayMode === 'short' ? 300 : delayMode === 'long' ? 850 : HOLD_TO_SHAPE_MS;
     const anchor = holdAnchor.current;
     if (!force && anchor && Math.hypot(x - anchor.x, y - anchor.y) <= HOLD_TO_SHAPE_SLOP_PX) return;
     holdAnchor.current = { x, y };
     clearHoldTimer();
-    holdTimer.current = setTimeout(snapHeldStroke, HOLD_TO_SHAPE_MS);
+    holdTimer.current = setTimeout(snapHeldStroke, delayMs);
   }
 
   function snapHeldStroke() {
@@ -1065,6 +1084,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     holdShape.current = { base: shape, current: shape, snapAt: screenToPdfPoint(last.x, last.y) };
     mode.current = 'shapeHold';
     rulerSnapRef.current = null;
+    if (soundEffectsEnabled) playShapeSnapSound();
     schedulePreviewRender();
   }
 
@@ -1669,6 +1689,10 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
         if (prev && Math.hypot(local.x - prev.x, local.y - prev.y) < 0.75 && Math.abs(nextPressure - prev.pressure) < 0.05) {
           continue;
         }
+        if (writingSoundEnabled && prev) {
+          const stepDist = Math.hypot(local.x - prev.x, local.y - prev.y);
+          if (stepDist >= 1.5) playWritingTick(stepDist);
+        }
         activePoints.current.push({
           x: local.x,
           y: local.y,
@@ -1855,7 +1879,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     } else if (m === 'laser') {
       endLaserTrail(e.timeStamp);
     } else if (m === 'moving') {
-      commitMove();
+      commitMove(e);
     } else if (m === 'resizing') {
       commitResize();
     }
@@ -2186,6 +2210,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
 
   function commitEraser() {
     if (eraserHitsRef.current.size === 0) return;
+    if (soundEffectsEnabled) playEraseSound();
 
     const annotationStore = useAnnotationStore.getState();
     const current = annotationStore.getPageAnnotations(docId, pageIndex);
@@ -2292,19 +2317,45 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     useSelectionStore.getState().setSelection(identity, pageIndex, finalSelection);
   }
 
+  function matchesLassoFilter(ann: Annotation): boolean {
+    if (ann.type === 'stroke' || ann.type === 'shape' || ann.type === 'freeform' || ann.type === 'measure') {
+      return lassoOptions.selectStrokes;
+    }
+    if (ann.type === 'highlight' || ann.type === 'markup') {
+      return lassoOptions.selectHighlights;
+    }
+    // text, image, note, textEdit
+    return lassoOptions.selectBoxes;
+  }
+
   function commitLasso(e: React.PointerEvent<HTMLDivElement>) {
     const additive = e.shiftKey || e.metaKey;
     const pts = activePoints.current;
     let length = 0;
     for (let i = 1; i < pts.length; i++) length += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
-    if (pts.length < 3 || length < 12) {
+    if (pts.length < 2 || length < 12) {
       // A click, not a loop: keep the previous selection when adding.
       if (additive) useSelectionStore.getState().setSelection(identity, pageIndex, selectionBefore.current);
       return;
     }
-    const polygon = screenPointsToPdf(pts, transform);
+    const polygon = lassoOptions.mode === 'rectangle'
+      ? (() => {
+          const a = pts[0];
+          const b = pts[pts.length - 1];
+          return screenPointsToPdf(
+            [
+              { x: a.x, y: a.y, pressure: 0.5, timestamp: 0 },
+              { x: b.x, y: a.y, pressure: 0.5, timestamp: 0 },
+              { x: b.x, y: b.y, pressure: 0.5, timestamp: 0 },
+              { x: a.x, y: b.y, pressure: 0.5, timestamp: 0 },
+            ],
+            transform,
+          );
+        })()
+      : screenPointsToPdf(pts, transform);
     const annotations = getPageAnnotations(docId, pageIndex);
-    const inside = new Set(annotationsInLasso(annotations, polygon));
+    const candidates = annotations.filter(matchesLassoFilter);
+    const inside = new Set(annotationsInLasso(candidates, polygon));
     if (additive) for (const id of selectionBefore.current) inside.add(id);
     // Made with the barrel button while another tool is active?
     penButtonSelectionRef.current = selectedTool !== 'select' && selectedTool !== 'lasso' && inside.size > 0;
@@ -2317,10 +2368,38 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
 
   // ── Move ─────────────────────────────────────────────────────────────────
 
-
-
-  function commitMove() {
+  function commitMove(e?: React.PointerEvent<HTMLDivElement>) {
     if (!shapeStart.current || !moveAnchor.current) return;
+
+    // Cross-page drag-and-drop: if the pointer was released over a different
+    // page of the same document, transfer the selected photo/annotations there!
+    if (e && typeof document.elementsFromPoint === 'function') {
+      const hitEls = document.elementsFromPoint(e.clientX, e.clientY);
+      const targetPageEl = hitEls.find((el) => {
+        if (!(el instanceof HTMLElement)) return false;
+        if (el.dataset.docId !== docId || el.dataset.instanceId !== String(instanceId)) return false;
+        const idx = Number(el.dataset.pageIndex);
+        return Number.isInteger(idx) && idx !== pageIndex;
+      }) as HTMLElement | undefined;
+
+      if (targetPageEl) {
+        const targetIdx = Number(targetPageEl.dataset.pageIndex);
+        const targetRect = targetPageEl.getBoundingClientRect();
+        if (targetRect.width > 0 && targetRect.height > 0) {
+          const relX = Math.max(0.05, Math.min(0.95, (e.clientX - targetRect.left) / targetRect.width));
+          const relY = Math.max(0.05, Math.min(0.95, (e.clientY - targetRect.top) / targetRect.height));
+          // Approximate target page PDF dimensions using current page's scale
+          const targetPdfW = targetRect.width / transform.scale;
+          const targetPdfH = targetRect.height / transform.scale;
+          const moved = moveSelectionToPage(targetIdx, {
+            x: relX * targetPdfW,
+            y: (1 - relY) * targetPdfH,
+          });
+          if (moved.length > 0) return;
+        }
+      }
+    }
+
     const dx = moveAnchor.current.pdfX - shapeStart.current.pdfX;
     const dy = moveAnchor.current.pdfY - shapeStart.current.pdfY;
     
@@ -2845,11 +2924,32 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
       )}
 
       {!textOverlay && (() => {
-        const selectedAnnotation = annotations.find(a => a.id === selectedIdsArray[0]);
-        if (selectedIdsArray.length === 1 && selectedAnnotation) {
+        const selectedList = selectedIdsArray
+          .map((id) => annotations.find((a) => a.id === id))
+          .filter((a): a is Annotation => Boolean(a));
+        if (selectedList.length === 0) return null;
+
+        const singleAnn = selectedList.length === 1 ? selectedList[0] : null;
+        const showLassoBar =
+          selectedList.length >= 2
+          || (singleAnn !== null && (isTabletMode() || selectedTool === 'lasso') && singleAnn.type !== 'text');
+
+        if (showLassoBar) {
+          return (
+            <LassoActionBar
+              annotations={selectedList}
+              transform={transform}
+              identity={identity}
+              pageIndex={pageIndex}
+              canvasRef={interactionRef}
+            />
+          );
+        }
+
+        if (singleAnn) {
           return (
             <FloatingInspector
-              annotation={selectedAnnotation}
+              annotation={singleAnn}
               transform={transform}
               identity={identity}
               pageIndex={pageIndex}

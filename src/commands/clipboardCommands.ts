@@ -21,6 +21,7 @@ import { useHistoryStore, makeBatchAction, makeRemoveAction, type HistoryActionD
 import { useSelectionStore } from '../store/selectionStore';
 import { documentSessionStore } from '../store/documentSessionStore';
 import { translateAnnotation } from '../pdf/annotationTransform';
+import { getGroupBounds } from '../pdf/annotationGeometry';
 import { nanoid } from '../utils/nanoid';
 
 /** Offset (PDF points) applied per repeated paste / duplicate on the same page. */
@@ -200,6 +201,112 @@ export function duplicateSelection(): Annotation[] {
 
 function insertCopiesOnPage(context: SelectionContext, assets: Map<string, ImageAsset>): Annotation[] {
   return insertCopies(context.annotations, assets, context.pageIndex, PASTE_OFFSET);
+}
+
+/** Delete the active selection in one undoable step. */
+export function deleteSelection(): boolean {
+  const context = getActiveSelection();
+  if (!context) return false;
+  removeAnnotations(context);
+  return true;
+}
+
+/** Recolor all colorable annotations in the active selection as one undoable step. */
+export function recolorSelection(color: string): boolean {
+  const context = getActiveSelection();
+  if (!context) return false;
+  const { identity, pageIndex, annotations } = context;
+  const annotationStore = useAnnotationStore.getState();
+  const actions: HistoryActionDraft[] = [];
+  const now = Date.now();
+  for (const ann of annotations) {
+    if (!('color' in ann)) continue;
+    const before = structuredClone(ann);
+    const after = { ...structuredClone(ann), color, updatedAt: now } as Annotation;
+    annotationStore.replaceAnnotation(identity.docId, pageIndex, after);
+    actions.push({
+      type: 'UPDATE_ANNOTATION',
+      docId: identity.docId,
+      pageIndex,
+      annotationId: ann.id,
+      before,
+      after,
+    });
+  }
+  if (actions.length === 0) return false;
+  useHistoryStore.getState().push(actions.length === 1 ? actions[0] : makeBatchAction(identity.docId, actions));
+  return true;
+}
+
+/**
+ * Move the active selection from its current page to `targetPageIndex` as one
+ * atomic undoable step. Works for photos (images), strokes, shapes, text boxes,
+ * and lasso groups alike.
+ *
+ * If `targetCenterPdf` is given (e.g. from dragging across pages), the group is
+ * centered on that PDF point on the target page; otherwise coordinates are kept.
+ */
+export function moveSelectionToPage(
+  targetPageIndex: number,
+  targetCenterPdf?: { x: number; y: number },
+): Annotation[] {
+  const context = getActiveSelection();
+  if (!context) return [];
+  const { identity, pageIndex: sourcePageIndex, annotations } = context;
+  if (sourcePageIndex === targetPageIndex) return [];
+
+  const docStore = useDocumentStore.getState();
+  const doc = docStore.documents.get(identity.docId);
+  if (!doc || targetPageIndex < 0 || targetPageIndex >= doc.pageCount) return [];
+
+  let dx = 0;
+  let dy = 0;
+  if (targetCenterPdf) {
+    const bounds = getGroupBounds(annotations);
+    if (bounds) {
+      dx = targetCenterPdf.x - (bounds.x + bounds.width / 2);
+      dy = targetCenterPdf.y - (bounds.y + bounds.height / 2);
+    }
+  }
+
+  const annotationStore = useAnnotationStore.getState();
+  const sourceList = annotationStore.getPageAnnotations(identity.docId, sourcePageIndex);
+  const doomed = new Set(annotations.map((a) => a.id));
+  const remainingSource: Annotation[] = [];
+  const actions: HistoryActionDraft[] = [];
+  for (const ann of sourceList) {
+    if (doomed.has(ann.id)) {
+      actions.push(makeRemoveAction(identity.docId, ann, remainingSource.length));
+    } else {
+      remainingSource.push(ann);
+    }
+  }
+
+  const now = Date.now();
+  const targetStartIdx = annotationStore.getPageAnnotations(identity.docId, targetPageIndex).length;
+  const moved: Annotation[] = annotations.map((ann) => {
+    const shifted = dx !== 0 || dy !== 0 ? translateAnnotation(structuredClone(ann), dx, dy) : structuredClone(ann);
+    return { ...shifted, pageIndex: targetPageIndex, updatedAt: now } as Annotation;
+  });
+
+  annotationStore.setPageAnnotations(identity.docId, sourcePageIndex, remainingSource);
+  moved.forEach((ann, i) => {
+    annotationStore.addAnnotation(identity.docId, ann);
+    actions.push({
+      type: 'ADD_ANNOTATION',
+      docId: identity.docId,
+      pageIndex: targetPageIndex,
+      annotationId: ann.id,
+      index: targetStartIdx + i,
+      before: null,
+      after: ann,
+    });
+  });
+
+  useHistoryStore.getState().push(makeBatchAction(identity.docId, actions));
+  useSelectionStore.getState().setSelection(identity, targetPageIndex, moved.map((a) => a.id));
+  docStore.setActivePage(identity.docId, targetPageIndex);
+  return moved;
 }
 
 /** Test helper. */

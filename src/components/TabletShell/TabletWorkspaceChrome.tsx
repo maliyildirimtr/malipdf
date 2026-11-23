@@ -65,6 +65,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { closeDocumentById, type AppCommandId } from '../../commands';
+import { hasClipboardAnnotations, pasteAnnotations } from '../../commands/clipboardCommands';
 import { autoSaveDirtyTabletDocuments } from '../../commands/saveCommands';
 import { insertImageFromCamera, pasteImageFromClipboard } from '../../commands/imageCommands';
 import { SignatureDialog } from '../SignStamp/SignatureDialog';
@@ -109,6 +110,13 @@ const STABILIZER_LEVELS = [
   { value: 'fluid', label: 'Fluid' },
 ] as const;
 
+const HOLD_SHAPE_DELAYS = [
+  { value: 'off', label: 'Off' },
+  { value: 'short', label: 'Short' },
+  { value: 'default', label: 'Default' },
+  { value: 'long', label: 'Long' },
+] as const;
+
 const SHAPE_TOOLS: ReadonlyArray<{ tool: ToolType; command: AppCommandId; label: string; icon: LucideIcon }> = [
   { tool: 'line', command: 'tool.line', label: 'Line', icon: Minus },
   { tool: 'arrow', command: 'tool.arrow', label: 'Arrow', icon: ArrowRight },
@@ -117,7 +125,7 @@ const SHAPE_TOOLS: ReadonlyArray<{ tool: ToolType; command: AppCommandId; label:
   { tool: 'freeform', command: 'tool.freeform', label: 'Polygon', icon: Hexagon },
 ];
 
-type ToolPopoverKind = 'pen' | 'highlighter' | 'eraser' | 'text' | 'note' | 'shapes' | 'laserPointer';
+type ToolPopoverKind = 'pen' | 'highlighter' | 'eraser' | 'lasso' | 'text' | 'note' | 'shapes' | 'laserPointer';
 type ActionPopoverKind = 'insert' | 'share' | 'tabs' | 'signatures';
 type PopoverKind = ToolPopoverKind | ActionPopoverKind;
 
@@ -232,6 +240,9 @@ export function TabletWorkspaceTopChrome({ onCommand, canExecute }: TabletWorksp
     activeTool,
     toolOptions,
     laserOptions,
+    lassoOptions,
+    writingSoundEnabled,
+    soundEffectsEnabled,
     sidebarOpen,
     tabletRailHidden,
     setTabletRailHidden,
@@ -243,6 +254,9 @@ export function TabletWorkspaceTopChrome({ onCommand, canExecute }: TabletWorksp
     updateNoteOptions,
     updateShapeOptions,
     updateLaserOptions,
+    updateLassoOptions,
+    setWritingSoundEnabled,
+    setSoundEffectsEnabled,
     addTabletFavoriteTool,
     signatures,
     removeSignature,
@@ -351,6 +365,7 @@ export function TabletWorkspaceTopChrome({ onCommand, canExecute }: TabletWorksp
       case 'pen': return 'Pen';
       case 'highlighter': return 'Highlighter';
       case 'eraser': return 'Eraser';
+      case 'lasso': return 'Lasso Select';
       case 'text': return 'Text';
       case 'note': return 'Sticky Note';
       case 'shapes': return 'Shapes';
@@ -359,7 +374,7 @@ export function TabletWorkspaceTopChrome({ onCommand, canExecute }: TabletWorksp
   })();
 
   const favoriteTargetForPopover = (): TabletFavoriteToolKind => {
-    if (!popover || isActionPopover(popover.kind)) return 'pen';
+    if (!popover || isActionPopover(popover.kind) || popover.kind === 'lasso') return 'pen';
     if (popover.kind === 'shapes') return currentShapeDef.tool as TabletFavoriteToolKind;
     return popover.kind;
   };
@@ -475,10 +490,13 @@ export function TabletWorkspaceTopChrome({ onCommand, canExecute }: TabletWorksp
                 type="button"
                 className={`${styles.toolBtn} ${activeTool === 'lasso' ? styles.toolBtnActive : ''}`}
                 aria-label="Lasso Select"
-                title="Lasso Select"
-                onClick={() => { setPopover(null); onCommand('tool.lasso'); }}
+                title="Lasso Select — tap again for options"
+                data-tw-popover="true"
+                onClick={(e) => handleToolTap('lasso', 'tool.lasso', activeTool === 'lasso', e)}
+                onDoubleClick={(e) => handleToolDoubleTap('lasso', 'tool.lasso', activeTool === 'lasso', e)}
               >
                 <LassoSelect size={20} />
+                {activeTool === 'lasso' && <ChevronDown size={10} className={styles.toolOptionsCue} />}
               </button>
 
               <button
@@ -589,6 +607,19 @@ export function TabletWorkspaceTopChrome({ onCommand, canExecute }: TabletWorksp
         >
           {popover.kind === 'insert' && (
             <>
+              {hasClipboardAnnotations() && (
+                <>
+                  <button
+                    type="button"
+                    className={styles.popoverItem}
+                    onClick={() => { setPopover(null); pasteAnnotations(); }}
+                  >
+                    <ClipboardPaste size={17} />
+                    <span>Paste Selection</span>
+                  </button>
+                  <div className={styles.popoverDivider} />
+                </>
+              )}
               <button
                 type="button"
                 className={styles.popoverItem}
@@ -982,6 +1013,47 @@ export function TabletWorkspaceTopChrome({ onCommand, canExecute }: TabletWorksp
                   </>
                 ) : (
                   <>
+                    <div className={styles.advSection}>
+                      <div className={styles.advHeader}>Hold to Draw Shape</div>
+                      <div className={styles.advSubtext}>Wait duration before snapping to a shape</div>
+                      <div className={styles.segmentedTrack}>
+                        {HOLD_SHAPE_DELAYS.map(({ value, label }) => {
+                          const currentDelay = toolOptions.pen.holdToShapeDelay ?? (toolOptions.pen.holdToShape === false ? 'off' : 'default');
+                          const active = currentDelay === value;
+                          return (
+                            <button
+                              key={value}
+                              type="button"
+                              className={`${styles.segmentedBtn} ${active ? styles.segmentedBtnActive : ''}`}
+                              onClick={() => updatePenOptions({ holdToShape: value !== 'off', holdToShapeDelay: value })}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className={styles.advSection}>
+                      <div className={styles.advHeader}>Stabilizer</div>
+                      <div className={styles.advSubtext}>Stabilizes finger and Apple Pencil strokes for smooth handwriting</div>
+                      <div className={styles.segmentedTrack}>
+                        {STABILIZER_LEVELS.map(({ value, label }) => {
+                          const active = (toolOptions.pen.stabilizer ?? 'basic') === value;
+                          return (
+                            <button
+                              key={value}
+                              type="button"
+                              className={`${styles.segmentedBtn} ${active ? styles.segmentedBtnActive : ''}`}
+                              onClick={() => updatePenOptions({ stabilizer: value })}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
                     <div className={styles.sliderCard}>
                       <button
                         type="button"
@@ -996,16 +1068,6 @@ export function TabletWorkspaceTopChrome({ onCommand, canExecute }: TabletWorksp
                       <button
                         type="button"
                         className={styles.toggleRow}
-                        onClick={() => updatePenOptions({ holdToShape: !toolOptions.pen.holdToShape })}
-                      >
-                        <span>Hold for Straight Shapes</span>
-                        <span className={`${styles.togglePill} ${toolOptions.pen.holdToShape ? styles.togglePillOn : ''}`}>
-                          <span className={styles.toggleKnob} />
-                        </span>
-                      </button>
-                      <button
-                        type="button"
-                        className={styles.toggleRow}
                         onClick={() => updatePenOptions({ endlessPage: !toolOptions.pen.endlessPage })}
                       >
                         <span>Endless Page</span>
@@ -1013,23 +1075,116 @@ export function TabletWorkspaceTopChrome({ onCommand, canExecute }: TabletWorksp
                           <span className={styles.toggleKnob} />
                         </span>
                       </button>
-                    </div>
-
-                    <div className={styles.popoverSectionLabel}>Stabilizer</div>
-                    <div className={styles.chipRow}>
-                      {STABILIZER_LEVELS.map(({ value, label }) => (
-                        <button
-                          key={value}
-                          type="button"
-                          className={`${styles.chipBtn} ${(toolOptions.pen.stabilizer ?? 'basic') === value ? styles.chipBtnActive : ''}`}
-                          onClick={() => updatePenOptions({ stabilizer: value })}
-                        >
-                          {label}
-                        </button>
-                      ))}
+                      <button
+                        type="button"
+                        className={styles.toggleRow}
+                        onClick={() => setWritingSoundEnabled(!writingSoundEnabled)}
+                      >
+                        <div className={styles.lassoToggleInfo}>
+                          <span>Play Writing Sound</span>
+                          <span className={styles.lassoToggleDesc}>Sounds like writing on paper</span>
+                        </div>
+                        <span className={`${styles.togglePill} ${writingSoundEnabled ? styles.togglePillOn : ''}`}>
+                          <span className={styles.toggleKnob} />
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.toggleRow}
+                        onClick={() => setSoundEffectsEnabled(!soundEffectsEnabled)}
+                      >
+                        <div className={styles.lassoToggleInfo}>
+                          <span>Play Sound Effects</span>
+                          <span className={styles.lassoToggleDesc}>Subtle sounds for shape snap and eraser</span>
+                        </div>
+                        <span className={`${styles.togglePill} ${soundEffectsEnabled ? styles.togglePillOn : ''}`}>
+                          <span className={styles.toggleKnob} />
+                        </span>
+                      </button>
                     </div>
                   </>
                 )}
+              </>
+            )}
+
+            {popover.kind === 'lasso' && (
+              <>
+                <div className={styles.lassoModeGrid}>
+                  <button
+                    type="button"
+                    className={`${styles.lassoModeCard} ${lassoOptions.mode === 'rectangle' ? styles.lassoModeCardActive : ''}`}
+                    onClick={() => updateLassoOptions({ mode: 'rectangle' })}
+                  >
+                    <svg width="56" height="36" viewBox="0 0 56 36" aria-hidden="true">
+                      <rect
+                        x="6" y="5" width="44" height="26" rx="4"
+                        fill="rgba(45, 120, 196, 0.14)"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        strokeDasharray="4 3"
+                      />
+                    </svg>
+                    <span>Rectangle</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`${styles.lassoModeCard} ${lassoOptions.mode === 'freehand' ? styles.lassoModeCardActive : ''}`}
+                    onClick={() => updateLassoOptions({ mode: 'freehand' })}
+                  >
+                    <svg width="56" height="36" viewBox="0 0 56 36" aria-hidden="true">
+                      <path
+                        d="M12 10 C22 3, 38 6, 46 13 C52 19, 46 30, 32 31 C18 32, 6 24, 12 10 Z"
+                        fill="rgba(245, 198, 120, 0.28)"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        strokeDasharray="4 3"
+                      />
+                    </svg>
+                    <span>Freehand</span>
+                  </button>
+                </div>
+
+                <div className={styles.sliderCard}>
+                  <button
+                    type="button"
+                    className={styles.toggleRow}
+                    onClick={() => updateLassoOptions({ selectStrokes: !lassoOptions.selectStrokes })}
+                  >
+                    <div className={styles.lassoToggleInfo}>
+                      <span>Select Pen Strokes</span>
+                      <span className={styles.lassoToggleDesc}>Selects pen, pencil, marker and shape strokes</span>
+                    </div>
+                    <span className={`${styles.togglePill} ${lassoOptions.selectStrokes ? styles.togglePillOn : ''}`}>
+                      <span className={styles.toggleKnob} />
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.toggleRow}
+                    onClick={() => updateLassoOptions({ selectHighlights: !lassoOptions.selectHighlights })}
+                  >
+                    <div className={styles.lassoToggleInfo}>
+                      <span>Select Highlighter Strokes</span>
+                      <span className={styles.lassoToggleDesc}>Selects highlighter lines and text markups</span>
+                    </div>
+                    <span className={`${styles.togglePill} ${lassoOptions.selectHighlights ? styles.togglePillOn : ''}`}>
+                      <span className={styles.toggleKnob} />
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.toggleRow}
+                    onClick={() => updateLassoOptions({ selectBoxes: !lassoOptions.selectBoxes })}
+                  >
+                    <div className={styles.lassoToggleInfo}>
+                      <span>Select Boxes</span>
+                      <span className={styles.lassoToggleDesc}>Selects text boxes, images and sticky notes</span>
+                    </div>
+                    <span className={`${styles.togglePill} ${lassoOptions.selectBoxes ? styles.togglePillOn : ''}`}>
+                      <span className={styles.toggleKnob} />
+                    </span>
+                  </button>
+                </div>
               </>
             )}
 
@@ -1378,16 +1533,18 @@ export function TabletWorkspaceTopChrome({ onCommand, canExecute }: TabletWorksp
               </>
             )}
 
-            <button
-              type="button"
-              className={styles.favAddBtn}
-              onClick={() => handleAddFavorite(favoriteTargetForPopover())}
-            >
-              <span className={styles.favStarBadge}>
-                {justAddedFav ? <Check size={13} strokeWidth={3} /> : <Star size={13} fill="currentColor" />}
-              </span>
-              <span>{justAddedFav ? 'Added to Favorites' : 'Add to Favorites'}</span>
-            </button>
+            {popover.kind !== 'lasso' && (
+              <button
+                type="button"
+                className={styles.favAddBtn}
+                onClick={() => handleAddFavorite(favoriteTargetForPopover())}
+              >
+                <span className={styles.favStarBadge}>
+                  {justAddedFav ? <Check size={13} strokeWidth={3} /> : <Star size={13} fill="currentColor" />}
+                </span>
+                <span>{justAddedFav ? 'Added to Favorites' : 'Add to Favorites'}</span>
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -1538,8 +1695,33 @@ export function TabletFavoritesRail() {
 export function TabletBottomPagePill({ onCommand }: { onCommand: (commandId: AppCommandId) => void }) {
   const { documents, activeDocId, setActivePage } = useDocumentStore();
   const activeDoc = activeDocId ? documents.get(activeDocId) ?? null : null;
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
 
-  if (!activeDoc) return null;
+  // Hide the floating bottom pill while typing in a text box/input so it never
+  // collides with iPadOS's on-screen keyboard shortcut bar.
+  useEffect(() => {
+    const isEditable = (el: EventTarget | null) => {
+      if (!(el instanceof HTMLElement)) return false;
+      const tag = el.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable;
+    };
+    const onFocusIn = (e: FocusEvent) => {
+      if (isEditable(e.target)) setKeyboardOpen(true);
+    };
+    const onFocusOut = () => {
+      setTimeout(() => {
+        setKeyboardOpen(isEditable(document.activeElement));
+      }, 60);
+    };
+    document.addEventListener('focusin', onFocusIn);
+    document.addEventListener('focusout', onFocusOut);
+    return () => {
+      document.removeEventListener('focusin', onFocusIn);
+      document.removeEventListener('focusout', onFocusOut);
+    };
+  }, []);
+
+  if (!activeDoc || keyboardOpen) return null;
 
   const pageNumber = activeDoc.activePageIndex + 1;
   const pageCount = activeDoc.pageCount;

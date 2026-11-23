@@ -185,12 +185,16 @@ export const FloatingInspector = React.memo(function FloatingInspector({
       height: aBottom - aTop,
     };
 
+    const viewportWidth = window.visualViewport?.width ?? window.innerWidth;
+    const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+
     const computed = computeInspectorPosition({
       anchorBounds,
       inspectorSize: { width: inspectorRect.width, height: inspectorRect.height },
-      viewportSize: { width: window.innerWidth, height: window.innerHeight },
+      viewportSize: { width: viewportWidth, height: viewportHeight },
       margin: 10,
       gap: 10,
+      preferAbove: Boolean(anchorRef),
     });
 
     setPosition({ left: computed.left, top: computed.top });
@@ -212,6 +216,7 @@ export const FloatingInspector = React.memo(function FloatingInspector({
     scheduleRecalc();
 
     window.addEventListener('resize', scheduleRecalc, { passive: true });
+    window.visualViewport?.addEventListener('resize', scheduleRecalc, { passive: true });
     // A text box being written grows while typing.
     const anchor = anchorRef?.current;
     const anchorObserver = anchor && typeof ResizeObserver !== 'undefined' ? new ResizeObserver(scheduleRecalc) : null;
@@ -221,6 +226,7 @@ export const FloatingInspector = React.memo(function FloatingInspector({
     return () => {
       if (pendingRaf) cancelAnimationFrame(pendingRaf);
       window.removeEventListener('resize', scheduleRecalc);
+      window.visualViewport?.removeEventListener('resize', scheduleRecalc);
       window.removeEventListener('scroll', scheduleRecalc, { capture: true });
       anchorObserver?.disconnect();
     };

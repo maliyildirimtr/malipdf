@@ -5,6 +5,7 @@ import { subscribeWithSelector, persist } from 'zustand/middleware';
 import type {
   ToolType,
   ToolOptions,
+  LassoOptions,
   SidebarPanel,
   Theme,
   SelectionState,
@@ -84,6 +85,7 @@ const defaultToolOptions: ToolOptions = {
     pressureSensitive: true,
     stabilizer: 'basic',
     holdToShape: true,
+    holdToShapeDelay: 'default',
   },
   highlighter: {
     color: '#FFEB3B',
@@ -205,6 +207,17 @@ interface UIStore {
   addTabletFavoriteTool: (tool: TabletFavoriteToolKind) => void;
   removeTabletFavoriteTool: (id: string) => void;
   applyTabletFavoriteTool: (id: string) => void;
+
+  /** Lasso tool mode (freehand / rectangle) and annotation-type filters. */
+  lassoOptions: LassoOptions;
+  updateLassoOptions: (patch: Partial<LassoOptions>) => void;
+
+  /** Subtle paper writing texture sound while drawing. */
+  writingSoundEnabled: boolean;
+  setWritingSoundEnabled: (on: boolean) => void;
+  /** Subtle tactile chimes for Hold-to-Shape snap and eraser actions. */
+  soundEffectsEnabled: boolean;
+  setSoundEffectsEnabled: (on: boolean) => void;
 
   /** Saved signatures (trimmed transparent PNG data URLs), newest first. */
   signatures: SavedSignature[];
@@ -735,6 +748,19 @@ export const useUIStore = create<UIStore>()(
         laserOptions: DEFAULT_LASER_OPTIONS,
         updateLaserOptions: (patch) => set((state) => ({ laserOptions: { ...state.laserOptions, ...patch } })),
 
+        lassoOptions: {
+          mode: 'freehand',
+          selectStrokes: true,
+          selectHighlights: true,
+          selectBoxes: true,
+        },
+        updateLassoOptions: (patch) => set((state) => ({ lassoOptions: { ...state.lassoOptions, ...patch } })),
+
+        writingSoundEnabled: false,
+        setWritingSoundEnabled: (writingSoundEnabled) => set({ writingSoundEnabled }),
+        soundEffectsEnabled: true,
+        setSoundEffectsEnabled: (soundEffectsEnabled) => set({ soundEffectsEnabled }),
+
         notePageStyle: DEFAULT_NOTE_PAGE_STYLE,
         setNotePageStyle: (style) => set((state) => ({ notePageStyle: { ...state.notePageStyle, ...style } })),
 
@@ -815,6 +841,9 @@ export const useUIStore = create<UIStore>()(
           presentationTools: state.presentationTools,
           notePageStyle: state.notePageStyle,
           laserOptions: state.laserOptions,
+          lassoOptions: state.lassoOptions,
+          writingSoundEnabled: state.writingSoundEnabled,
+          soundEffectsEnabled: state.soundEffectsEnabled,
           pageTheme: state.pageTheme,
           formulaStyle: state.formulaStyle,
           language: state.language,

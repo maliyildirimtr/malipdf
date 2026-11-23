@@ -859,8 +859,8 @@
 
 .favoritesRail {
   position: fixed;
-  top: 68px;
-  right: 16px;
+  top: calc(env(safe-area-inset-top, 0px) + 68px);
+  right: calc(env(safe-area-inset-right, 0px) + 16px);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -871,7 +871,7 @@
 }
 
 .favoritesRailFocus {
-  top: 18px;
+  top: calc(env(safe-area-inset-top, 0px) + 18px);
 }
 
 .favShortcutWrap {
@@ -1018,4 +1018,111 @@
   height: 18px;
   background: var(--tw-border);
   margin: 0 3px;
+}
+
+/* ── Pen Advanced Settings & Lasso Settings Controls ─────────────────────── */
+
+.advSection {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: var(--tw-surface);
+}
+
+.advHeader {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--tw-text);
+}
+
+.advSubtext {
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--tw-text-muted);
+}
+
+.segmentedTrack {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 3px;
+  padding: 3px;
+  margin-top: 2px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #256bb8 0%, #174c8c 100%);
+}
+
+.segmentedBtn {
+  height: 30px;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.segmentedBtn:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.segmentedBtnActive {
+  background: rgba(255, 255, 255, 0.96);
+  color: #0f3666;
+  font-weight: 700;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.20);
+}
+
+.lassoModeGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.lassoModeCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 12px 10px;
+  border-radius: 14px;
+  border: 1.5px solid var(--tw-border);
+  background: var(--tw-surface);
+  color: var(--tw-text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+}
+
+.lassoModeCard:hover {
+  background: var(--tw-surface-hover);
+}
+
+.lassoModeCardActive {
+  border-color: var(--tw-accent);
+  background: var(--tw-accent-bg);
+  color: var(--tw-accent);
+  font-weight: 700;
+}
+
+.lassoToggleInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 0;
+}
+
+.lassoToggleDesc {
+  font-size: 11px;
+  line-height: 1.3;
+  font-weight: 400;
+  color: var(--tw-text-muted);
 }

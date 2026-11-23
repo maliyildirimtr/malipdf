@@ -290,10 +290,23 @@ export interface PenOptions {
   stabilizer?: 'off' | 'basic' | 'soft' | 'silky' | 'fluid';
   /** Hold the pen still for a moment while drawing to turn the line into a shape. */
   holdToShape?: boolean;
+  /** Wait duration before Hold-to-Shape snaps ('off' | 'short' | 'default' | 'long'). */
+  holdToShapeDelay?: 'off' | 'short' | 'default' | 'long';
   /** Nib type (ballpoint, fountain pen, calligraphy, pencil, marker). */
   penStyle?: PenStyle;
   /** Endless page: writing near the bottom of a page adds room below it. */
   endlessPage?: boolean;
+}
+
+export interface LassoOptions {
+  /** Freehand loop or rectangular marquee selection. */
+  mode: 'freehand' | 'rectangle';
+  /** Include pen strokes & shapes in lasso selection. */
+  selectStrokes: boolean;
+  /** Include highlighter strokes & text markups in lasso selection. */
+  selectHighlights: boolean;
+  /** Include text boxes, images, sticky notes & stamps in lasso selection. */
+  selectBoxes: boolean;
 }
 
 export interface HighlighterOptions {
