@@ -122,8 +122,105 @@ function sampleSmoothed(points: readonly InputPoint[], smooth: boolean): InputPo
 }
 
 /**
- * Filled outline of a variable-width stroke: left side forward, round end
- * cap, right side backward, round start cap.
+ * Consistent-winding (CCW) union of convex segment trapezoids + round joints.
+ *
+ * Unlike a single left/right offset polygon ribbon (which folds over itself on
+ * tight corners or dense Apple Pencil jitter and cancels out to white holes
+ * under Canvas 2D / CoreGraphics fill), every trapezoid and circle emitted here
+ * has strictly positive winding in the input coordinate system. Overlapping
+ * pieces therefore add (+1 + +1 = +2 ≠ 0) and can NEVER punch white holes or
+ * crescents through ink, while a single `ctx.fill(path)` still composites
+ * semi-transparent strokes with zero dark overlap beads.
+ */
+export function buildCapsuleOutline(
+  samples: readonly XY[],
+  radii: readonly number[],
+  roundEndCaps = true,
+): PathCommand[] {
+  if (samples.length === 0) return [];
+  if (samples.length === 1) return circlePath(samples[0].x, samples[0].y, radii[0]);
+
+  // Drop micro-jitter clusters whose step is tiny compared to stroke radius so
+  // Apple Pencil 240Hz pen-down/pen-up jitter never creates erratic end angles.
+  const pts: XY[] = [samples[0]];
+  const rads: number[] = [radii[0]];
+  for (let i = 1; i < samples.length; i++) {
+    const prev = pts[pts.length - 1];
+    const curr = samples[i];
+    const dist = Math.hypot(curr.x - prev.x, curr.y - prev.y);
+    const rMin = Math.min(rads[rads.length - 1], radii[i]);
+    const isLast = i === samples.length - 1;
+    const minStep = Math.max(0.05, rMin * 0.12);
+    if (dist >= minStep || (isLast && dist > 1e-4)) {
+      pts.push(curr);
+      rads.push(radii[i]);
+    } else if (isLast) {
+      rads[rads.length - 1] = Math.max(rads[rads.length - 1], radii[i]);
+    }
+  }
+
+  if (pts.length === 1) return circlePath(pts[0].x, pts[0].y, rads[0]);
+
+  const commands: PathCommand[] = [];
+  const pushCircle = (cx: number, cy: number, r: number) => {
+    for (const c of circlePath(cx, cy, r)) commands.push(c);
+  };
+
+  if (roundEndCaps) {
+    pushCircle(pts[0].x, pts[0].y, rads[0]);
+  }
+
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i];
+    const p1 = pts[i + 1];
+    const r0 = rads[i];
+    const r1 = rads[i + 1];
+    const dx = p1.x - p0.x;
+    const dy = p1.y - p0.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist > 1e-6) {
+      // Exact outer-tangent offset when radius changes, clamped safely when one
+      // circle nearly contains the other.
+      const dr = r0 - r1;
+      if (Math.abs(dr) < dist * 0.98) {
+        const ux = dx / dist;
+        const uy = dy / dist;
+        const cosA = dr / dist;
+        const sinA = Math.sqrt(Math.max(0, 1 - cosA * cosA));
+        // Left & right unit normals rotated by outer-tangent angle
+        const lx = ux * cosA - uy * sinA;
+        const ly = uy * cosA + ux * sinA;
+        const rx = ux * cosA + uy * sinA;
+        const ry = uy * cosA - ux * sinA;
+        const ax = p0.x + lx * r0;
+        const ay = p0.y + ly * r0;
+        const bx = p1.x + lx * r1;
+        const by = p1.y + ly * r1;
+        const cx = p1.x + rx * r1;
+        const cy = p1.y + ry * r1;
+        const ddx = p0.x + rx * r0;
+        const ddy = p0.y + ry * r0;
+        // Emit in CCW order (A -> D -> C -> B) matching circlePath's CCW winding.
+        commands.push(
+          { op: 'M', x: ax, y: ay },
+          { op: 'L', x: ddx, y: ddy },
+          { op: 'L', x: cx, y: cy },
+          { op: 'L', x: bx, y: by },
+          { op: 'Z' },
+        );
+      }
+    }
+    if (i < pts.length - 2 || roundEndCaps) {
+      pushCircle(p1.x, p1.y, r1);
+    }
+  }
+
+  return commands;
+}
+
+/**
+ * Filled outline of a variable-width stroke built from consistent-winding
+ * convex capsules so sharp turns and Apple Pencil jitter never leave white holes.
  */
 export function pressureOutline(points: readonly InputPoint[], baseWidth: number, smooth: boolean): PathCommand[] {
   const samples = sampleSmoothed(points, smooth).filter(
@@ -137,39 +234,27 @@ export function pressureOutline(points: readonly InputPoint[], baseWidth: number
     r = r * 0.6 + (pressureWidth(baseWidth, p.pressure) / 2) * 0.4;
     radii.push(Math.max(r, baseWidth * 0.05));
   }
-  if (samples.length === 1) return circlePath(samples[0].x, samples[0].y, radii[0]);
-
-  const left: XY[] = [];
-  const right: XY[] = [];
-  for (let i = 0; i < samples.length; i++) {
-    const a = samples[Math.max(0, i - 1)];
-    const b = samples[Math.min(samples.length - 1, i + 1)];
-    let dx = b.x - a.x;
-    let dy = b.y - a.y;
-    const length = Math.hypot(dx, dy) || 1;
-    dx /= length;
-    dy /= length;
-    left.push({ x: samples[i].x - dy * radii[i], y: samples[i].y + dx * radii[i] });
-    right.push({ x: samples[i].x + dy * radii[i], y: samples[i].y - dx * radii[i] });
-  }
-
-  const commands: PathCommand[] = [{ op: 'M', x: left[0].x, y: left[0].y }];
-  for (let i = 1; i < left.length; i++) commands.push({ op: 'L', x: left[i].x, y: left[i].y });
-  appendCap(commands, samples[samples.length - 1], samples[samples.length - 2], radii[radii.length - 1]);
-  for (let i = right.length - 1; i >= 0; i--) commands.push({ op: 'L', x: right[i].x, y: right[i].y });
-  appendCap(commands, samples[0], samples[1], radii[0]);
-  commands.push({ op: 'Z' });
-  return commands;
+  return buildCapsuleOutline(samples, radii, true);
 }
 
-/** Half circle around `end`, pointing away from `before`. */
-function appendCap(commands: PathCommand[], end: XY, before: XY, radius: number): void {
-  const angle = Math.atan2(end.y - before.y, end.x - before.x);
-  const steps = 8;
-  for (let s = 1; s < steps; s++) {
-    const a = angle + Math.PI / 2 - (Math.PI * s) / steps;
-    commands.push({ op: 'L', x: end.x + Math.cos(a) * radius, y: end.y + Math.sin(a) * radius });
-  }
+/**
+ * Filled constant-width capsule outline for screen rendering of thick strokes
+ * and highlighters, avoiding CoreGraphics/WebKit thick cubic-Bézier stroke gaps.
+ */
+export function uniformStrokeOutline(
+  points: readonly XY[],
+  width: number,
+  smooth: boolean,
+  roundEndCaps = true,
+): PathCommand[] {
+  if (points.length === 0) return [];
+  const input: InputPoint[] = points.map((p) => ({ x: p.x, y: p.y, pressure: 0.5, timestamp: 0 }));
+  const samples = sampleSmoothed(input, smooth).filter(
+    (p, i, all) => i === 0 || Math.hypot(p.x - all[i - 1].x, p.y - all[i - 1].y) > 1e-6,
+  );
+  if (samples.length === 0) return [];
+  const r = Math.max(0.25, width / 2);
+  return buildCapsuleOutline(samples, samples.map(() => r), roundEndCaps);
 }
 
 /** Geometry for a pen stroke. */

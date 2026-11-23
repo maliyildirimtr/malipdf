@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { PDFDict, PDFDocument, PDFName } from 'pdf-lib';
 import { exportAnnotatedPdf } from '../annotationExporter';
-import { centerlinePath, circlePath, penShape, pressureOutline, simplifyInkPoints } from '../inkGeometry';
+import { centerlinePath, circlePath, penShape, pressureOutline, simplifyInkPoints, uniformStrokeOutline } from '../inkGeometry';
 import { eraseStrokePath } from '../eraserGeometry';
 import type { Annotation, InputPoint } from '../../types/annotations';
 
@@ -41,6 +41,45 @@ describe('ink geometry', () => {
     expect(light.at(-1)).toEqual({ op: 'Z' });
     expect(height(heavy)).toBeGreaterThan(height(light) * 3);
     expect(height(heavy)).toBeCloseTo(4 * 1.7, 0);
+  });
+
+  it('emits only positively-oriented subpaths on sharp hairpins and Apple Pencil jitter (no white holes)', () => {
+    const hairpin: InputPoint[] = [
+      { x: 10, y: 10, pressure: 0.8, timestamp: 0 },
+      { x: 10.1, y: 10.05, pressure: 0.82, timestamp: 4 },
+      { x: 30, y: 10, pressure: 0.9, timestamp: 8 },
+      { x: 29.8, y: 10.1, pressure: 0.85, timestamp: 12 },
+      { x: 12, y: 12, pressure: 0.7, timestamp: 16 },
+      { x: 35, y: 24, pressure: 0.95, timestamp: 20 },
+    ];
+    const checkAllPolygonsCCW = (cmds: ReturnType<typeof pressureOutline>) => {
+      // Split into subpaths; every L-polygon quad must have positive signed area.
+      let sub: { x: number; y: number }[] = [];
+      let isCurve = false;
+      for (const c of cmds) {
+        if (c.op === 'M') {
+          sub = [{ x: c.x, y: c.y }];
+          isCurve = false;
+        } else if (c.op === 'L') {
+          sub.push({ x: c.x, y: c.y });
+        } else if (c.op === 'C') {
+          isCurve = true;
+        } else if (c.op === 'Z') {
+          if (!isCurve && sub.length >= 3) {
+            let area2 = 0;
+            for (let i = 0; i < sub.length; i++) {
+              const a = sub[i];
+              const b = sub[(i + 1) % sub.length];
+              area2 += a.x * b.y - b.x * a.y;
+            }
+            expect(area2).toBeGreaterThan(0);
+          }
+          sub = [];
+        }
+      }
+    };
+    checkAllPolygonsCCW(pressureOutline(hairpin, 12, true));
+    checkAllPolygonsCCW(uniformStrokeOutline(hairpin, 20, true, false));
   });
 
   it('simplification keeps the shape but drops redundant points', () => {

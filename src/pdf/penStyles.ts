@@ -11,7 +11,7 @@
  * draw the same outline; the renderer maps the commands to the screen.
  */
 import type { InputPoint, PenStyle } from '../types/annotations';
-import { circlePath, hasRealPressure, penShape, type InkShape, type PathCommand } from './inkGeometry';
+import { buildCapsuleOutline, circlePath, hasRealPressure, penShape, type InkShape, type PathCommand } from './inkGeometry';
 
 export const PEN_STYLES: { value: PenStyle; label: string }[] = [
   { value: 'ballpoint', label: 'Ballpoint' },
@@ -106,44 +106,61 @@ function radii(style: PenStyle, s: readonly Sample[], width: number, usePressure
   return out;
 }
 
-function cap(commands: PathCommand[], end: Sample, before: Sample, radius: number): void {
-  const angle = Math.atan2(end.y - before.y, end.x - before.x);
-  const steps = 8;
-  for (let k = 1; k < steps; k++) {
-    const a = angle + Math.PI / 2 - (Math.PI * k) / steps;
-    commands.push({ op: 'L', x: end.x + Math.cos(a) * radius, y: end.y + Math.sin(a) * radius });
-  }
-}
-
-function direction(s: readonly Sample[], i: number): { x: number; y: number } {
-  const a = s[Math.max(0, i - 1)];
-  const b = s[Math.min(s.length - 1, i + 1)];
-  const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
-  return { x: (b.x - a.x) / len, y: (b.y - a.y) / len };
-}
-
 /** Calligraphy: the flat nib (in PDF space, y up) leans 40° like "/". */
 const NIB_ANGLE = (40 * Math.PI) / 180;
 
 function calligraphyOutline(s: readonly Sample[], width: number, usePressure: boolean): PathCommand[] {
   const pressure = usePressure && hasRealPressure(s);
   const nib = { x: Math.cos(NIB_ANGLE), y: Math.sin(NIB_ANGLE) };
-  const left: { x: number; y: number }[] = [];
-  const right: { x: number; y: number }[] = [];
-  for (let i = 0; i < s.length; i++) {
-    const p = s[i];
-    const h = width * 0.85 * (pressure ? 0.45 + p.pressure : 1);
-    const d = direction(s, i);
-    const thin = width * 0.06; // the hairline never vanishes
-    const nx = -d.y * thin;
-    const ny = d.x * thin;
-    left.push({ x: p.x + nib.x * h + nx, y: p.y + nib.y * h + ny });
-    right.push({ x: p.x - nib.x * h - nx, y: p.y - nib.y * h - ny });
+  const thin = width * 0.06; // the hairline never vanishes
+  const commands: PathCommand[] = [];
+
+  // Emit each segment as a positively-oriented (CCW) quad so direction reversals
+  // along cursive hairpins never invert winding and punch white holes in ink.
+  const pushCCWQuad = (a: { x: number; y: number }, b: { x: number; y: number }, c: { x: number; y: number }, d: { x: number; y: number }) => {
+    const area2 =
+      (a.x * b.y - b.x * a.y) +
+      (b.x * c.y - c.x * b.y) +
+      (c.x * d.y - d.x * c.y) +
+      (d.x * a.y - a.x * d.y);
+    if (Math.abs(area2) < 1e-8) return;
+    if (area2 > 0) {
+      commands.push({ op: 'M', x: a.x, y: a.y }, { op: 'L', x: b.x, y: b.y }, { op: 'L', x: c.x, y: c.y }, { op: 'L', x: d.x, y: d.y }, { op: 'Z' });
+    } else {
+      commands.push({ op: 'M', x: a.x, y: a.y }, { op: 'L', x: d.x, y: d.y }, { op: 'L', x: c.x, y: c.y }, { op: 'L', x: b.x, y: b.y }, { op: 'Z' });
+    }
+  };
+
+  for (let i = 0; i < s.length - 1; i++) {
+    const p0 = s[i];
+    const p1 = s[i + 1];
+    const dx = p1.x - p0.x;
+    const dy = p1.y - p0.y;
+    const len = Math.hypot(dx, dy);
+    if (len < 1e-5) continue;
+    const nx = (-dy / len) * thin;
+    const ny = (dx / len) * thin;
+    const h0 = width * 0.85 * (pressure ? 0.45 + p0.pressure : 1);
+    const h1 = width * 0.85 * (pressure ? 0.45 + p1.pressure : 1);
+    const l0 = { x: p0.x + nib.x * h0 + nx, y: p0.y + nib.y * h0 + ny };
+    const r0 = { x: p0.x - nib.x * h0 - nx, y: p0.y - nib.y * h0 - ny };
+    const l1 = { x: p1.x + nib.x * h1 + nx, y: p1.y + nib.y * h1 + ny };
+    const r1 = { x: p1.x - nib.x * h1 - nx, y: p1.y - nib.y * h1 - ny };
+    pushCCWQuad(l0, r0, r1, l1);
   }
-  const commands: PathCommand[] = [{ op: 'M', x: left[0].x, y: left[0].y }];
-  for (let i = 1; i < left.length; i++) commands.push({ op: 'L', x: left[i].x, y: left[i].y });
-  for (let i = right.length - 1; i >= 0; i--) commands.push({ op: 'L', x: right[i].x, y: right[i].y });
-  commands.push({ op: 'Z' });
+  if (commands.length === 0 && s.length > 0) {
+    const p = s[0];
+    const h = width * 0.85;
+    const nx = nib.x * h;
+    const ny = nib.y * h;
+    const t = width * 0.12;
+    pushCCWQuad(
+      { x: p.x + nx - t, y: p.y + ny + t },
+      { x: p.x + nx + t, y: p.y + ny - t },
+      { x: p.x - nx + t, y: p.y - ny - t },
+      { x: p.x - nx - t, y: p.y - ny + t },
+    );
+  }
   return commands;
 }
 
@@ -167,20 +184,7 @@ export function styledPenShape(points: readonly InputPoint[], width: number, smo
   }
   const r = radii(style, s, width, usePressure);
   if (s.length === 1) return { mode: 'fill', commands: circlePath(s[0].x, s[0].y, r[0]) };
-  const left: { x: number; y: number }[] = [];
-  const right: { x: number; y: number }[] = [];
-  for (let i = 0; i < s.length; i++) {
-    const d = direction(s, i);
-    left.push({ x: s[i].x - d.y * r[i], y: s[i].y + d.x * r[i] });
-    right.push({ x: s[i].x + d.y * r[i], y: s[i].y - d.x * r[i] });
-  }
-  const commands: PathCommand[] = [{ op: 'M', x: left[0].x, y: left[0].y }];
-  for (let i = 1; i < left.length; i++) commands.push({ op: 'L', x: left[i].x, y: left[i].y });
-  cap(commands, s[s.length - 1], s[s.length - 2], r[r.length - 1]);
-  for (let i = right.length - 1; i >= 0; i--) commands.push({ op: 'L', x: right[i].x, y: right[i].y });
-  cap(commands, s[0], s[1], r[0]);
-  commands.push({ op: 'Z' });
-  return { mode: 'fill', commands };
+  return { mode: 'fill', commands: buildCapsuleOutline(s, r, true) };
 }
 
 /** Map a shape's points (e.g. PDF → screen). */

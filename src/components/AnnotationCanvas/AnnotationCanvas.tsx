@@ -1659,14 +1659,20 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     }
 
     if (m === 'drawing') {
-      // Use coalesced events for stylus fidelity
+      // Use coalesced events for stylus fidelity, skipping sub-pixel jitter
+      // duplicates from 240Hz Apple Pencil events.
       const events = e.nativeEvent.getCoalescedEvents?.() ?? [e.nativeEvent];
       for (const ev of events) {
         const local = toLocalInkPoint(ev.clientX, ev.clientY);
+        const prev = activePoints.current[activePoints.current.length - 1];
+        const nextPressure = ev.pressure > 0 ? ev.pressure : 0.5;
+        if (prev && Math.hypot(local.x - prev.x, local.y - prev.y) < 0.75 && Math.abs(nextPressure - prev.pressure) < 0.05) {
+          continue;
+        }
         activePoints.current.push({
           x: local.x,
           y: local.y,
-          pressure: ev.pressure > 0 ? ev.pressure : 0.5,
+          pressure: nextPressure,
           timestamp: ev.timeStamp,
           tilt: pointerTilt(ev),
         });

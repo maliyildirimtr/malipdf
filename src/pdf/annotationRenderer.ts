@@ -44,7 +44,7 @@ import type { DocumentIdentity } from '../types/documentSession';
 import { getCachedDecodedImage, requestImageDecode } from './imageRenderCache';
 import { cssFont, layoutTextLines, matchPdfText, LINE_HEIGHT, TEXT_PADDING } from './textLayout';
 import { useAssetStore } from '../store/assetStore';
-import { commandsToPath2D, highlightShape, penShape, type InkShape } from './inkGeometry';
+import { commandsToPath2D, penShape, uniformStrokeOutline, type InkShape } from './inkGeometry';
 import { mapShape, penStyleOpacity, styledPenShape } from './penStyles';
 
 
@@ -181,12 +181,29 @@ function inkPath(annotation: StrokeAnnotation | HighlightAnnotation, transform: 
   if (cached && cached.transform === transform) return cached;
   const styled = annotation.type === 'stroke' && annotation.penStyle && annotation.penStyle !== 'ballpoint';
   const screenPoints = styled ? [] : pdfPointsToScreen(annotation.points, transform);
-  const shape = annotation.type === 'stroke'
-    ? (styled
+  const screenWidth = annotation.width * transform.scale;
+  let shape: InkShape;
+  if (annotation.type === 'stroke') {
+    if (styled) {
       // Nib styles are shaped in PDF space (as in the saved file), then mapped.
-      ? mapShape(styledPenShape(annotation.points, annotation.width, annotation.smooth, annotation.pressure, annotation.penStyle), (x, y) => pdfToScreen(x, y, transform))
-      : penShape(screenPoints, annotation.width * transform.scale, annotation.smooth, annotation.pressure))
-    : highlightShape(screenPoints);
+      shape = mapShape(
+        styledPenShape(annotation.points, annotation.width, annotation.smooth, annotation.pressure, annotation.penStyle),
+        (x, y) => pdfToScreen(x, y, transform),
+      );
+    } else {
+      shape = penShape(screenPoints, screenWidth, annotation.smooth, annotation.pressure);
+      // On iOS/WebKit, thick cubic-Bézier Canvas strokes can develop white crescent
+      // gaps at dense Apple Pencil points. Render thick uniform strokes as a
+      // consistent-winding capsule union instead.
+      if (shape.mode === 'stroke' && screenWidth >= 3.5 && screenPoints.length >= 2) {
+        shape = { mode: 'fill', commands: uniformStrokeOutline(screenPoints, screenWidth, annotation.smooth, true) };
+      }
+    }
+  } else {
+    // Render highlighters as a filled consistent-winding capsule union (flat ends)
+    // so thick strokes at high zoom on iPadOS WebKit never show white crescents.
+    shape = { mode: 'fill', commands: uniformStrokeOutline(screenPoints, screenWidth, true, false) };
+  }
   const entry = { transform, mode: shape.mode, path: commandsToPath2D(shape.commands) };
   inkCache.set(annotation, entry);
   return entry;
@@ -225,15 +242,20 @@ export function renderHighlight(
   transform: PageTransform,
 ): void {
   if (annotation.points.length < 2) return;
-  const { path } = inkPath(annotation, transform);
+  const { mode, path } = inkPath(annotation, transform);
   ctx.save();
   ctx.globalAlpha = annotation.opacity;
   ctx.globalCompositeOperation = 'multiply';
-  ctx.strokeStyle = annotation.color;
-  ctx.lineWidth = annotation.width * transform.scale;
-  ctx.lineCap = 'butt';
-  ctx.lineJoin = 'round';
-  ctx.stroke(path);
+  if (mode === 'fill') {
+    ctx.fillStyle = annotation.color;
+    ctx.fill(path);
+  } else {
+    ctx.strokeStyle = annotation.color;
+    ctx.lineWidth = annotation.width * transform.scale;
+    ctx.lineCap = 'butt';
+    ctx.lineJoin = 'round';
+    ctx.stroke(path);
+  }
   ctx.restore();
 }
 
