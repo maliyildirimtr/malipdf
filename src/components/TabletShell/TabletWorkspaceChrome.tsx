@@ -10,7 +10,8 @@
  * favorited tool+color+size shortcuts stack vertically on the right edge.
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { PencilQuickPalette } from './PencilQuickPalette';
 import {
   AlignCenter,
   AlignLeft,
@@ -267,6 +268,58 @@ export function TabletWorkspaceTopChrome({ onCommand, canExecute }: TabletWorksp
   const [penTab, setPenTab] = useState<'basic' | 'advanced'>('basic');
   const [justAddedFav, setJustAddedFav] = useState(false);
   const [drawingSignature, setDrawingSignature] = useState(false);
+  const [quickPaletteAnchor, setQuickPaletteAnchor] = useState<{ x: number; y: number } | null>(null);
+
+  const lastInkToolRef = useRef<'pen' | 'highlighter'>('pen');
+  const penTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const penLongPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const penLongPressFiredRef = useRef(false);
+
+  useEffect(() => {
+    if (activeTool === 'pen' || activeTool === 'highlighter') {
+      lastInkToolRef.current = activeTool;
+    }
+  }, [activeTool]);
+
+  const togglePenAndEraser = useCallback(() => {
+    setPopover(null);
+    setQuickPaletteAnchor(null);
+    const current = useUIStore.getState().activeTool;
+    if (current === 'eraser') {
+      onCommand(lastInkToolRef.current === 'highlighter' ? 'tool.highlighter' : 'tool.pen');
+    } else {
+      onCommand('tool.eraser');
+    }
+  }, [onCommand]);
+
+  // Native Apple Pencil 2nd Gen / Pro gestures (dispatched from iOS UIPencilInteraction):
+  // - Double-Tap barrel: Pen <-> Eraser
+  // - Apple Pencil Pro Squeeze: toggle floating Quick Tool Palette at hover pose
+  useEffect(() => {
+    const onPencilDoubleTap = () => {
+      togglePenAndEraser();
+    };
+    const onPencilSqueeze = (event: Event) => {
+      const detail = (event as CustomEvent<{ x?: number; y?: number }>).detail;
+      setPopover(null);
+      setQuickPaletteAnchor((prev) => {
+        if (prev) return null;
+        const vw = window.visualViewport?.width ?? window.innerWidth;
+        const vh = window.visualViewport?.height ?? window.innerHeight;
+        const x = typeof detail?.x === 'number' && Number.isFinite(detail.x) && detail.x > 0 ? detail.x : vw / 2;
+        const y = typeof detail?.y === 'number' && Number.isFinite(detail.y) && detail.y > 0 ? detail.y : vh / 2;
+        return { x, y };
+      });
+    };
+    window.addEventListener('malipdf:pencil-double-tap', onPencilDoubleTap);
+    window.addEventListener('malipdf:pencil-squeeze', onPencilSqueeze);
+    return () => {
+      window.removeEventListener('malipdf:pencil-double-tap', onPencilDoubleTap);
+      window.removeEventListener('malipdf:pencil-squeeze', onPencilSqueeze);
+      if (penTapTimerRef.current) clearTimeout(penTapTimerRef.current);
+      if (penLongPressTimerRef.current) clearTimeout(penLongPressTimerRef.current);
+    };
+  }, [togglePenAndEraser]);
 
   const returnToLibrary = () => {
     setPopover(null);
@@ -449,10 +502,71 @@ export function TabletWorkspaceTopChrome({ onCommand, canExecute }: TabletWorksp
                 type="button"
                 className={`${styles.toolBtn} ${activeTool === 'pen' ? styles.toolBtnActive : ''}`}
                 aria-label="Pen"
-                title="Pen — tap again for options"
+                title="Pen — double-tap to switch Eraser, long-press for Quick Tool Palette"
                 data-tw-popover="true"
-                onClick={(e) => handleToolTap('pen', 'tool.pen', activeTool === 'pen', e)}
-                onDoubleClick={(e) => handleToolDoubleTap('pen', 'tool.pen', activeTool === 'pen', e)}
+                onPointerDown={(e) => {
+                  penLongPressFiredRef.current = false;
+                  if (penLongPressTimerRef.current) clearTimeout(penLongPressTimerRef.current);
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  penLongPressTimerRef.current = setTimeout(() => {
+                    penLongPressTimerRef.current = null;
+                    penLongPressFiredRef.current = true;
+                    if (penTapTimerRef.current) {
+                      clearTimeout(penTapTimerRef.current);
+                      penTapTimerRef.current = null;
+                    }
+                    setPopover(null);
+                    setQuickPaletteAnchor({ x: rect.left + rect.width / 2, y: rect.bottom + 98 });
+                  }, 420);
+                }}
+                onPointerUp={() => {
+                  if (penLongPressTimerRef.current) {
+                    clearTimeout(penLongPressTimerRef.current);
+                    penLongPressTimerRef.current = null;
+                  }
+                }}
+                onPointerLeave={() => {
+                  if (penLongPressTimerRef.current) {
+                    clearTimeout(penLongPressTimerRef.current);
+                    penLongPressTimerRef.current = null;
+                  }
+                }}
+                onPointerCancel={() => {
+                  if (penLongPressTimerRef.current) {
+                    clearTimeout(penLongPressTimerRef.current);
+                    penLongPressTimerRef.current = null;
+                  }
+                }}
+                onClick={(e) => {
+                  if (penLongPressFiredRef.current) {
+                    penLongPressFiredRef.current = false;
+                    return;
+                  }
+                  if (activeTool === 'pen') {
+                    const target = e.currentTarget;
+                    if (penTapTimerRef.current) {
+                      clearTimeout(penTapTimerRef.current);
+                      penTapTimerRef.current = null;
+                      togglePenAndEraser();
+                      return;
+                    }
+                    penTapTimerRef.current = setTimeout(() => {
+                      penTapTimerRef.current = null;
+                      if (popover?.kind === 'pen') setPopover(null);
+                      else openPopoverAt('pen', target);
+                    }, 240);
+                  } else {
+                    setPopover(null);
+                    onCommand('tool.pen');
+                  }
+                }}
+                onDoubleClick={() => {
+                  if (penTapTimerRef.current) {
+                    clearTimeout(penTapTimerRef.current);
+                    penTapTimerRef.current = null;
+                  }
+                  togglePenAndEraser();
+                }}
               >
                 <Pen size={20} />
                 <span className={styles.toolColorBar} style={{ background: toolOptions.pen.color }} />
@@ -477,10 +591,10 @@ export function TabletWorkspaceTopChrome({ onCommand, canExecute }: TabletWorksp
                 type="button"
                 className={`${styles.toolBtn} ${activeTool === 'eraser' ? styles.toolBtnActive : ''}`}
                 aria-label="Eraser"
-                title="Eraser — tap again for options"
+                title="Eraser — tap again for options, double-tap for Pen"
                 data-tw-popover="true"
                 onClick={(e) => handleToolTap('eraser', 'tool.eraser', activeTool === 'eraser', e)}
-                onDoubleClick={(e) => handleToolDoubleTap('eraser', 'tool.eraser', activeTool === 'eraser', e)}
+                onDoubleClick={() => togglePenAndEraser()}
               >
                 <Eraser size={20} />
                 {activeTool === 'eraser' && <ChevronDown size={10} className={styles.toolOptionsCue} />}
@@ -1561,6 +1675,13 @@ export function TabletWorkspaceTopChrome({ onCommand, canExecute }: TabletWorksp
           </div>
         </div>
       )}
+
+      <PencilQuickPalette
+        anchor={quickPaletteAnchor}
+        onClose={() => setQuickPaletteAnchor(null)}
+        onCommand={onCommand}
+        canExecute={canExecute}
+      />
 
       {drawingSignature && (
         <SignatureDialog

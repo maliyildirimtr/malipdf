@@ -309,6 +309,27 @@ export function moveSelectionToPage(
   return moved;
 }
 
+/** Reorder selected annotations to the top or bottom of the page's z-order. */
+export function reorderSelectionLayer(direction: 'front' | 'back'): boolean {
+  const context = getActiveSelection();
+  if (!context) return false;
+  const { identity, pageIndex, annotations } = context;
+  const annotationStore = useAnnotationStore.getState();
+  const current = annotationStore.getPageAnnotations(identity.docId, pageIndex);
+  if (current.length < 2) return false;
+
+  const selectedIds = new Set(annotations.map((a) => a.id));
+  const selected = current.filter((a) => selectedIds.has(a.id));
+  const others = current.filter((a) => !selectedIds.has(a.id));
+  const reordered = direction === 'front' ? [...others, ...selected] : [...selected, ...others];
+
+  const unchanged = reordered.every((a, i) => a.id === current[i].id);
+  if (unchanged) return false;
+
+  annotationStore.setPageAnnotations(identity.docId, pageIndex, reordered);
+  return true;
+}
+
 /** Test helper. */
 export function resetAnnotationClipboard(): void {
   clipboard = null;

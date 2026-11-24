@@ -11,11 +11,13 @@ import {
   Camera,
   Copy,
   CopyPlus,
+  Layers,
   Palette,
   Scissors,
+  SlidersHorizontal,
   Trash2,
 } from 'lucide-react';
-import type { Annotation } from '../../types/annotations';
+import type { Annotation, ImageAnnotation } from '../../types/annotations';
 import type { DocumentIdentity } from '../../types/documentSession';
 import type { PageTransform } from '../../pdf/coordinateTransform';
 import { pdfRectToScreenBounds } from '../../pdf/coordinateTransform';
@@ -30,8 +32,10 @@ import {
   duplicateSelection,
   moveSelectionToPage,
   recolorSelection,
+  reorderSelectionLayer,
 } from '../../commands/clipboardCommands';
 import { notifyUser } from '../../utils/notify';
+import { ImageEditorModal } from './ImageEditorModal';
 import styles from './LassoActionBar.module.css';
 
 const QUICK_COLORS = [
@@ -64,11 +68,14 @@ export function LassoActionBar({
 }: LassoActionBarProps) {
   const barRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
-  const [subMenu, setSubMenu] = useState<'color' | 'movePage' | null>(null);
+  const [subMenu, setSubMenu] = useState<'color' | 'movePage' | 'layers' | null>(null);
+  const [editingImage, setEditingImage] = useState(false);
 
   const pageCount = useDocumentStore((s) => s.documents.get(identity.docId)?.pageCount ?? 1);
   const isDrawing = useUIStore((s) => s.isDrawing);
-  const hasColorable = annotations.some((a) => 'color' in a);
+  const singleImage: ImageAnnotation | null =
+    annotations.length === 1 && annotations[0].type === 'image' ? annotations[0] : null;
+  const hasColorable = !singleImage && annotations.some((a) => 'color' in a);
 
   useLayoutEffect(() => {
     const update = () => {
@@ -226,6 +233,29 @@ export function LassoActionBar({
           <CopyPlus size={15} />
           <span>Duplicate</span>
         </button>
+        {singleImage && (
+          <>
+            <button
+              type="button"
+              className={`${styles.actionBtn} ${subMenu === 'layers' ? styles.actionBtnActive : ''}`}
+              onClick={() => setSubMenu((m) => (m === 'layers' ? null : 'layers'))}
+            >
+              <Layers size={15} />
+              <span>Layers</span>
+            </button>
+            <button
+              type="button"
+              className={styles.actionBtn}
+              onClick={() => {
+                setSubMenu(null);
+                setEditingImage(true);
+              }}
+            >
+              <SlidersHorizontal size={15} />
+              <span>Edit</span>
+            </button>
+          </>
+        )}
         {hasColorable && (
           <button
             type="button"
@@ -272,6 +302,33 @@ export function LassoActionBar({
         </div>
       )}
 
+      {subMenu === 'layers' && (
+        <div className={styles.subPopover}>
+          <div className={styles.pageGrid}>
+            <button
+              type="button"
+              className={styles.pageNavChip}
+              onClick={() => {
+                reorderSelectionLayer('front');
+                setSubMenu(null);
+              }}
+            >
+              Bring to Front
+            </button>
+            <button
+              type="button"
+              className={styles.pageNavChip}
+              onClick={() => {
+                reorderSelectionLayer('back');
+                setSubMenu(null);
+              }}
+            >
+              Send to Back
+            </button>
+          </div>
+        </div>
+      )}
+
       {subMenu === 'movePage' && (
         <div className={styles.subPopover}>
           <div className={styles.pageGrid}>
@@ -306,6 +363,15 @@ export function LassoActionBar({
             ))}
           </div>
         </div>
+      )}
+
+      {editingImage && singleImage && (
+        <ImageEditorModal
+          annotation={singleImage}
+          identity={identity}
+          pageIndex={pageIndex}
+          onClose={() => setEditingImage(false)}
+        />
       )}
     </div>,
     document.body,

@@ -100,4 +100,83 @@ if (!fs.existsSync(privacyPath)) {
   added.push('PrivacyInfo.xcprivacy');
 }
 
+// Native Apple Pencil 2nd Gen / Pro support (UIPencilInteraction):
+// - Double-tap on the Pencil barrel toggles Pen <-> Eraser
+// - Apple Pencil Pro Squeeze (iOS 17.5+) opens the floating Quick Tool Palette
+const appDelegatePath = path.join(root, 'ios/App/App/AppDelegate.swift');
+if (fs.existsSync(appDelegatePath)) {
+  let swift = fs.readFileSync(appDelegatePath, 'utf8');
+  if (!swift.includes('MaliPDFPencilHandler')) {
+    if (!swift.includes('import WebKit')) {
+      swift = swift.replace('import UIKit', 'import UIKit\nimport WebKit');
+    }
+    const attachCall = '\n        MaliPDFPencilHandler.shared.attach(to: window)\n';
+    if (swift.includes('func applicationDidBecomeActive(_ application: UIApplication) {')) {
+      swift = swift.replace(
+        'func applicationDidBecomeActive(_ application: UIApplication) {',
+        `func applicationDidBecomeActive(_ application: UIApplication) {${attachCall}`,
+      );
+    }
+    const pencilExtension = `
+
+// MARK: - MaliPDF Apple Pencil Double-Tap & Pro Squeeze Bridge
+
+final class MaliPDFPencilHandler: NSObject, UIPencilInteractionDelegate {
+    static let shared = MaliPDFPencilHandler()
+    private weak var webView: WKWebView?
+
+    func attach(to window: UIWindow?) {
+        guard let bridgeVC = window?.rootViewController as? CAPBridgeViewController,
+              let hostView = bridgeVC.view,
+              let wv = bridgeVC.webView else { return }
+        self.webView = wv
+        let alreadyAttached = hostView.interactions.contains { $0 is UIPencilInteraction }
+        guard !alreadyAttached else { return }
+        let interaction = UIPencilInteraction()
+        interaction.delegate = self
+        hostView.addInteraction(interaction)
+    }
+
+    private func dispatchDoubleTap() {
+        DispatchQueue.main.async {
+            self.webView?.evaluateJavaScript(
+                "window.dispatchEvent(new CustomEvent('malipdf:pencil-double-tap'))",
+                completionHandler: nil
+            )
+        }
+    }
+
+    func pencilInteractionDidTap(_ interaction: UIPencilInteraction) {
+        dispatchDoubleTap()
+    }
+
+    @available(iOS 17.5, *)
+    func pencilInteraction(_ interaction: UIPencilInteraction, didReceiveTap tap: UIPencilInteraction.Tap) {
+        dispatchDoubleTap()
+    }
+
+    @available(iOS 17.5, *)
+    func pencilInteraction(_ interaction: UIPencilInteraction, didReceiveSqueeze squeeze: UIPencilInteraction.Squeeze) {
+        guard squeeze.phase == .ended else { return }
+        let detail: String
+        if let loc = squeeze.hoverPose?.location {
+            detail = "{ x: \\(Int(loc.x)), y: \\(Int(loc.y)) }"
+        } else {
+            detail = "{}"
+        }
+        DispatchQueue.main.async {
+            self.webView?.evaluateJavaScript(
+                "window.dispatchEvent(new CustomEvent('malipdf:pencil-squeeze', { detail: \\(detail) }))",
+                completionHandler: nil
+            )
+        }
+    }
+}
+`;
+    swift += pencilExtension;
+    fs.writeFileSync(appDelegatePath, swift);
+    added.push('UIPencilInteraction (Double-Tap & Squeeze)');
+  }
+}
+
 console.log(added.length ? `Updated: ${added.join(', ')}` : 'Already set up.');
