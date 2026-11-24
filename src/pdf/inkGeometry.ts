@@ -93,7 +93,7 @@ function mid(a: XY, b: XY): XY {
   return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
 }
 
-/** Points along the smoothed centre line (for the pressure outline). */
+/** Points along the smoothed centre line (for the pressure outline), with curvature-adaptive subdivision so tight cursive turns never look angular. */
 function sampleSmoothed(points: readonly InputPoint[], smooth: boolean): InputPoint[] {
   if (!smooth || points.length < 3) return [...points];
   const out: InputPoint[] = [points[0]];
@@ -102,8 +102,19 @@ function sampleSmoothed(points: readonly InputPoint[], smooth: boolean): InputPo
   for (let i = 1; i < points.length - 1; i++) {
     const control = points[i];
     const to: InputPoint = { ...mid(points[i], points[i + 1]), pressure: (points[i].pressure + points[i + 1].pressure) / 2, timestamp: 0 };
-    const length = Math.hypot(control.x - from.x, control.y - from.y) + Math.hypot(to.x - control.x, to.y - control.y);
-    const steps = Math.max(1, Math.min(12, Math.ceil(length / 2)));
+    const dx1 = control.x - from.x, dy1 = control.y - from.y;
+    const dx2 = to.x - control.x, dy2 = to.y - control.y;
+    const l1 = Math.hypot(dx1, dy1);
+    const l2 = Math.hypot(dx2, dy2);
+    const length = l1 + l2;
+    let angleSteps = 1;
+    if (l1 > 1e-4 && l2 > 1e-4) {
+      const cosA = Math.max(-1, Math.min(1, (dx1 * dx2 + dy1 * dy2) / (l1 * l2)));
+      const turnAngle = Math.acos(cosA);
+      angleSteps = Math.ceil(turnAngle / 0.16);
+    }
+    const lenSteps = Math.ceil(length / 1.2);
+    const steps = Math.max(1, Math.min(18, Math.max(lenSteps, angleSteps)));
     for (let s = 1; s <= steps; s++) {
       const t = s / steps;
       const a = (1 - t) * (1 - t);
@@ -367,16 +378,47 @@ export function stabilizePoints(points: readonly InputPoint[], level: InkStabili
     out.push(next);
     prev = next;
   }
-  // Catch up to where the pen actually is.
+  // Catch up smoothly to where the pen actually is (quadratic blend avoids a straight kink).
   const last = points[points.length - 1];
   const gap = Math.hypot(last.x - prev.x, last.y - prev.y);
   if (gap > 0.5) {
+    const prev2 = out.length >= 2 ? out[out.length - 2] : prev;
+    const ctrlX = prev.x + (prev.x - prev2.x) * 0.45;
+    const ctrlY = prev.y + (prev.y - prev2.y) * 0.45;
     const steps = Math.min(8, Math.ceil(gap / 2));
     for (let s = 1; s < steps; s++) {
       const k = s / steps;
-      out.push({ ...last, x: prev.x + (last.x - prev.x) * k, y: prev.y + (last.y - prev.y) * k });
+      const a = (1 - k) * (1 - k);
+      const b = 2 * (1 - k) * k;
+      const c = k * k;
+      out.push({
+        ...last,
+        x: a * prev.x + b * ctrlX + c * last.x,
+        y: a * prev.y + b * ctrlY + c * last.y,
+      });
     }
   }
   out.push(last);
+
+  // Zero-lag symmetric 3-point corner polish on interior points so fast turns
+  // stay liquid and curved without pulling the tip behind the pen.
+  if (out.length >= 4) {
+    const w = 0.14 + streamline * 0.12;
+    const center = 1 - 2 * w;
+    const polished: InputPoint[] = [out[0]];
+    for (let i = 1; i < out.length - 1; i++) {
+      const p0 = out[i - 1];
+      const p1 = out[i];
+      const p2 = out[i + 1];
+      polished.push({
+        ...p1,
+        x: p0.x * w + p1.x * center + p2.x * w,
+        y: p0.y * w + p1.y * center + p2.y * w,
+      });
+    }
+    polished.push(out[out.length - 1]);
+    return polished;
+  }
+
   return out;
 }

@@ -2068,7 +2068,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
         const prev = activePoints.current[activePoints.current.length - 1];
         const nextPressure = sanitizePressure(ev.pressure, prev?.pressure);
         const stepDist = prev ? Math.hypot(local.x - prev.x, local.y - prev.y) : Infinity;
-        const minDist = activePoints.current.length === 1 ? 0.25 : 0.45;
+        const minDist = activePoints.current.length === 1 ? 0.2 : 0.35;
         if (prev && stepDist < minDist && Math.abs(nextPressure - prev.pressure) < 0.05) {
           continue;
         }

@@ -60,8 +60,19 @@ function samples(points: readonly InputPoint[], smooth: boolean): Sample[] {
   for (let i = 1; i < base.length - 1; i++) {
     const control = base[i];
     const to = mix(base[i], base[i + 1], 0.5);
-    const length = Math.hypot(control.x - from.x, control.y - from.y) + Math.hypot(to.x - control.x, to.y - control.y);
-    const steps = Math.max(1, Math.min(12, Math.ceil(length / 1.5)));
+    const dx1 = control.x - from.x, dy1 = control.y - from.y;
+    const dx2 = to.x - control.x, dy2 = to.y - control.y;
+    const l1 = Math.hypot(dx1, dy1);
+    const l2 = Math.hypot(dx2, dy2);
+    const length = l1 + l2;
+    let angleSteps = 1;
+    if (l1 > 1e-4 && l2 > 1e-4) {
+      const cosA = Math.max(-1, Math.min(1, (dx1 * dx2 + dy1 * dy2) / (l1 * l2)));
+      angleSteps = Math.ceil(Math.acos(cosA) / 0.16);
+    }
+    // Styled nibs are shaped in PDF points (smaller than CSS px when zoomed),
+    // so divide by 0.65pt and honor curvature to stay silky at 200-400% zoom.
+    const steps = Math.max(1, Math.min(18, Math.max(Math.ceil(length / 0.65), angleSteps)));
     for (let s = 1; s <= steps; s++) {
       const t = s / steps;
       const p = mix(mix(from, control, t), mix(control, to, t), t);
