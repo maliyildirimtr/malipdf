@@ -1,9 +1,9 @@
 /**
- * Scribble-to-Erase gesture detector.
+ * Scribble-to-Erase gesture detector (ultra-strict).
  *
- * Recognizes a deliberate back-and-forth scribble drawn with the Pen over
- * existing ink/annotations so users can cross out a word to erase it naturally,
- * without ever false-triggering on normal cursive handwriting or shapes.
+ * Only triggers on a deliberate, energetic back-and-forth scratch-out directly
+ * ON TOP of existing annotations — never on cursive handwriting, loops, or
+ * writing right next to an existing word.
  */
 
 import type { Annotation, InputPoint, PdfPoint, PdfRect } from '../types/annotations';
@@ -14,24 +14,26 @@ interface PassSpan {
   start: { x: number; y: number };
   end: { x: number; y: number };
   length: number;
+  net: number;
   dirX: number;
   dirY: number;
   points: { x: number; y: number }[];
 }
 
 /**
- * Returns true if the screen-space pen stroke looks like an intentional
- * back-and-forth scribble (e.g. scratching out a handwritten word).
+ * Returns true ONLY when the screen-space pen stroke is an unmistakable
+ * deliberate back-and-forth scribble (≥ 5 linear passes / ≥ 4 sharp ~180°
+ * reversals retracing the exact same span with high path density).
  */
 export function isScribbleGesture(screenPoints: readonly InputPoint[]): boolean {
-  if (screenPoints.length < 8) return false;
+  if (screenPoints.length < 14) return false;
 
-  // 1. Resample out micro-jitter (< 6px steps)
+  // 1. Resample out micro-jitter (< 7px steps)
   const pts: { x: number; y: number }[] = [{ x: screenPoints[0].x, y: screenPoints[0].y }];
   for (let i = 1; i < screenPoints.length; i++) {
     const prev = pts[pts.length - 1];
     const p = screenPoints[i];
-    if (Math.hypot(p.x - prev.x, p.y - prev.y) >= 6) {
+    if (Math.hypot(p.x - prev.x, p.y - prev.y) >= 7) {
       pts.push({ x: p.x, y: p.y });
     }
   }
@@ -40,7 +42,7 @@ export function isScribbleGesture(screenPoints: readonly InputPoint[]): boolean 
   if (Math.hypot(lastRaw.x - lastKept.x, lastRaw.y - lastKept.y) >= 2) {
     pts.push({ x: lastRaw.x, y: lastRaw.y });
   }
-  if (pts.length < 6) return false;
+  if (pts.length < 10) return false;
 
   // 2. Overall bounding box & path length
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -56,12 +58,11 @@ export function isScribbleGesture(screenPoints: readonly InputPoint[]): boolean 
     }
   }
   const diag = Math.hypot(maxX - minX, maxY - minY);
-  if (totalLen < 85 || diag < 18) return false;
-  // Back-and-forth scribbling retraces the same zone, giving a high length/diag ratio.
-  if (totalLen / diag < 2.15) return false;
+  // Require substantial scratch-out travel & high retrace density (≥ 3.1x diagonal)
+  if (totalLen < 160 || diag < 26) return false;
+  if (totalLen / diag < 3.1) return false;
 
-  // 3. Segment the stroke into back-and-forth passes. Tracking the active pass
-  // direction handles smooth/rounded U-turns as well as sharp zigzag corners.
+  // 3. Segment the stroke into sharp back-and-forth passes (>= 130° reversals)
   const passes: PassSpan[] = [];
   let passStartIdx = 0;
   let passLen = 0;
@@ -76,11 +77,12 @@ export function isScribbleGesture(screenPoints: readonly InputPoint[]): boolean 
     const dx = end.x - start.x;
     const dy = end.y - start.y;
     const net = Math.hypot(dx, dy);
-    if (net >= 12) {
+    if (net >= 18) {
       passes.push({
         start,
         end,
         length: passLen,
+        net,
         dirX: dx / net,
         dirY: dy / net,
         points: pts.slice(passStartIdx, endIdx + 1),
@@ -103,7 +105,7 @@ export function isScribbleGesture(screenPoints: readonly InputPoint[]): boolean 
       const netDx = b.x - pts[passStartIdx].x;
       const netDy = b.y - pts[passStartIdx].y;
       const net = Math.hypot(netDx, netDy);
-      if (net >= 12) {
+      if (net >= 16) {
         passDirX = netDx / net;
         passDirY = netDy / net;
         hasDir = true;
@@ -112,8 +114,8 @@ export function isScribbleGesture(screenPoints: readonly InputPoint[]): boolean 
     }
 
     const dot = ux * passDirX + uy * passDirY;
-    // Turned >= ~115° back against the current pass direction → reversal!
-    if (dot <= -0.42) {
+    // Sharp reversal >= ~130° against current pass direction
+    if (dot <= -0.64) {
       finalizePass(i - 1);
       passStartIdx = i - 1;
       passLen = step;
@@ -122,11 +124,10 @@ export function isScribbleGesture(screenPoints: readonly InputPoint[]): boolean 
       hasDir = true;
     } else {
       passLen += step;
-      // Gently adapt passDir for slightly curved sweeps
       const netDx = b.x - pts[passStartIdx].x;
       const netDy = b.y - pts[passStartIdx].y;
       const net = Math.hypot(netDx, netDy);
-      if (net >= 14) {
+      if (net >= 18) {
         passDirX = netDx / net;
         passDirY = netDy / net;
       }
@@ -134,18 +135,29 @@ export function isScribbleGesture(screenPoints: readonly InputPoint[]): boolean 
   }
   finalizePass(pts.length - 1);
 
-  // Need at least 4 passes (3 direction reversals: -> <- -> <-)
-  if (passes.length < 4) return false;
+  // Need at least 5 deliberate passes (4 sharp back-and-forth reversals: -> <- -> <- ->)
+  if (passes.length < 5) return false;
 
-  // 4. Retrace overlap along the dominant axis of the longest pass.
-  // Normal handwriting ("mmmm") moves steadily forward so non-adjacent passes
-  // rarely overlap; a scribble crosses back over the same span repeatedly.
+  // 4. Passes in a scratch-out are mostly straight (not round cursive loops like 'e','o','8')
+  const straightPasses = passes.filter((p) => p.net / Math.max(1, p.length) >= 0.72);
+  if (straightPasses.length < 4) return false;
+
+  // 5. Retrace overlap along the dominant axis of the longest pass
   let dominant = passes[0];
   for (const pass of passes) {
-    if (pass.length > dominant.length) dominant = pass;
+    if (pass.net > dominant.net) dominant = pass;
   }
   const ax = dominant.dirX;
   const ay = dominant.dirY;
+
+  // Opposite-direction alignment: consecutive passes must run roughly parallel/antiparallel
+  let alignedPasses = 0;
+  for (const pass of passes) {
+    if (Math.abs(pass.dirX * ax + pass.dirY * ay) >= 0.72) {
+      alignedPasses++;
+    }
+  }
+  if (alignedPasses < 4) return false;
 
   const intervals = passes.map((pass) => {
     let lo = Infinity;
@@ -166,39 +178,37 @@ export function isScribbleGesture(screenPoints: readonly InputPoint[]): boolean 
 
   let adjacentOverlaps = 0;
   for (let i = 0; i < intervals.length - 1; i++) {
-    if (overlapRatio(intervals[i], intervals[i + 1]) >= 0.35) {
+    if (overlapRatio(intervals[i], intervals[i + 1]) >= 0.55) {
       adjacentOverlaps++;
     }
   }
   let skipOverlaps = 0;
   for (let i = 0; i < intervals.length - 2; i++) {
-    if (overlapRatio(intervals[i], intervals[i + 2]) >= 0.25) {
+    if (overlapRatio(intervals[i], intervals[i + 2]) >= 0.45) {
       skipOverlaps++;
     }
   }
 
-  return adjacentOverlaps >= 2 && skipOverlaps >= 1;
+  return adjacentOverlaps >= 3 && skipOverlaps >= 2;
 }
 
-function boundsOverlap(a: PdfRect, b: PdfRect, pad: number): boolean {
-  return (
-    a.x - pad <= b.x + b.width
-    && a.x + a.width + pad >= b.x
-    && a.y - pad <= b.y + b.height
-    && a.y + a.height + pad >= b.y
-  );
+function rectIntersectionArea(a: PdfRect, b: PdfRect): number {
+  const ox = Math.max(0, Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x));
+  const oy = Math.max(0, Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y));
+  return ox * oy;
 }
 
 /**
- * Finds all erasable annotations on the page actually intersected by the
- * scribble path (in PDF coordinates).
+ * Finds annotations genuinely scribbled OVER (not merely brushed at the edge).
+ * Requires tight contact + multiple scribble crossings so writing right next to
+ * an existing word NEVER accidentally erases the neighbor.
  */
 export function findScribbleTargets(
   scribblePdfPoints: readonly PdfPoint[],
   annotations: readonly Annotation[],
   padPdf: number,
 ): Annotation[] {
-  if (scribblePdfPoints.length < 2 || annotations.length === 0) return [];
+  if (scribblePdfPoints.length < 4 || annotations.length === 0) return [];
 
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const p of scribblePdfPoints) {
@@ -214,16 +224,18 @@ export function findScribbleTargets(
     height: Math.max(1, maxY - minY),
   };
 
-  const pad = Math.max(6, padPdf);
+  // Tight touch tolerance (never reach across gaps into neighboring words)
+  const pad = Math.max(2, Math.min(5, padPdf));
 
-  // Sample points along the scribble polyline at regular intervals for accurate hit testing
+  // Sample points along the scribble polyline with index tracking so we can
+  // verify multiple distinct crossings rather than a single edge graze.
   const samples: PdfPoint[] = [scribblePdfPoints[0]];
-  const stepSpacing = Math.max(4, pad * 0.75);
+  const stepSpacing = 4;
   for (let i = 1; i < scribblePdfPoints.length; i++) {
     const a = scribblePdfPoints[i - 1];
     const b = scribblePdfPoints[i];
     const dist = Math.hypot(b.x - a.x, b.y - a.y);
-    const steps = Math.max(1, Math.min(24, Math.ceil(dist / stepSpacing)));
+    const steps = Math.max(1, Math.min(20, Math.ceil(dist / stepSpacing)));
     for (let s = 1; s <= steps; s++) {
       const t = s / steps;
       samples.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
@@ -232,18 +244,38 @@ export function findScribbleTargets(
 
   const hits: Annotation[] = [];
   for (const ann of annotations) {
-    if (ann.locked || ann.hidden || !isErasable(ann)) continue;
+    // Only scribble-erase ink/shapes/text (never accidentally delete a photo!)
+    if (ann.locked || ann.hidden || !isErasable(ann) || ann.type === 'image') continue;
     const annBounds = getAnnotationBounds(ann);
-    if (!boundsOverlap(scribbleBounds, annBounds, pad)) continue;
+    const interArea = rectIntersectionArea(scribbleBounds, annBounds);
+    if (interArea <= 0) continue;
 
-    let touched = false;
+    // Count distinct crossing clusters along the scribble (separated by >= 2 non-hitting samples)
+    let hitCount = 0;
+    let crossingClusters = 0;
+    let inCluster = false;
+    let gap = 0;
     for (const pt of samples) {
       if (hitTestAnnotation(pt, ann, pad)) {
-        touched = true;
-        break;
+        hitCount++;
+        if (!inCluster) {
+          crossingClusters++;
+          inCluster = true;
+        }
+        gap = 0;
+      } else if (inCluster) {
+        gap++;
+        if (gap >= 2) inCluster = false;
       }
     }
-    if (touched) hits.push(ann);
+
+    // Require either >= 2 distinct scribble passes crossing the annotation, OR
+    // substantial coverage inside the scribble box (>= 35% of the annotation's bbox).
+    const annArea = Math.max(1, annBounds.width * annBounds.height);
+    const coverage = interArea / annArea;
+    if (crossingClusters >= 2 || (hitCount >= 4 && coverage >= 0.35)) {
+      hits.push(ann);
+    }
   }
 
   return hits;

@@ -7,66 +7,62 @@ function makePoints(coords: [number, number][]): InputPoint[] {
   return coords.map(([x, y], i) => ({ x, y, pressure: 0.5, timestamp: i * 10 }));
 }
 
-describe('scribbleErase', () => {
-  it('recognizes a horizontal back-and-forth scribble over a word', () => {
+describe('scribbleErase (ultra-strict)', () => {
+  it('recognizes a deliberate 5-pass horizontal scratch-out over a word', () => {
     const pts: [number, number][] = [];
-    // 5 horizontal passes back-and-forth across x = 100..260, y = 100..135
-    for (let pass = 0; pass < 5; pass++) {
-      const yBase = 100 + pass * 8;
+    for (let pass = 0; pass < 6; pass++) {
+      const yBase = 100 + pass * 6;
       const forward = pass % 2 === 0;
       for (let s = 0; s <= 12; s++) {
         const t = s / 12;
         const x = forward ? 100 + t * 160 : 260 - t * 160;
-        const y = yBase + Math.sin(t * Math.PI) * 3;
+        const y = yBase + Math.sin(t * Math.PI) * 2;
         pts.push([x, y]);
       }
     }
     expect(isScribbleGesture(makePoints(pts))).toBe(true);
   });
 
-  it('recognizes a diagonal scribble with rounded U-turns', () => {
+  it('recognizes a deliberate 5-pass diagonal scratch-out', () => {
     const pts: [number, number][] = [];
-    for (let pass = 0; pass < 4; pass++) {
-      const offset = pass * 10;
+    for (let pass = 0; pass < 5; pass++) {
+      const offset = pass * 7;
       const forward = pass % 2 === 0;
       for (let s = 0; s <= 10; s++) {
         const t = s / 10;
         const u = forward ? t : 1 - t;
-        const x = 50 + u * 120 + offset * 0.4;
-        const y = 50 + u * 80 - offset * 0.6;
+        const x = 50 + u * 130 + offset * 0.35;
+        const y = 50 + u * 80 - offset * 0.55;
         pts.push([x, y]);
       }
     }
     expect(isScribbleGesture(makePoints(pts))).toBe(true);
   });
 
-  it('does NOT trigger on normal left-to-right cursive handwriting ("mmmm")', () => {
-    const pts: [number, number][] = [];
-    // Steady rightward progress with 6 humps — never retraces earlier x span
+  it('does NOT trigger on cursive handwriting ("mmmm"), loops ("8"), or short letters', () => {
+    // Cursive "mmmm" moving right
+    const cursive: [number, number][] = [];
     for (let i = 0; i <= 60; i++) {
-      const x = 40 + i * 4;
-      const y = 120 + Math.sin((i / 60) * Math.PI * 10) * 18;
-      pts.push([x, y]);
+      cursive.push([40 + i * 4, 120 + Math.sin((i / 60) * Math.PI * 10) * 18]);
     }
-    expect(isScribbleGesture(makePoints(pts))).toBe(false);
+    expect(isScribbleGesture(makePoints(cursive))).toBe(false);
+
+    // Figure-8 / looped letter drawn in place
+    const loop8: [number, number][] = [];
+    for (let i = 0; i <= 48; i++) {
+      const a = (i / 48) * Math.PI * 2;
+      loop8.push([100 + Math.sin(a) * 18, 100 + Math.sin(a * 2) * 24]);
+    }
+    expect(isScribbleGesture(makePoints(loop8))).toBe(false);
+
+    // Short 2-pass zig-zag ("z" / "N")
+    const letterZ = makePoints([
+      [100, 100], [130, 100], [100, 130], [130, 130],
+    ]);
+    expect(isScribbleGesture(letterZ)).toBe(false);
   });
 
-  it('does NOT trigger on a straight line, circle, or short tap', () => {
-    const line = makePoints(Array.from({ length: 15 }, (_, i) => [i * 15, 50]));
-    expect(isScribbleGesture(line)).toBe(false);
-
-    const circle = makePoints(
-      Array.from({ length: 32 }, (_, i) => {
-        const a = (i / 31) * Math.PI * 2;
-        return [200 + Math.cos(a) * 60, 200 + Math.sin(a) * 60];
-      }),
-    );
-    expect(isScribbleGesture(circle)).toBe(false);
-
-    expect(isScribbleGesture(makePoints([[10, 10], [12, 12], [11, 13]]))).toBe(false);
-  });
-
-  it('erases only unlocked annotations intersected by the scribble path', () => {
+  it('erases ONLY strokes genuinely crossed multiple times, NEVER adjacent edge-brushed strokes or photos', () => {
     const mkStroke = (id: string, x0: number, y0: number, x1: number, y1: number, locked = false): Annotation => ({
       id,
       pageIndex: 0,
@@ -85,19 +81,36 @@ describe('scribbleErase', () => {
       updatedAt: 0,
     });
 
-    const wordA = mkStroke('word-a', 100, 200, 180, 205);
-    const wordB = mkStroke('word-b', 100, 400, 180, 405);
+    const targetWord = mkStroke('target', 100, 200, 180, 204);
+    const neighborRight = mkStroke('neighbor-edge', 184, 198, 260, 202); // sits right next to scribble edge
     const lockedWord = mkStroke('locked', 110, 202, 170, 202, true);
+    const photo: Annotation = {
+      id: 'photo',
+      pageIndex: 0,
+      type: 'image',
+      x: 90,
+      y: 180,
+      width: 120,
+      height: 80,
+      assetId: 'a1',
+      color: '#000',
+      opacity: 1,
+      locked: false,
+      createdAt: 0,
+      updatedAt: 0,
+    };
 
     const scribblePdf = [
-      { x: 95, y: 198 },
-      { x: 185, y: 204 },
+      { x: 95, y: 196 },
+      { x: 182, y: 202 },
       { x: 98, y: 208 },
       { x: 182, y: 200 },
+      { x: 96, y: 204 },
+      { x: 180, y: 198 },
     ];
 
-    const hits = findScribbleTargets(scribblePdf, [wordA, wordB, lockedWord], 10);
-    expect(hits.map((h) => h.id)).toEqual(['word-a']);
+    const hits = findScribbleTargets(scribblePdf, [targetWord, neighborRight, lockedWord, photo], 4);
+    expect(hits.map((h) => h.id)).toEqual(['target']);
   });
 });
 

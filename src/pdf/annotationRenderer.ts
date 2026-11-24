@@ -766,14 +766,21 @@ export function renderSelectionOverlay(
   ctx.stroke();
   ctx.setLineDash([]);
 
-  // Resize handles
-  const hs = 7; // handle size in CSS pixels
+  // Resize handles (larger rounded touch-friendly handles on iPad/tablet)
+  const isTouchUI = typeof window !== 'undefined' && (
+    window.matchMedia?.('(pointer: coarse)').matches || navigator.maxTouchPoints > 0
+  );
+  const hs = isTouchUI ? 12 : 7; // handle size in CSS pixels
   for (const handle of handles) {
     ctx.fillStyle = '#fff';
-    ctx.strokeStyle = 'rgba(59, 130, 246, 0.9)';
-    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = 'rgba(37, 99, 235, 0.95)';
+    ctx.lineWidth = isTouchUI ? 2 : 1.5;
     ctx.beginPath();
-    ctx.rect(handle.x - hs / 2, handle.y - hs / 2, hs, hs);
+    if (isTouchUI) {
+      ctx.arc(handle.x, handle.y, hs / 2, 0, Math.PI * 2);
+    } else {
+      ctx.rect(handle.x - hs / 2, handle.y - hs / 2, hs, hs);
+    }
     ctx.fill();
     ctx.stroke();
   }

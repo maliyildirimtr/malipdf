@@ -20,6 +20,7 @@ import { getAnnotationBounds } from '../../pdf/annotationGeometry';
 import { isMultiplyAnnotation, renderAnnotations } from '../../pdf/annotationRenderer';
 import { hitTestAnnotation } from '../../pdf/annotationHitTest';
 import { simplifyInkPoints, stabilizePoints } from '../../pdf/inkGeometry';
+import { pointerTilt } from '../../pdf/penStyles';
 import type { Annotation, InputPoint, TextAnnotation } from '../../types/annotations';
 import { autoSizeTextBox, canvasMeasure, cssFont, PDF_TEXT_CSS } from '../../pdf/textLayout';
 import { nanoid } from '../../utils/nanoid';
@@ -485,12 +486,43 @@ function PresentationSurface() {
     };
   }, [doc, pageIndex, size.width, size.height, annotations, paintInk]);
 
+  // Apple Pencil double-tap toggles Pen <-> Eraser inside Slide Mode too
+  useEffect(() => {
+    const onPencilDoubleTap = () => {
+      setTool(toolRef.current === 'eraser' ? 'pen' : 'eraser');
+    };
+    window.addEventListener('malipdf:pencil-double-tap', onPencilDoubleTap);
+    return () => window.removeEventListener('malipdf:pencil-double-tap', onPencilDoubleTap);
+  }, [setTool]);
+
+  const lastPenAtRef = useRef(0);
+
   // ── Pointer ───────────────────────────────────────────────────────────
 
-  function localPoint(clientX: number, clientY: number, pressure: number, time: number): InputPoint | null {
+  function safeCoalesced(e: React.PointerEvent): PointerEvent[] {
+    const raw = e.nativeEvent.getCoalescedEvents?.();
+    if (!raw || raw.length === 0) return [e.nativeEvent];
+    const outerFar = Math.hypot(e.clientX, e.clientY) > 20;
+    const valid = raw.filter((ev) => Number.isFinite(ev.clientX) && Number.isFinite(ev.clientY) && !(outerFar && ev.clientX === 0 && ev.clientY === 0));
+    return valid.length > 0 ? valid : [e.nativeEvent];
+  }
+
+  function smoothPressure(raw: number, prev?: number): number {
+    if (!Number.isFinite(raw) || raw <= 0) return prev ?? 0.5;
+    const clamped = Math.max(0.05, Math.min(1, raw));
+    return prev !== undefined ? prev * 0.45 + clamped * 0.55 : clamped;
+  }
+
+  function localPoint(clientX: number, clientY: number, pressure: number, time: number, ev?: { pointerType?: string; altitudeAngle?: number; tiltX?: number; tiltY?: number }, prevPressure?: number): InputPoint | null {
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return null;
-    return { x: clientX - rect.left, y: clientY - rect.top, pressure: pressure > 0 ? pressure : 0.5, timestamp: time };
+    return {
+      x: clientX - rect.left,
+      y: clientY - rect.top,
+      pressure: smoothPressure(pressure, prevPressure),
+      timestamp: time,
+      tilt: ev ? pointerTilt(ev) : undefined,
+    };
   }
 
   function eraseAt(clientX: number, clientY: number) {
@@ -506,11 +538,18 @@ function PresentationSurface() {
 
   const onPointerDown = (e: React.PointerEvent) => {
     if ((e.target as HTMLElement).closest('button, textarea, [data-keep-prompt], [data-show-menu]')) return;
+    if (e.pointerType === 'pen') lastPenAtRef.current = e.timeStamp;
+    if (e.pointerType === 'touch' && e.timeStamp - lastPenAtRef.current < 800) return; // Palm rejection
     setShapeMenuOpen(false);
     shiftRef.current = e.shiftKey;
     const eraserEnd = e.pointerType === 'pen' && (e.button === 5 || (e.buttons & 32) !== 0);
     if (e.button !== 0 && !eraserEnd) return;
-    e.currentTarget.setPointerCapture(e.pointerId);
+    e.preventDefault();
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      // Ignore transient capture errors on iPadOS WebKit
+    }
     pointer.current = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: false };
     const mode = eraserEnd ? 'eraser' : toolRef.current;
     if (mode === 'text') {
@@ -540,7 +579,7 @@ function PresentationSurface() {
     } else if (mode === 'eraser') {
       eraseAt(e.clientX, e.clientY);
     } else {
-      const p = localPoint(e.clientX, e.clientY, e.pressure, e.timeStamp);
+      const p = localPoint(e.clientX, e.clientY, e.pressure, e.timeStamp, e);
       livePoints.current = p ? [p] : [];
       paintInk();
     }
@@ -553,9 +592,11 @@ function PresentationSurface() {
       return;
     }
     if (p.id !== e.pointerId) return;
+    e.preventDefault();
+    if (e.pointerType === 'pen') lastPenAtRef.current = e.timeStamp;
     shiftRef.current = e.shiftKey;
     if (Math.hypot(e.clientX - p.x, e.clientY - p.y) > CLICK_SLOP_PX) p.moved = true;
-    const events = e.nativeEvent.getCoalescedEvents?.() ?? [e.nativeEvent];
+    const events = safeCoalesced(e);
     const eraserEnd = e.pointerType === 'pen' && (e.buttons & 32) !== 0;
     const mode = eraserEnd ? 'eraser' : toolRef.current;
     if (mode === 'select') {
@@ -575,13 +616,18 @@ function PresentationSurface() {
     } else if (mode === 'eraser') {
       for (const ev of events) eraseAt(ev.clientX, ev.clientY);
     } else if (isShapeTool(mode)) {
-      const q = localPoint(e.clientX, e.clientY, e.pressure, e.timeStamp);
+      const q = localPoint(e.clientX, e.clientY, e.pressure, e.timeStamp, e);
       if (q) livePoints.current = [livePoints.current[0] ?? q, q];
       paintInk();
     } else {
       for (const ev of events) {
-        const q = localPoint(ev.clientX, ev.clientY, ev.pressure, ev.timeStamp);
-        if (q) livePoints.current.push(q);
+        const prev = livePoints.current[livePoints.current.length - 1];
+        const q = localPoint(ev.clientX, ev.clientY, ev.pressure, ev.timeStamp, ev, prev?.pressure);
+        if (!q) continue;
+        if (prev && Math.hypot(q.x - prev.x, q.y - prev.y) < 0.45 && Math.abs(q.pressure - prev.pressure) < 0.05) {
+          continue;
+        }
+        livePoints.current.push(q);
       }
       paintInk();
     }

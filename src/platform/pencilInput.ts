@@ -50,23 +50,60 @@ export class StylusScrollGuard {
 
 /**
  * Keeps the Pencil (and a resting palm) from scrolling the page while a
- * finger scrolls it. Touch listeners must be non-passive to cancel scrolling,
- * so they are attached directly rather than through React.
+ * finger scrolls it — EXCEPT when a single finger touches an interactive
+ * selection target (e.g. selected image or resize handle), where scrolling is
+ * prevented so the finger can smoothly drag or resize the object.
+ * Touch listeners must be non-passive to cancel scrolling.
  */
-export function useStylusScrollGuard(ref: RefObject<HTMLElement>, enabled: boolean): void {
+export function useStylusScrollGuard(
+  ref: RefObject<HTMLElement>,
+  enabled: boolean,
+  shouldBlockFingerTouch?: (clientX: number, clientY: number) => boolean,
+): void {
   useEffect(() => {
     const element = ref.current;
     if (!enabled || !element) return;
     const guard = new StylusScrollGuard();
+    let fingerManipulating = false;
+
     const start = (event: TouchEvent) => {
       const hasStylusNow = guard.touchStart(event.touches, event.timeStamp)
         || guard.touchStart(event.changedTouches, event.timeStamp);
-      if (hasStylusNow && event.cancelable) event.preventDefault();
+      if (hasStylusNow) {
+        fingerManipulating = false;
+        if (event.cancelable) event.preventDefault();
+        return;
+      }
+      // Two or more fingers -> always allow native pinch-zoom / pan
+      if (event.touches.length !== 1) {
+        fingerManipulating = false;
+        return;
+      }
+      const t = event.touches[0];
+      if (t && shouldBlockFingerTouch?.(t.clientX, t.clientY)) {
+        fingerManipulating = true;
+        if (event.cancelable) event.preventDefault();
+      } else {
+        fingerManipulating = false;
+      }
     };
     const move = (event: TouchEvent) => {
-      if (guard.touchMove(event.touches) && event.cancelable) event.preventDefault();
+      if (guard.touchMove(event.touches)) {
+        if (event.cancelable) event.preventDefault();
+        return;
+      }
+      if (event.touches.length !== 1) {
+        fingerManipulating = false;
+        return;
+      }
+      if (fingerManipulating && event.cancelable) {
+        event.preventDefault();
+      }
     };
     const end = (event: TouchEvent) => {
+      if (event.touches.length === 0) {
+        fingerManipulating = false;
+      }
       // Only clear pencilDown if no stylus touch remains active.
       if (!Array.from(event.touches).some(isStylus)) {
         guard.touchEnd(event.changedTouches, event.timeStamp);
@@ -82,5 +119,5 @@ export function useStylusScrollGuard(ref: RefObject<HTMLElement>, enabled: boole
       element.removeEventListener('touchend', end);
       element.removeEventListener('touchcancel', end);
     };
-  }, [ref, enabled]);
+  }, [ref, enabled, shouldBlockFingerTouch]);
 }

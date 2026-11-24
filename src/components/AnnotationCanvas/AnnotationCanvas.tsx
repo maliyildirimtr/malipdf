@@ -369,6 +369,8 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
   const predictedPoints = useRef<InputPoint[]>([]);
   const lastPenInputAt = useRef(0);
   const penButtonSelectionRef = useRef(false);
+  const fingerSelectionRef = useRef(false);
+  const lastFingerTapRef = useRef<{ time: number; x: number; y: number; targetId: string } | null>(null);
   const rulerSnapRef = useRef<{ edge: EdgeLine; offset: number } | null>(null);
   const replayRef = useRef<{ plan: ReplayItem[]; startedAt: number; painted: number; raf: number | null } | null>(null);
   const [replaying, setReplaying] = useState(false);
@@ -409,11 +411,11 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
   }, [activeTool]);
   const interactionTool = temporaryTool ?? activeTool;
   const selectedTool = interactionTool; // before per-gesture pen-button overrides
-  // Tablet mode / iPad, "draw with the pen only": a finger scrolls and zooms.
-  // iPad scrolls natively; elsewhere DocumentArea pans and pinch-zooms.
+  // Tablet mode / iPad, "draw with the pen only": a finger scrolls and zooms,
+  // EXCEPT when touching a selected object / resize handle (or an image in Select
+  // tool), so the user can move and resize photos with their finger effortlessly.
   const pencilOnly = useUIStore(state => state.pencilOnly && (state.tabletMode || isIpadApp()));
   const nativeFingerScroll = pencilOnly && isIpadApp();
-  useStylusScrollGuard(interactionRef, nativeFingerScroll);
   const addAnnotation = useAnnotationStore(state => state.addAnnotation);
   const replaceAnnotation = useAnnotationStore(state => state.replaceAnnotation);
   const getPageAnnotations = useAnnotationStore(state => state.getPageAnnotations);
@@ -428,6 +430,44 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     () => ({ docId, instanceId }),
     [docId, instanceId],
   );
+
+  const shouldBlockFingerTouch = useCallback((clientX: number, clientY: number): boolean => {
+    const el = interactionRef.current;
+    if (!el) return false;
+    const rect = el.getBoundingClientRect();
+    const pdfPt = screenToPdf(clientX - rect.left, clientY - rect.top, transform);
+    const pageAnns = getPageAnnotations(docId, pageIndex);
+    const sel = useSelectionStore.getState().getSelection(identity);
+    const activeIds = sel?.pageIndex === pageIndex ? sel.selectedIds : [];
+
+    if (activeIds.length > 0) {
+      const selectedAnns = activeIds.map((id) => pageAnns.find((a) => a.id === id)).filter(Boolean) as Annotation[];
+      const groupBounds = selectedAnns.length > 0 ? getGroupBounds(selectedAnns) : null;
+      if (groupBounds) {
+        const canResize = !selectedAnns.some((a) => a.type === 'text' || a.type === 'note');
+        if (canResize && hitTestResizeHandle(pdfPt, getResizeHandles(groupBounds), transform, 'touch')) {
+          return true;
+        }
+        const padPdf = 12 / transform.scale;
+        if (
+          pdfPt.x >= groupBounds.x - padPdf
+          && pdfPt.x <= groupBounds.x + groupBounds.width + padPdf
+          && pdfPt.y >= groupBounds.y - padPdf
+          && pdfPt.y <= groupBounds.y + groupBounds.height + padPdf
+        ) {
+          return true;
+        }
+      }
+    }
+
+    if (selectedTool === 'select') {
+      const hit = hitTestAnnotations(pdfPt, pageAnns, transform, activeIds);
+      if (hit) return true;
+    }
+    return false;
+  }, [docId, pageIndex, transform, identity, getPageAnnotations, selectedTool]);
+
+  useStylusScrollGuard(interactionRef, nativeFingerScroll, shouldBlockFingerTouch);
 
   // The text highlight tool needs the page's text positions: load them early.
   useEffect(() => {
@@ -446,10 +486,11 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
   // tool (tap inside to drag it) until the tool changes.
   useEffect(() => {
     penButtonSelectionRef.current = false;
+    fingerSelectionRef.current = false;
   }, [activeTool]);
   useEffect(() => {
     if (activeTool !== 'select' && activeTool !== 'lasso' && selectedIdsArray.length > 0
-      && !penButtonSelectionRef.current) {
+      && !penButtonSelectionRef.current && !fingerSelectionRef.current) {
       useSelectionStore.getState().clearSelection(identity);
     }
   }, [activeTool, identity, selectedIdsArray.length]);
@@ -1557,8 +1598,64 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
       stopReplay();
       return;
     }
-    // iPad: a finger scrolls (the browser handles it); the Pencil draws.
-    if (fingerNavigates(e.pointerType, selectedTool, pencilOnly)) return;
+    // iPad finger manipulation in Pencil-only mode:
+    // - Touching a resize handle or inside an already-selected object ALWAYS
+    //   lets the finger resize/drag it (in any tool, including Pen & Lasso).
+    // - Double-tapping a photo (or text/note/shape) with a finger selects it
+    //   immediately so you can resize/move/edit it without switching tools.
+    let fingerSelectOverride = false;
+    if (e.pointerType === 'touch' && pencilOnly && fingerNavigates(e.pointerType, selectedTool, pencilOnly)) {
+      const { screenX: fx, screenY: fy } = getPagePoint(e);
+      const fPdf = screenToPdfPoint(fx, fy);
+      const pageAnns = getPageAnnotations(docId, pageIndex);
+      const currentSel = useSelectionStore.getState().getSelection(identity);
+      const activeIds = currentSel?.pageIndex === pageIndex ? currentSel.selectedIds : [];
+      const selectedAnns = activeIds.map((id) => pageAnns.find((a) => a.id === id)).filter(Boolean) as Annotation[];
+      const groupBounds = selectedAnns.length > 0 ? getGroupBounds(selectedAnns) : null;
+
+      if (groupBounds) {
+        const canResize = !selectedAnns.some((a) => a.type === 'text' || a.type === 'note');
+        const hitHandle = canResize ? hitTestResizeHandle(fPdf, getResizeHandles(groupBounds), transform, 'touch') : null;
+        const padPdf = 12 / transform.scale;
+        const insideSel =
+          fPdf.x >= groupBounds.x - padPdf
+          && fPdf.x <= groupBounds.x + groupBounds.width + padPdf
+          && fPdf.y >= groupBounds.y - padPdf
+          && fPdf.y <= groupBounds.y + groupBounds.height + padPdf;
+        if (hitHandle || insideSel) {
+          fingerSelectOverride = true;
+        }
+      }
+
+      if (!fingerSelectOverride) {
+        // Check for finger double-tap on an image / text / note / shape to select it
+        const hit = hitTestAnnotations(fPdf, pageAnns, transform, activeIds);
+        if (hit && (hit.type === 'image' || hit.type === 'text' || hit.type === 'note' || hit.type === 'shape')) {
+          const prevTap = lastFingerTapRef.current;
+          const isDoubleTap =
+            prevTap !== null
+            && prevTap.targetId === hit.id
+            && e.timeStamp - prevTap.time < 420
+            && Math.hypot(fx - prevTap.x, fy - prevTap.y) < 36;
+          if (isDoubleTap) {
+            lastFingerTapRef.current = null;
+            fingerSelectionRef.current = true;
+            useSelectionStore.getState().setSelection(identity, pageIndex, [hit.id]);
+            e.preventDefault();
+            return;
+          }
+          lastFingerTapRef.current = { time: e.timeStamp, x: fx, y: fy, targetId: hit.id };
+        } else {
+          lastFingerTapRef.current = null;
+        }
+        return; // Let native 1-finger scroll / 2-finger pinch-zoom handle it
+      }
+    } else if (e.pointerType === 'pen' && fingerSelectionRef.current && selectedTool !== 'select' && selectedTool !== 'lasso') {
+      // Starting to write again with Apple Pencil dismisses the temporary finger selection
+      fingerSelectionRef.current = false;
+      useSelectionStore.getState().clearSelection(identity);
+    }
+
     // A click outside an open sticky note closes (and saves) it.
     if (useUIStore.getState().openNote) {
       useUIStore.getState().setOpenNote(null);
@@ -1570,7 +1667,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     const penButton = penButtonTool(e);
     if (e.button !== 0 && !penButton) return; // left button (or pen tip) only
     if (isForeignPointer(e)) return;
-    let interactionTool: ToolType = penButton ?? selectedTool;
+    let interactionTool: ToolType = fingerSelectOverride ? 'select' : (penButton ?? selectedTool);
 
     // A pen-button selection: drag it from inside, otherwise drop it and draw.
     if (!penButton && penButtonSelectionRef.current && interactionTool !== 'select' && interactionTool !== 'lasso') {
@@ -1792,7 +1889,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
           const groupBounds = getGroupBounds(selectedAnns);
           if (groupBounds) {
             const handles = getResizeHandles(groupBounds);
-            const hit = hitTestResizeHandle(pdfPt, handles, transform);
+            const hit = hitTestResizeHandle(pdfPt, handles, transform, e.pointerType);
             if (hit) {
               mode.current = 'resizing';
               resizeHandle.current = hit;

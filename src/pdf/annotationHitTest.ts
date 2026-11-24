@@ -586,14 +586,28 @@ export function hitTestResizeHandle(
   pdfPoint: PdfPoint,
   handles: ResizeHandle[],
   transform: PageTransform,
+  pointerType?: string,
 ): ResizeHandle | null {
-  const tolerance = (HANDLE_SIZE_PDF / 2 + 2) / transform.scale;
+  const screenRadius = pointerType === 'touch'
+    ? 24
+    : pointerType === 'pen'
+      ? 14
+      : HANDLE_SIZE_PDF / 2 + 2;
+  const tolerance = screenRadius / transform.scale;
+  let closest: ResizeHandle | null = null;
+  let bestDist = Infinity;
   for (const handle of handles) {
     const dx = Math.abs(pdfPoint.x - handle.x);
     const dy = Math.abs(pdfPoint.y - handle.y);
-    if (dx <= tolerance && dy <= tolerance) return handle;
+    if (dx <= tolerance && dy <= tolerance) {
+      const dist = Math.hypot(dx, dy);
+      if (dist < bestDist) {
+        bestDist = dist;
+        closest = handle;
+      }
+    }
   }
-  return null;
+  return closest;
 }
 
 export { HANDLE_SIZE_PDF };
