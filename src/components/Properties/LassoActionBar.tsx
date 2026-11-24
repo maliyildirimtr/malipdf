@@ -5,6 +5,7 @@
  */
 
 import React, { useLayoutEffect, useRef, useState } from 'react';
+import ReactDOM from 'react-dom';
 import {
   ArrowRightLeft,
   Camera,
@@ -21,6 +22,7 @@ import { pdfRectToScreenBounds } from '../../pdf/coordinateTransform';
 import { getGroupBounds } from '../../pdf/annotationGeometry';
 import { renderAnnotations } from '../../pdf/annotationRenderer';
 import { useDocumentStore } from '../../store/documentStore';
+import { useUIStore } from '../../store/uiStore';
 import {
   copySelection,
   cutSelection,
@@ -65,6 +67,7 @@ export function LassoActionBar({
   const [subMenu, setSubMenu] = useState<'color' | 'movePage' | null>(null);
 
   const pageCount = useDocumentStore((s) => s.documents.get(identity.docId)?.pageCount ?? 1);
+  const isDrawing = useUIStore((s) => s.isDrawing);
   const hasColorable = annotations.some((a) => 'color' in a);
 
   useLayoutEffect(() => {
@@ -106,7 +109,7 @@ export function LassoActionBar({
     };
   }, [annotations, transform, canvasRef, subMenu]);
 
-  if (annotations.length === 0) return null;
+  if (annotations.length === 0 || isDrawing) return null;
 
   const stop = (e: React.PointerEvent | React.MouseEvent) => {
     e.stopPropagation();
@@ -193,13 +196,15 @@ export function LassoActionBar({
     }
   };
 
-  return (
+  return ReactDOM.createPortal(
     <div
       ref={barRef}
+      data-keeps-selection="true"
       className={styles.wrapper}
       style={pos ? { left: pos.left, top: pos.top } : { opacity: 0, pointerEvents: 'none' }}
       onPointerDown={stop}
       onMouseDown={stop}
+      onTouchStart={(e) => e.stopPropagation()}
       onClick={stop}
       role="toolbar"
       aria-label="Selection actions"
@@ -302,6 +307,7 @@ export function LassoActionBar({
           </div>
         </div>
       )}
-    </div>
+    </div>,
+    document.body,
   );
 }

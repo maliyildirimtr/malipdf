@@ -85,7 +85,8 @@ function radii(style: PenStyle, s: readonly Sample[], width: number, usePressure
   let smoothed = 0;
   for (let i = 0; i < s.length; i++) {
     const p = s[i];
-    const pr = pressure ? p.pressure : 0.5;
+    const pr = pressure ? (Number.isFinite(p.pressure) ? Math.max(0, Math.min(1, p.pressure)) : 0.5) : 0.5;
+    const tilt = Number.isFinite(p.tilt) ? Math.max(0, Math.min(1, p.tilt)) : 0;
     let r: number;
     if (style === 'fountain') {
       const prev = s[Math.max(0, i - 1)];
@@ -94,11 +95,11 @@ function radii(style: PenStyle, s: readonly Sample[], width: number, usePressure
       const speedFactor = Math.max(0.5, Math.min(1.15, 1.15 - speed * 0.35));
       const taperLength = Math.min(total * 0.18, width * 6);
       const taper = Math.min(1, 0.3 + 0.7 * Math.min(along[i], total - along[i]) / Math.max(1e-6, taperLength));
-      r = half * (0.25 + pr * 1.5) * speedFactor * taper * (1 + p.tilt * 0.6);
+      r = half * (0.25 + pr * 1.5) * speedFactor * taper * (1 + tilt * 0.6);
     } else if (style === 'pencil') {
-      r = half * (0.55 + pr * 0.7) * (1 + p.tilt * 2.2);
+      r = half * (0.55 + pr * 0.7) * (1 + tilt * 2.2);
     } else { // marker
-      r = half * (1 + p.tilt * 1.2);
+      r = half * (1 + tilt * 1.2);
     }
     smoothed = i === 0 ? r : smoothed * 0.55 + r * 0.45;
     out.push(Math.max(smoothed, width * 0.04));
@@ -140,8 +141,10 @@ function calligraphyOutline(s: readonly Sample[], width: number, usePressure: bo
     if (len < 1e-5) continue;
     const nx = (-dy / len) * thin;
     const ny = (dx / len) * thin;
-    const h0 = width * 0.85 * (pressure ? 0.45 + p0.pressure : 1);
-    const h1 = width * 0.85 * (pressure ? 0.45 + p1.pressure : 1);
+    const pr0 = Number.isFinite(p0.pressure) ? Math.max(0, Math.min(1, p0.pressure)) : 0.5;
+    const pr1 = Number.isFinite(p1.pressure) ? Math.max(0, Math.min(1, p1.pressure)) : 0.5;
+    const h0 = width * 0.85 * (pressure ? 0.45 + pr0 : 1);
+    const h1 = width * 0.85 * (pressure ? 0.45 + pr1 : 1);
     const l0 = { x: p0.x + nib.x * h0 + nx, y: p0.y + nib.y * h0 + ny };
     const r0 = { x: p0.x - nib.x * h0 - nx, y: p0.y - nib.y * h0 - ny };
     const l1 = { x: p1.x + nib.x * h1 + nx, y: p1.y + nib.y * h1 + ny };

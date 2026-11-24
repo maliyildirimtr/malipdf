@@ -1084,6 +1084,8 @@ export const TR: Readonly<Record<string, string>> = {
   'Selection image copied to clipboard': 'Seçim görseli panoya kopyalandı',
   'Selection image saved': 'Seçim görseli kaydedildi',
   'Could not capture selection image': 'Seçim görseli alınamadı',
+  'Scribble to Erase': 'Karalayarak Sil',
+  'Scratch over ink back and forth to erase': 'Yazının üstünü karalayarak anında silin',
 };
 
 type Pattern = readonly [RegExp, (...groups: string[]) => string];

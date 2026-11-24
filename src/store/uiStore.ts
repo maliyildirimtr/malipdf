@@ -86,6 +86,7 @@ const defaultToolOptions: ToolOptions = {
     stabilizer: 'basic',
     holdToShape: true,
     holdToShapeDelay: 'default',
+    scribbleToErase: true,
   },
   highlighter: {
     color: '#FFEB3B',

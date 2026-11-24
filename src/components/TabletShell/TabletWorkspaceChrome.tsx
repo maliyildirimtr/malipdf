@@ -1058,6 +1058,19 @@ export function TabletWorkspaceTopChrome({ onCommand, canExecute }: TabletWorksp
                       <button
                         type="button"
                         className={styles.toggleRow}
+                        onClick={() => updatePenOptions({ scribbleToErase: toolOptions.pen.scribbleToErase === false })}
+                      >
+                        <div className={styles.lassoToggleInfo}>
+                          <span>Scribble to Erase</span>
+                          <span className={styles.lassoToggleDesc}>Scratch over ink back and forth to erase</span>
+                        </div>
+                        <span className={`${styles.togglePill} ${toolOptions.pen.scribbleToErase !== false ? styles.togglePillOn : ''}`}>
+                          <span className={styles.toggleKnob} />
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.toggleRow}
                         onClick={() => updatePenOptions({ pressureSensitive: !toolOptions.pen.pressureSensitive })}
                       >
                         <span>Pressure Sensitivity</span>

@@ -296,6 +296,8 @@ export interface PenOptions {
   penStyle?: PenStyle;
   /** Endless page: writing near the bottom of a page adds room below it. */
   endlessPage?: boolean;
+  /** Scribble back and forth over ink to erase it (default true). */
+  scribbleToErase?: boolean;
 }
 
 export interface LassoOptions {

@@ -168,7 +168,11 @@ const PDFPage = React.memo<PDFPageProps>(function PDFPage({
       data-instance-id={instanceId}
       data-page-index={pageIndex}
     >
-      <div className={`${styles.pageSurface} ${pageTheme === 'dark' ? styles.pageDark : pageTheme === 'sepia' ? styles.pageSepia : ''}`} style={{ width, height }}>
+      <div
+        data-page-surface="true"
+        className={`${styles.pageSurface} ${pageTheme === 'dark' ? styles.pageDark : pageTheme === 'sepia' ? styles.pageSepia : ''}`}
+        style={{ width, height }}
+      >
         {renderEnabled && transform && (
           <>
             <canvas

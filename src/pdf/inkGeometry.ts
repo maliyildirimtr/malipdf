@@ -28,9 +28,10 @@ export interface InkShape {
 
 type XY = { x: number; y: number };
 
-/** Same width formula as before, so existing files keep their look. */
+/** Same width formula as before, clamped to [0, 1] so WebKit Apple Pencil force spikes never create giant blobs. */
 export function pressureWidth(baseWidth: number, pressure: number): number {
-  return baseWidth * (0.3 + pressure * 1.4);
+  const clamped = Number.isFinite(pressure) ? Math.max(0, Math.min(1, pressure)) : 0.5;
+  return baseWidth * (0.3 + clamped * 1.4);
 }
 
 export function hasRealPressure(points: readonly InputPoint[]): boolean {

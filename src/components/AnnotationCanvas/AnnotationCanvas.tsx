@@ -78,6 +78,7 @@ import {
 import { simplifyInkPoints, stabilizePoints } from '../../pdf/inkGeometry';
 import { annotationsInLasso } from '../../pdf/lassoSelect';
 import { recognizeShape, type RecognizedShape } from '../../pdf/shapeRecognizer';
+import { isScribbleGesture, findScribbleTargets } from '../../pdf/scribbleErase';
 import { penButtonTool } from '../../utils/penButtons';
 import { computeLayerRegion, regionOutputScale, type LayerRegion } from '../../pdf/layerRegion';
 import { projectOntoEdge, snapEdgeFor, useRulerStore, type EdgeLine } from '../../store/rulerStore';
@@ -339,6 +340,21 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
   const moveAnchor       = useRef<{ screenX: number; screenY: number; pdfX: number; pdfY: number } | null>(null);
   const moveBefore       = useRef<Map<string, Annotation>>(new Map()); // Also used for resize original state
   const originalGroupBounds = useRef<import('../../types/annotations').PdfRect | null>(null);
+  const dragGhostRef     = useRef<{
+    el: HTMLDivElement;
+    badgeEl: HTMLDivElement;
+    grabOffsetX: number;
+    grabOffsetY: number;
+    width: number;
+    height: number;
+    groupWidthPdf: number;
+    groupHeightPdf: number;
+    lastClientX: number;
+    lastClientY: number;
+    hoveredSurface: HTMLElement | null;
+    hoveredPageIndex: number | null;
+    autoScrollRaf: number | null;
+  } | null>(null);
   const resizeHandle     = useRef<ResizeHandle | null>(null);
   const rafId            = useRef<number | null>(null);
   const pendingRender    = useRef(false);
@@ -873,6 +889,10 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
         ctx.restore();
       }
     } else if (m === 'moving' && moveAnchor.current && shapeStart.current) {
+      // When the fixed cross-page floating drag ghost is active, it renders the
+      // live moving photo/selection unclipped across page boundaries — skip
+      // duplicating it on the page-clipped drawingCanvasRef.
+      if (dragGhostRef.current) return;
       const dx = moveAnchor.current.pdfX - shapeStart.current.pdfX;
       const dy = moveAnchor.current.pdfY - shapeStart.current.pdfY;
       
@@ -961,6 +981,259 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     return e.pointerType === 'touch' && e.timeStamp - lastPenInputAt.current < PALM_REJECTION_MS;
   }
 
+  /**
+   * Returns a safe, non-empty list of pointer samples from a move event.
+   * iPadOS WKWebView can return an empty array `[]` or bogus `(0,0)` points
+   * from `getCoalescedEvents()`, which would otherwise drop segments mid-stroke.
+   */
+  function getSafeCoalescedEvents(e: React.PointerEvent<HTMLDivElement>): PointerEvent[] {
+    const raw = e.nativeEvent.getCoalescedEvents?.();
+    if (!raw || raw.length === 0) return [e.nativeEvent];
+    const outerFarFromOrigin = Math.hypot(e.clientX, e.clientY) > 20;
+    const valid = raw.filter((ev) => {
+      if (!Number.isFinite(ev.clientX) || !Number.isFinite(ev.clientY)) return false;
+      if (outerFarFromOrigin && ev.clientX === 0 && ev.clientY === 0) return false;
+      return true;
+    });
+    return valid.length > 0 ? valid : [e.nativeEvent];
+  }
+
+  /**
+   * Clamps and smooths Apple Pencil / stylus pressure so a single-frame
+   * `pressure = 0` or `pressure > 1` WebKit glitch never punches giant dot blobs.
+   */
+  function sanitizePressure(raw: number, prevPressure?: number): number {
+    if (!Number.isFinite(raw) || raw <= 0) {
+      return prevPressure ?? 0.5;
+    }
+    const clamped = Math.max(0.05, Math.min(1, raw));
+    if (prevPressure !== undefined) {
+      return prevPressure * 0.45 + clamped * 0.55;
+    }
+    return clamped;
+  }
+
+  function lockGestureTouchAction() {
+    if (interactionRef.current) {
+      interactionRef.current.style.touchAction = 'none';
+    }
+  }
+
+  function restoreGestureTouchAction() {
+    if (interactionRef.current) {
+      interactionRef.current.style.touchAction = nativeFingerScroll ? 'pan-x pan-y' : 'none';
+    }
+  }
+
+  // ── Cross-page floating drag ghost ────────────────────────────────────────
+
+  function findCrossPageTarget(
+    boxLeft: number,
+    boxTop: number,
+    boxWidth: number,
+    boxHeight: number,
+    clientX: number,
+    clientY: number,
+  ): { pageIndex: number; surfaceEl: HTMLElement; rect: DOMRect } | null {
+    const containers = document.querySelectorAll<HTMLElement>(
+      `[data-doc-id="${docId}"][data-instance-id="${instanceId}"][data-page-index]`,
+    );
+    const centerX = boxLeft + boxWidth / 2;
+    const centerY = boxTop + boxHeight / 2;
+    let pointerMatch: { pageIndex: number; surfaceEl: HTMLElement; rect: DOMRect } | null = null;
+    let bestOverlap: { pageIndex: number; surfaceEl: HTMLElement; rect: DOMRect; area: number } | null = null;
+
+    for (const container of containers) {
+      const idx = Number(container.dataset.pageIndex);
+      if (!Number.isInteger(idx)) continue;
+      const surfaceEl = (container.querySelector('[data-page-surface="true"]') as HTMLElement | null) ?? container;
+      const rect = surfaceEl.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) continue;
+
+      if (centerX >= rect.left && centerX <= rect.right && centerY >= rect.top && centerY <= rect.bottom) {
+        return { pageIndex: idx, surfaceEl, rect };
+      }
+      if (clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom) {
+        pointerMatch = { pageIndex: idx, surfaceEl, rect };
+      }
+      const ox = Math.max(0, Math.min(boxLeft + boxWidth, rect.right) - Math.max(boxLeft, rect.left));
+      const oy = Math.max(0, Math.min(boxTop + boxHeight, rect.bottom) - Math.max(boxTop, rect.top));
+      const area = ox * oy;
+      if (area > 0 && (!bestOverlap || area > bestOverlap.area)) {
+        bestOverlap = { pageIndex: idx, surfaceEl, rect, area };
+      }
+    }
+
+    if (pointerMatch) return pointerMatch;
+    if (bestOverlap) return { pageIndex: bestOverlap.pageIndex, surfaceEl: bestOverlap.surfaceEl, rect: bestOverlap.rect };
+    return null;
+  }
+
+  function destroyDragGhost() {
+    const ghost = dragGhostRef.current;
+    if (!ghost) return;
+    dragGhostRef.current = null;
+    if (ghost.autoScrollRaf !== null) cancelAnimationFrame(ghost.autoScrollRaf);
+    if (ghost.hoveredSurface) {
+      ghost.hoveredSurface.removeAttribute('data-drop-target');
+    }
+    ghost.el.remove();
+  }
+
+  function startDragGhost(anns: Annotation[], clientX: number, clientY: number) {
+    destroyDragGhost();
+    const canvasEl = interactionRef.current;
+    if (!canvasEl || anns.length === 0 || typeof document === 'undefined') return;
+    const groupBounds = getGroupBounds(anns);
+    if (!groupBounds) return;
+
+    const screenBounds = pdfRectToScreenBounds(groupBounds, transform);
+    if (screenBounds.width < 1 || screenBounds.height < 1) return;
+
+    const canvasRect = canvasEl.getBoundingClientRect();
+    const initialLeft = canvasRect.left + screenBounds.x;
+    const initialTop = canvasRect.top + screenBounds.y;
+    const pad = 6;
+    const boxW = Math.ceil(screenBounds.width);
+    const boxH = Math.ceil(screenBounds.height);
+    const ghostDpr = Math.min(2, window.devicePixelRatio || 1);
+
+    const wrapper = document.createElement('div');
+    wrapper.style.position = 'fixed';
+    wrapper.style.left = '0';
+    wrapper.style.top = '0';
+    wrapper.style.width = `${boxW + pad * 2}px`;
+    wrapper.style.height = `${boxH + pad * 2}px`;
+    wrapper.style.zIndex = '930';
+    wrapper.style.pointerEvents = 'none';
+    wrapper.style.willChange = 'transform';
+    wrapper.style.opacity = '0.9';
+    wrapper.style.filter = 'drop-shadow(0 12px 28px rgba(15, 36, 64, 0.28))';
+    wrapper.style.transform = `translate3d(${initialLeft - pad}px, ${initialTop - pad}px, 0)`;
+
+    const ghostCanvas = document.createElement('canvas');
+    ghostCanvas.width = Math.max(1, Math.round((boxW + pad * 2) * ghostDpr));
+    ghostCanvas.height = Math.max(1, Math.round((boxH + pad * 2) * ghostDpr));
+    ghostCanvas.style.width = `${boxW + pad * 2}px`;
+    ghostCanvas.style.height = `${boxH + pad * 2}px`;
+    ghostCanvas.style.display = 'block';
+
+    const gCtx = ghostCanvas.getContext('2d');
+    if (gCtx) {
+      gCtx.save();
+      gCtx.translate((-screenBounds.x + pad) * ghostDpr, (-screenBounds.y + pad) * ghostDpr);
+      renderAnnotations(gCtx, anns, transform, ghostDpr, identity);
+      gCtx.restore();
+
+      gCtx.save();
+      gCtx.scale(ghostDpr, ghostDpr);
+      gCtx.strokeStyle = '#2563eb';
+      gCtx.lineWidth = 1.6;
+      gCtx.setLineDash([5, 4]);
+      gCtx.strokeRect(pad - 0.5, pad - 0.5, boxW + 1, boxH + 1);
+      gCtx.restore();
+    }
+
+    const badge = document.createElement('div');
+    badge.style.position = 'absolute';
+    badge.style.left = '50%';
+    badge.style.top = '-34px';
+    badge.style.transform = 'translateX(-50%)';
+    badge.style.padding = '4px 12px';
+    badge.style.borderRadius = '999px';
+    badge.style.background = '#1d5d9f';
+    badge.style.color = '#ffffff';
+    badge.style.fontSize = '12px';
+    badge.style.fontWeight = '700';
+    badge.style.whiteSpace = 'nowrap';
+    badge.style.boxShadow = '0 4px 14px rgba(29, 93, 159, 0.35)';
+    badge.style.display = 'none';
+
+    wrapper.appendChild(ghostCanvas);
+    wrapper.appendChild(badge);
+    document.body.appendChild(wrapper);
+
+    dragGhostRef.current = {
+      el: wrapper,
+      badgeEl: badge,
+      grabOffsetX: clientX - initialLeft,
+      grabOffsetY: clientY - initialTop,
+      width: boxW,
+      height: boxH,
+      groupWidthPdf: groupBounds.width,
+      groupHeightPdf: groupBounds.height,
+      lastClientX: clientX,
+      lastClientY: clientY,
+      hoveredSurface: null,
+      hoveredPageIndex: null,
+      autoScrollRaf: null,
+    };
+  }
+
+  function updateDragGhost(clientX: number, clientY: number) {
+    const ghost = dragGhostRef.current;
+    if (!ghost) return;
+    ghost.lastClientX = clientX;
+    ghost.lastClientY = clientY;
+    const pad = 6;
+    const boxLeft = clientX - ghost.grabOffsetX;
+    const boxTop = clientY - ghost.grabOffsetY;
+    ghost.el.style.transform = `translate3d(${boxLeft - pad}px, ${boxTop - pad}px, 0)`;
+
+    const target = findCrossPageTarget(boxLeft, boxTop, ghost.width, ghost.height, clientX, clientY);
+    const nextSurface = target && target.pageIndex !== pageIndex ? target.surfaceEl : null;
+    if (ghost.hoveredSurface !== nextSurface) {
+      ghost.hoveredSurface?.removeAttribute('data-drop-target');
+      nextSurface?.setAttribute('data-drop-target', 'true');
+      ghost.hoveredSurface = nextSurface;
+    }
+    if (target && target.pageIndex !== pageIndex) {
+      ghost.hoveredPageIndex = target.pageIndex;
+      ghost.badgeEl.textContent = `Sayfa ${target.pageIndex + 1}`;
+      ghost.badgeEl.style.display = 'block';
+    } else {
+      ghost.hoveredPageIndex = null;
+      ghost.badgeEl.style.display = 'none';
+    }
+
+    // Gentle auto-scroll when dragging near the top or bottom edge of the scroll viewport
+    const scroller = document.querySelector<HTMLElement>('[data-document-scroll]');
+    if (scroller) {
+      const sRect = scroller.getBoundingClientRect();
+      const edge = 68;
+      const topDist = clientY - sRect.top;
+      const botDist = sRect.bottom - clientY;
+      let delta = 0;
+      if (topDist < edge) delta = -Math.max(4, Math.round(((edge - topDist) / edge) * 16));
+      else if (botDist < edge) delta = Math.max(4, Math.round(((edge - botDist) / edge) * 16));
+
+      if (delta !== 0) {
+        if (ghost.autoScrollRaf === null) {
+          const stepScroll = () => {
+            const g = dragGhostRef.current;
+            if (!g || mode.current !== 'moving') return;
+            const sc = document.querySelector<HTMLElement>('[data-document-scroll]');
+            if (!sc) { g.autoScrollRaf = null; return; }
+            const sr = sc.getBoundingClientRect();
+            const td = g.lastClientY - sr.top;
+            const bd = sr.bottom - g.lastClientY;
+            let dy = 0;
+            if (td < edge) dy = -Math.max(4, Math.round(((edge - td) / edge) * 16));
+            else if (bd < edge) dy = Math.max(4, Math.round(((edge - bd) / edge) * 16));
+            if (dy === 0) { g.autoScrollRaf = null; return; }
+            sc.scrollTop += dy;
+            updateDragGhost(g.lastClientX, g.lastClientY);
+            g.autoScrollRaf = requestAnimationFrame(stepScroll);
+          };
+          ghost.autoScrollRaf = requestAnimationFrame(stepScroll);
+        }
+      } else if (ghost.autoScrollRaf !== null) {
+        cancelAnimationFrame(ghost.autoScrollRaf);
+        ghost.autoScrollRaf = null;
+      }
+    }
+  }
+
   function getPagePoint(e: React.PointerEvent<HTMLDivElement> | PointerEvent): { screenX: number; screenY: number } {
     const rect = interactionRef.current!.getBoundingClientRect();
     return { screenX: e.clientX - rect.left, screenY: e.clientY - rect.top };
@@ -968,7 +1241,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
 
   function getInputPoint(e: React.PointerEvent<HTMLDivElement>): InputPoint {
     const { screenX, screenY } = getPagePoint(e);
-    return { x: screenX, y: screenY, pressure: e.pressure > 0 ? e.pressure : 0.5, timestamp: e.timeStamp, tilt: pointerTilt(e) };
+    return { x: screenX, y: screenY, pressure: sanitizePressure(e.pressure), timestamp: e.timeStamp, tilt: pointerTilt(e) };
   }
 
   function screenToPdfPoint(screenX: number, screenY: number): PdfPoint {
@@ -1320,7 +1593,12 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     if (interactionTool === 'hand') return;
 
     e.preventDefault();
-    interactionRef.current?.setPointerCapture(e.pointerId);
+    lockGestureTouchAction();
+    try {
+      interactionRef.current?.setPointerCapture(e.pointerId);
+    } catch {
+      // Ignore synthetic/transient pointer capture failures on iPadOS WebKit
+    }
     activePointerIdRef.current = e.pointerId;
     gestureToolRef.current = interactionTool;
     setIsDrawing(true);
@@ -1342,7 +1620,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
       const inkWidth = (interactionTool === 'pen' ? toolOptions.pen.width : toolOptions.highlighter.width) * scale;
       rulerSnapRef.current = edge ? { edge, offset: inkWidth / 2 } : null;
       const start = toLocalInkPoint(e.clientX, e.clientY);
-      activePoints.current = [{ x: start.x, y: start.y, pressure: e.pressure > 0 ? e.pressure : 0.5, timestamp: e.timeStamp, tilt: pointerTilt(e) }];
+      activePoints.current = [{ x: start.x, y: start.y, pressure: sanitizePressure(e.pressure), timestamp: e.timeStamp, tilt: pointerTilt(e) }];
       holdShape.current = null;
       armHoldToShape(start.x, start.y, true);
       schedulePreviewRender();
@@ -1549,6 +1827,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
           moveAnchor.current = { screenX, screenY, pdfX: pdfPt.x, pdfY: pdfPt.y };
           gestureSelectedIdsRef.current = [...activeIds];
           moveBefore.current = new Map(selectedAnns.map((ann) => [ann.id, structuredClone(ann)]));
+          startDragGhost(selectedAnns, e.clientX, e.clientY);
           redrawAnnotationLayer();
           schedulePreviewRender();
           return;
@@ -1603,10 +1882,15 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
           gestureSelectedIdsRef.current = [...newIds];
           
           moveBefore.current = new Map();
+          const movingAnns: Annotation[] = [];
           for (const id of newIds) {
             const ann = annotations.find(a => a.id === id);
-            if (ann) moveBefore.current.set(id, structuredClone(ann));
+            if (ann) {
+              moveBefore.current.set(id, structuredClone(ann));
+              movingAnns.push(ann);
+            }
           }
+          startDragGhost(movingAnns, e.clientX, e.clientY);
           
           redrawAnnotationLayer();
           schedulePreviewRender();
@@ -1664,7 +1948,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     const pdfPt = screenToPdfPoint(screenX, screenY);
 
     if (m === 'laser') {
-      const events = e.nativeEvent.getCoalescedEvents?.() ?? [e.nativeEvent];
+      const events = getSafeCoalescedEvents(e);
       for (const ev of events) addLaserPoint(ev.clientX, ev.clientY, ev.timeStamp);
       return;
     }
@@ -1679,19 +1963,20 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     }
 
     if (m === 'drawing') {
-      // Use coalesced events for stylus fidelity, skipping sub-pixel jitter
-      // duplicates from 240Hz Apple Pencil events.
-      const events = e.nativeEvent.getCoalescedEvents?.() ?? [e.nativeEvent];
+      // Use safe coalesced events (guards against iPadOS WebKit returning [] or (0,0)),
+      // clamp & smooth Apple Pencil pressure so force glitches never leave dot blobs.
+      const events = getSafeCoalescedEvents(e);
       for (const ev of events) {
         const local = toLocalInkPoint(ev.clientX, ev.clientY);
         const prev = activePoints.current[activePoints.current.length - 1];
-        const nextPressure = ev.pressure > 0 ? ev.pressure : 0.5;
-        if (prev && Math.hypot(local.x - prev.x, local.y - prev.y) < 0.75 && Math.abs(nextPressure - prev.pressure) < 0.05) {
+        const nextPressure = sanitizePressure(ev.pressure, prev?.pressure);
+        const stepDist = prev ? Math.hypot(local.x - prev.x, local.y - prev.y) : Infinity;
+        const minDist = activePoints.current.length === 1 ? 0.25 : 0.45;
+        if (prev && stepDist < minDist && Math.abs(nextPressure - prev.pressure) < 0.05) {
           continue;
         }
-        if (writingSoundEnabled && prev) {
-          const stepDist = Math.hypot(local.x - prev.x, local.y - prev.y);
-          if (stepDist >= 1.5) playWritingTick(stepDist);
+        if (writingSoundEnabled && prev && stepDist >= 1.5) {
+          playWritingTick(stepDist);
         }
         activePoints.current.push({
           x: local.x,
@@ -1701,13 +1986,22 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
           tilt: pointerTilt(ev),
         });
       }
-      // Predicted points shorten the visible lag; they are preview-only.
-      predictedPoints.current = (e.nativeEvent.getPredictedEvents?.() ?? []).slice(0, 2).map((ev) => {
-        const local = toLocalInkPoint(ev.clientX, ev.clientY);
-        return { x: local.x, y: local.y, pressure: ev.pressure > 0 ? ev.pressure : 0.5, timestamp: ev.timeStamp, tilt: pointerTilt(ev) };
-      });
+      // Predicted points shorten visible lag on desktop; on iPadOS WKWebView
+      // predicted events often carry zero/stale pressure and cause dot flicker.
       const lastPoint = activePoints.current[activePoints.current.length - 1];
-      armHoldToShape(lastPoint.x, lastPoint.y);
+      predictedPoints.current = isIpadApp()
+        ? []
+        : (e.nativeEvent.getPredictedEvents?.() ?? []).slice(0, 2).map((ev) => {
+            const local = toLocalInkPoint(ev.clientX, ev.clientY);
+            return {
+              x: local.x,
+              y: local.y,
+              pressure: sanitizePressure(ev.pressure, lastPoint?.pressure),
+              timestamp: ev.timeStamp,
+              tilt: pointerTilt(ev),
+            };
+          });
+      if (lastPoint) armHoldToShape(lastPoint.x, lastPoint.y);
       schedulePreviewRender();
       return;
     }
@@ -1808,7 +2102,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
 
     if (m === 'lassoDrag') {
       const rect = interactionRef.current!.getBoundingClientRect();
-      for (const ev of e.nativeEvent.getCoalescedEvents?.() ?? [e.nativeEvent]) {
+      for (const ev of getSafeCoalescedEvents(e)) {
         activePoints.current.push({ x: ev.clientX - rect.left, y: ev.clientY - rect.top, pressure: 0.5, timestamp: ev.timeStamp });
       }
       schedulePreviewRender();
@@ -1817,7 +2111,11 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
 
     if (m === 'moving' && moveAnchor.current) {
       moveAnchor.current = { screenX, screenY, pdfX: pdfPt.x, pdfY: pdfPt.y };
-      schedulePreviewRender();
+      if (dragGhostRef.current) {
+        updateDragGhost(e.clientX, e.clientY);
+      } else {
+        schedulePreviewRender();
+      }
       return;
     }
 
@@ -1896,6 +2194,8 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
         }
       }
     } else {
+      restoreGestureTouchAction();
+      destroyDragGhost();
       mode.current = 'idle';
       shapeStart.current = null;
       selectionStart.current = null;
@@ -1925,6 +2225,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
       interactionRef.current.releasePointerCapture(pointerId);
     }
     activePointerIdRef.current = null;
+    restoreGestureTouchAction();
     clearDrawingCanvas();
     commitEraser();
     mode.current = 'idle';
@@ -1955,6 +2256,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
         interactionRef.current.releasePointerCapture(pointerId);
       }
       activePointerIdRef.current = null;
+      restoreGestureTouchAction();
       clearDrawingCanvas();
       commitHeldShape();
       mode.current = 'idle';
@@ -1971,6 +2273,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
       interactionRef.current.releasePointerCapture(pointerId);
     }
     activePointerIdRef.current = null;
+    restoreGestureTouchAction();
     predictedPoints.current = [];
     clearDrawingCanvas();
     commitStroke();
@@ -1999,6 +2302,30 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
   // ── Stroke commit ─────────────────────────────────────────────────────────
 
   function commitStroke() {
+    // Scribble-to-Erase: scratching back and forth with the pen over existing
+    // ink/annotations erases the touched items cleanly in one undoable step.
+    if (gestureToolRef.current === 'pen' && toolOptions.pen.scribbleToErase !== false && isScribbleGesture(activePoints.current)) {
+      const scribblePdf = screenPointsToPdf(activePoints.current, transform);
+      const existing = getPageAnnotations(docId, pageIndex);
+      const targets = findScribbleTargets(scribblePdf, existing, Math.max(8, toolOptions.pen.width * 2.5));
+      if (targets.length > 0) {
+        const doomed = new Set(targets.map((a) => a.id));
+        const remaining: Annotation[] = [];
+        const actions: HistoryActionDraft[] = [];
+        for (const a of existing) {
+          if (doomed.has(a.id)) {
+            actions.push(makeRemoveAction(docId, a, remaining.length));
+          } else {
+            remaining.push(a);
+          }
+        }
+        useAnnotationStore.getState().setPageAnnotations(docId, pageIndex, remaining);
+        pushHistory(actions.length === 1 ? actions[0] : makeBatchAction(docId, actions));
+        if (soundEffectsEnabled) playEraseSound();
+        return;
+      }
+    }
+
     // A single tap with the pen leaves a dot; the highlighter needs a drag.
     const ann = buildInkAnnotation(activePoints.current, gestureToolRef.current, true);
     if (!ann) return;
@@ -2369,39 +2696,62 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
   // ── Move ─────────────────────────────────────────────────────────────────
 
   function commitMove(e?: React.PointerEvent<HTMLDivElement>) {
-    if (!shapeStart.current || !moveAnchor.current) return;
+    const ghost = dragGhostRef.current;
+    if (!shapeStart.current || !moveAnchor.current) {
+      destroyDragGhost();
+      return;
+    }
 
-    // Cross-page drag-and-drop: if the pointer was released over a different
-    // page of the same document, transfer the selected photo/annotations there!
-    if (e && typeof document.elementsFromPoint === 'function') {
-      const hitEls = document.elementsFromPoint(e.clientX, e.clientY);
-      const targetPageEl = hitEls.find((el) => {
-        if (!(el instanceof HTMLElement)) return false;
-        if (el.dataset.docId !== docId || el.dataset.instanceId !== String(instanceId)) return false;
-        const idx = Number(el.dataset.pageIndex);
-        return Number.isInteger(idx) && idx !== pageIndex;
-      }) as HTMLElement | undefined;
+    // Cross-page drag-and-drop: match the exact live floating drag ghost's box
+    // center & target page surface so photos/annotations land right where shown.
+    if (e && typeof document.querySelectorAll === 'function') {
+      const boxLeft = ghost ? e.clientX - ghost.grabOffsetX : e.clientX;
+      const boxTop = ghost ? e.clientY - ghost.grabOffsetY : e.clientY;
+      const boxW = ghost ? ghost.width : 1;
+      const boxH = ghost ? ghost.height : 1;
+      const target = findCrossPageTarget(boxLeft, boxTop, boxW, boxH, e.clientX, e.clientY);
 
-      if (targetPageEl) {
-        const targetIdx = Number(targetPageEl.dataset.pageIndex);
-        const targetRect = targetPageEl.getBoundingClientRect();
-        if (targetRect.width > 0 && targetRect.height > 0) {
-          const relX = Math.max(0.05, Math.min(0.95, (e.clientX - targetRect.left) / targetRect.width));
-          const relY = Math.max(0.05, Math.min(0.95, (e.clientY - targetRect.top) / targetRect.height));
-          // Approximate target page PDF dimensions using current page's scale
-          const targetPdfW = targetRect.width / transform.scale;
-          const targetPdfH = targetRect.height / transform.scale;
-          const moved = moveSelectionToPage(targetIdx, {
-            x: relX * targetPdfW,
-            y: (1 - relY) * targetPdfH,
-          });
-          if (moved.length > 0) return;
+      if (target && target.pageIndex !== pageIndex) {
+        const targetRect = target.rect;
+        const targetPdfW = targetRect.width / transform.scale;
+        const targetPdfH = targetRect.height / transform.scale;
+        const centerClientX = ghost ? boxLeft + boxW / 2 : e.clientX;
+        const centerClientY = ghost ? boxTop + boxH / 2 : e.clientY;
+        const rawCx = ((centerClientX - targetRect.left) / targetRect.width) * targetPdfW;
+        const rawCy = (1 - (centerClientY - targetRect.top) / targetRect.height) * targetPdfH;
+        // Keep the dropped item visibly inside the target page bounds so it can never disappear off-edge.
+        const halfW = ghost ? Math.min(ghost.groupWidthPdf / 2, targetPdfW * 0.45) : 10;
+        const halfH = ghost ? Math.min(ghost.groupHeightPdf / 2, targetPdfH * 0.45) : 10;
+        const clampedCx = Math.max(halfW, Math.min(targetPdfW - halfW, rawCx));
+        const clampedCy = Math.max(halfH, Math.min(targetPdfH - halfH, rawCy));
+
+        destroyDragGhost();
+        const moved = moveSelectionToPage(target.pageIndex, { x: clampedCx, y: clampedCy });
+        if (moved.length > 0) {
+          moveBefore.current.clear();
+          return;
         }
       }
     }
 
-    const dx = moveAnchor.current.pdfX - shapeStart.current.pdfX;
-    const dy = moveAnchor.current.pdfY - shapeStart.current.pdfY;
+    destroyDragGhost();
+
+    let dx = moveAnchor.current.pdfX - shapeStart.current.pdfX;
+    let dy = moveAnchor.current.pdfY - shapeStart.current.pdfY;
+
+    // Prevent accidentally pushing a photo or group completely outside the source
+    // page's clipped overflow bounds (keeps at least 24pt visibly on-page).
+    const beforeList = Array.from(moveBefore.current.values());
+    const beforeBounds = getGroupBounds(beforeList);
+    if (beforeBounds) {
+      const keepVisible = Math.min(24, Math.min(beforeBounds.width, beforeBounds.height) * 0.5);
+      const minDx = transform.cropBox.xMin + keepVisible - (beforeBounds.x + beforeBounds.width);
+      const maxDx = transform.cropBox.xMin + transform.cropBox.width - keepVisible - beforeBounds.x;
+      const minDy = transform.cropBox.yMin + keepVisible - (beforeBounds.y + beforeBounds.height);
+      const maxDy = transform.cropBox.yMin + transform.cropBox.height - keepVisible - beforeBounds.y;
+      dx = Math.max(minDx, Math.min(maxDx, dx));
+      dy = Math.max(minDy, Math.min(maxDy, dy));
+    }
     
     // Only commit to store if there was actual movement
     if (Math.hypot(dx, dy) > 0.001) {
@@ -2502,6 +2852,8 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     }
 
     activePointerIdRef.current = null;
+    restoreGestureTouchAction();
+    destroyDragGhost();
     if (mode.current === 'laser') endLaserTrail();
     if (mode.current === 'textSelectDrag') useTextSelectionStore.getState().clear();
     clearHoldTimer();
@@ -2539,6 +2891,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
   // Page unmounted mid-gesture (tab switch, virtualization): do not leave the
   // app believing a drawing is still in progress.
   useEffect(() => () => {
+    destroyDragGhost();
     if (mode.current !== 'idle' || textEditingRef.current) {
       useUIStore.getState().setIsDrawing(false);
     }
@@ -3087,6 +3440,9 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
           width: '100%',
           height: '100%',
           touchAction: nativeFingerScroll ? 'pan-x pan-y' : 'none',
+          userSelect: 'none',
+          WebkitUserSelect: 'none',
+          WebkitTouchCallout: 'none',
           pointerEvents: textEditingRef.current ? 'none' : 'auto',
           zIndex: 20,
         }}

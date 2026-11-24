@@ -59,12 +59,19 @@ export function useStylusScrollGuard(ref: RefObject<HTMLElement>, enabled: boole
     if (!enabled || !element) return;
     const guard = new StylusScrollGuard();
     const start = (event: TouchEvent) => {
-      if (guard.touchStart(event.changedTouches, event.timeStamp) && event.cancelable) event.preventDefault();
+      const hasStylusNow = guard.touchStart(event.touches, event.timeStamp)
+        || guard.touchStart(event.changedTouches, event.timeStamp);
+      if (hasStylusNow && event.cancelable) event.preventDefault();
     };
     const move = (event: TouchEvent) => {
       if (guard.touchMove(event.touches) && event.cancelable) event.preventDefault();
     };
-    const end = (event: TouchEvent) => guard.touchEnd(event.changedTouches, event.timeStamp);
+    const end = (event: TouchEvent) => {
+      // Only clear pencilDown if no stylus touch remains active.
+      if (!Array.from(event.touches).some(isStylus)) {
+        guard.touchEnd(event.changedTouches, event.timeStamp);
+      }
+    };
     element.addEventListener('touchstart', start, { passive: false });
     element.addEventListener('touchmove', move, { passive: false });
     element.addEventListener('touchend', end);
