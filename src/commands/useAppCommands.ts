@@ -1,4 +1,5 @@
 import { errorMessage, notifyUser } from '../utils/notify';
+import { isIpadApp } from '../platform/native';
 import { useCallback, useEffect } from 'react';
 import { useDocumentStore } from '../store/documentStore';
 import { useHistoryStore, makeRemoveAction, makeBatchAction } from '../store/historyStore';
@@ -106,6 +107,9 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
 
   const canExecute = useCallback((commandId: AppCommandId) => {
     if (commandId === 'view.focusMode' && workspaceMode === 'focus') return true;
+    if (commandId === 'file.save' && useDocumentStore.getState().activeDocId && (useUIStore.getState().tabletMode || isIpadApp())) {
+      return true;
+    }
     return isCommandAvailable(commandId, currentAvailabilityContext());
   }, [workspaceMode]);
 
@@ -115,7 +119,9 @@ export function useAppCommands({ onExport }: UseAppCommandsOptions): AppCommandC
     const docId = documents.activeDocId;
     const definition = APP_COMMANDS[commandId];
 
+    const allowTabletSave = commandId === 'file.save' && Boolean(docId) && (ui.tabletMode || isIpadApp());
     if (!(commandId === 'view.focusMode' && ui.workspaceMode === 'focus')
+      && !allowTabletSave
       && !isCommandAvailable(commandId, currentAvailabilityContext())) {
       return;
     }

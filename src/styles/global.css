@@ -611,3 +611,88 @@ html.platform-ipad [role='tablist'] {
 .ipad-dialog__button--destructive:not(.ipad-dialog__button--primary) {
   color: var(--color-error);
 }
+
+.ipad-dialog--wide {
+  width: min(480px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+}
+
+.ipad-dialog__label {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-secondary);
+  margin-bottom: -6px;
+}
+
+.ipad-dialog__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.ipad-dialog__option {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  min-height: 50px;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  border: 1.5px solid var(--color-border);
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.ipad-dialog__option--active {
+  border-color: var(--color-accent);
+  background: rgba(29, 93, 159, 0.10);
+}
+
+.ipad-dialog__option-icon {
+  font-size: 20px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.ipad-dialog__option-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.ipad-dialog__option-title {
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ipad-dialog__option-sub {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ipad-dialog__option-check {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-accent);
+  opacity: 0;
+  flex-shrink: 0;
+}
+
+.ipad-dialog__option--active .ipad-dialog__option-check {
+  opacity: 1;
+}

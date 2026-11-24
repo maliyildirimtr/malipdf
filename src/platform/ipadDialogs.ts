@@ -145,3 +145,183 @@ export async function askConfirm(message: string, confirmLabel: string): Promise
   );
   return value;
 }
+
+export interface SaveDestinationChoice {
+  target: 'files' | 'library';
+  fileName: string;
+  folderId: string | null;
+  newFolderName?: string;
+}
+
+/**
+ * Interactive iPad Save / Save As destination picker: lets the user edit the
+ * file name and choose between iPadOS Files / iCloud Drive (via native Files
+ * share sheet), MaliPDF Home Library, any existing Library folder, or a brand
+ * new folder created on the spot.
+ */
+export async function askSaveDestination(
+  defaultName: string,
+  folders: ReadonlyArray<{ id: string; name: string }>,
+  currentFolderId: string | null,
+  isSaveAs: boolean,
+): Promise<SaveDestinationChoice | null> {
+  const isTr = useUIStore.getState().language === 'tr';
+  return new Promise((resolve) => {
+    const backdrop = document.createElement('div');
+    backdrop.className = 'ipad-dialog-backdrop';
+    backdrop.setAttribute('data-no-translate', '');
+
+    const box = document.createElement('div');
+    box.className = 'ipad-dialog ipad-dialog--wide';
+    box.setAttribute('role', 'dialog');
+    box.setAttribute('aria-modal', 'true');
+
+    const title = document.createElement('div');
+    title.className = 'ipad-dialog__title';
+    title.textContent = isSaveAs
+      ? (isTr ? 'Farklı Kaydet — Konum Seç' : 'Save As — Choose Location')
+      : (isTr ? 'Nereye Kaydedilsin?' : 'Where to Save?');
+    box.appendChild(title);
+
+    // File name input
+    const nameLabel = document.createElement('label');
+    nameLabel.className = 'ipad-dialog__label';
+    nameLabel.textContent = isTr ? 'Dosya Adı' : 'File Name';
+    box.appendChild(nameLabel);
+
+    const nameInput = document.createElement('input');
+    nameInput.className = 'ipad-dialog__input';
+    nameInput.type = 'text';
+    nameInput.value = defaultName;
+    nameInput.autocapitalize = 'off';
+    nameInput.spellcheck = false;
+    box.appendChild(nameInput);
+
+    // Destination list
+    const locLabel = document.createElement('div');
+    locLabel.className = 'ipad-dialog__label';
+    locLabel.textContent = isTr ? 'Kayıt Konumu' : 'Destination';
+    box.appendChild(locLabel);
+
+    type SelectionKey = 'files' | 'root' | 'new-folder' | `folder:${string}`;
+    let selected: SelectionKey = currentFolderId ? `folder:${currentFolderId}` : 'root';
+
+    const list = document.createElement('div');
+    list.className = 'ipad-dialog__list';
+
+    const newFolderInput = document.createElement('input');
+    newFolderInput.className = 'ipad-dialog__input';
+    newFolderInput.type = 'text';
+    newFolderInput.placeholder = isTr ? 'Yeni klasör adı…' : 'New folder name…';
+    newFolderInput.style.display = 'none';
+
+    const optionButtons: Array<{ key: SelectionKey; el: HTMLButtonElement }> = [];
+    const syncSelected = () => {
+      for (const item of optionButtons) {
+        item.el.classList.toggle('ipad-dialog__option--active', item.key === selected);
+      }
+      newFolderInput.style.display = selected === 'new-folder' ? 'block' : 'none';
+      if (selected === 'new-folder') setTimeout(() => newFolderInput.focus(), 0);
+    };
+
+    const addOption = (key: SelectionKey, iconText: string, label: string, sub: string) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'ipad-dialog__option';
+      btn.innerHTML = `<span class="ipad-dialog__option-icon">${iconText}</span><span class="ipad-dialog__option-body"><span class="ipad-dialog__option-title"></span><span class="ipad-dialog__option-sub"></span></span><span class="ipad-dialog__option-check">✓</span>`;
+      btn.querySelector('.ipad-dialog__option-title')!.textContent = label;
+      btn.querySelector('.ipad-dialog__option-sub')!.textContent = sub;
+      btn.addEventListener('click', () => {
+        selected = key;
+        syncSelected();
+      });
+      list.appendChild(btn);
+      optionButtons.push({ key, el: btn });
+    };
+
+    addOption(
+      'files',
+      '☁️',
+      isTr ? 'Dosyalar / iCloud / iPad\'im…' : 'Files / iCloud Drive / On My iPad…',
+      isTr ? 'Sistem konum menüsünü aç (iCloud, İndirilenler, klasörler)' : 'Open system location picker (iCloud, Downloads, folders)',
+    );
+    addOption(
+      'root',
+      '📚',
+      isTr ? 'MaliPDF Kütüphanesi (Ana Klasör)' : 'MaliPDF Library (Home Folder)',
+      isTr ? 'iPad\'imde › MaliPDF' : 'On My iPad › MaliPDF',
+    );
+    for (const folder of folders) {
+      addOption(
+        `folder:${folder.id}`,
+        '📁',
+        folder.name,
+        isTr ? 'MaliPDF Klasörü' : 'MaliPDF Folder',
+      );
+    }
+    addOption(
+      'new-folder',
+      '➕',
+      isTr ? 'Yeni Klasör Oluştur…' : 'Create New Folder…',
+      isTr ? 'MaliPDF içinde yeni klasör açıp oraya kaydet' : 'Create a new folder inside MaliPDF and save there',
+    );
+
+    box.appendChild(list);
+    box.appendChild(newFolderInput);
+    syncSelected();
+
+    const finish = (choice: SaveDestinationChoice | null) => {
+      backdrop.remove();
+      resolve(choice);
+    };
+
+    const confirmSave = () => {
+      const fileName = nameInput.value.trim() || defaultName;
+      if (selected === 'files') {
+        finish({ target: 'files', fileName, folderId: null });
+        return;
+      }
+      if (selected === 'new-folder') {
+        const folderName = newFolderInput.value.trim();
+        if (!folderName) {
+          newFolderInput.focus();
+          return;
+        }
+        finish({ target: 'library', fileName, folderId: null, newFolderName: folderName });
+        return;
+      }
+      const folderId = selected.startsWith('folder:') ? selected.slice('folder:'.length) : null;
+      finish({ target: 'library', fileName, folderId });
+    };
+
+    const row = document.createElement('div');
+    row.className = 'ipad-dialog__buttons';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'ipad-dialog__button';
+    cancelBtn.textContent = isTr ? 'İptal' : 'Cancel';
+    cancelBtn.addEventListener('click', () => finish(null));
+
+    const saveBtn = document.createElement('button');
+    saveBtn.type = 'button';
+    saveBtn.className = 'ipad-dialog__button ipad-dialog__button--primary';
+    saveBtn.textContent = isTr ? 'Kaydet' : 'Save';
+    saveBtn.addEventListener('click', confirmSave);
+
+    row.appendChild(cancelBtn);
+    row.appendChild(saveBtn);
+    box.appendChild(row);
+
+    backdrop.addEventListener('pointerdown', (event) => {
+      if (event.target === backdrop) finish(null);
+    });
+    box.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') finish(null);
+      if (event.key === 'Enter') confirmSave();
+    });
+
+    backdrop.appendChild(box);
+    document.body.appendChild(backdrop);
+  });
+}

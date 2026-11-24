@@ -196,9 +196,25 @@ export function DocumentArea() {
   useEffect(() => {
     const handleOpenRequest = () => void openFileDialog();
     document.addEventListener('app:openFile', handleOpenRequest);
-    // Files opened from Finder / Explorer / Dock / Open Recent (main process).
+    // Files opened from Finder / Explorer / Dock / Open Recent / iPad "Open in MaliPDF".
     const stopOpenFiles = window.electronAPI?.onOpenFiles?.((files) => {
-      for (const file of files) void loadFile(file.name, file.filePath, file.data);
+      void (async () => {
+        for (const file of files) {
+          if (isIpadApp()) {
+            const { useLibraryStore } = await import('../../store/libraryStore');
+            const saved = await useLibraryStore.getState().upsertDocument({
+              title: file.name,
+              filePath: file.filePath || undefined,
+              bytes: new Uint8Array(file.data),
+              kind: 'pdf',
+              writeBytes: true,
+            });
+            await loadFile(saved.title, saved.filePath, file.data);
+          } else {
+            await loadFile(file.name, file.filePath, file.data);
+          }
+        }
+      })();
     });
     window.electronAPI?.readyForFiles?.();
     return () => {

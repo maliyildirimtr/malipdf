@@ -171,7 +171,7 @@ export default function App() {
             filePath: file.filePath || undefined,
             bytes,
             kind: 'pdf',
-            writeBytes: !isIpadApp(),
+            writeBytes: true,
           });
           await openDocumentBytes(saved.title, saved.filePath, file.data);
         }

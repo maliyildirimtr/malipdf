@@ -274,13 +274,26 @@ const unavailable = { success: false, error: 'Not available on iPad.' } as const
 export function createIpadBridge(): ElectronAPI {
   let openFilesListener: ((files: OpenedFile[]) => void) | null = null;
   const pendingOpens: OpenedFile[] = [];
+  let launchUrlConsumed = false;
+  let lastOpenedUrl: { url: string; at: number } | null = null;
+
+  const isDuplicateUrl = (url: string): boolean => {
+    const now = Date.now();
+    if (lastOpenedUrl && lastOpenedUrl.url === url && now - lastOpenedUrl.at < 3000) {
+      return true;
+    }
+    lastOpenedUrl = { url, at: now };
+    return false;
+  };
+
   const deliver = (file: OpenedFile | null) => {
     if (!file) return;
     if (openFilesListener) openFilesListener([file]);
     else pendingOpens.push(file);
   };
   onNative('App', 'appUrlOpen', (event: { url?: string }) => {
-    if (event?.url) void readOpenedUrl(event.url).then(deliver).catch((error) => console.error('Open failed:', error));
+    if (!event?.url || isDuplicateUrl(event.url)) return;
+    void readOpenedUrl(event.url).then(deliver).catch((error) => console.error('Open failed:', error));
   });
 
   return {
@@ -337,8 +350,15 @@ export function createIpadBridge(): ElectronAPI {
       return () => { if (openFilesListener === callback) openFilesListener = null; };
     },
     readyForFiles: () => {
+      // Capacitor's App.getLaunchUrl() never clears after launch; consume it
+      // strictly once per app session so returning to Library never re-opens it.
+      if (launchUrlConsumed) return;
+      launchUrlConsumed = true;
       void callNative<{ url?: string } | null>('App', 'getLaunchUrl')
-        .then((launch) => (launch?.url ? readOpenedUrl(launch.url) : null))
+        .then((launch) => {
+          if (!launch?.url || isDuplicateUrl(launch.url)) return null;
+          return readOpenedUrl(launch.url);
+        })
         .then(deliver)
         .catch(() => {});
     },

@@ -6,10 +6,13 @@ import { useAssetStore } from '../store/assetStore';
 import { useFormStore } from '../store/formStore';
 import { removeRecoverySnapshot } from '../document/autoSave';
 import { useLibraryStore } from '../store/libraryStore';
-import { PREVIEW_PREFIX } from '../platform/ipadLibrary';
+import { DOCUMENTS_PREFIX, PREVIEW_PREFIX, ensurePdfExtension, sanitizeFileName } from '../platform/ipadLibrary';
 import { isTabletMode } from '../platform/touchMode';
+import { isIpadApp } from '../platform/native';
+import { askSaveDestination } from '../platform/ipadDialogs';
+import { notifyUser } from '../utils/notify';
 
-async function performSave(docId: string, saveAs: boolean): Promise<boolean> {
+async function performSave(docId: string, saveAs: boolean, options?: { silent?: boolean }): Promise<boolean> {
   const { documents, updateDocument } = useDocumentStore.getState();
   const doc = documents.get(docId);
   if (!doc) return false;
@@ -33,6 +36,107 @@ async function performSave(docId: string, saveAs: boolean): Promise<boolean> {
 
     let filePath = doc.filePath;
     const isBrowserTabletSave = !window.electronAPI?.writeFile && (isTabletMode() || filePath?.startsWith(PREVIEW_PREFIX));
+
+    // On iPad (or Tablet UI), manual Save / Save As opens the destination picker
+    // so the user can choose Files/iCloud Drive, MaliPDF Home, any folder, or a new folder.
+    if (!options?.silent && (isIpadApp() || isBrowserTabletSave)) {
+      const lib = useLibraryStore.getState();
+      if (!lib.initialized) await lib.initialize();
+      const freshLib = useLibraryStore.getState();
+      const existingItem = filePath
+        ? freshLib.items.find((i) => !i.trashedAt && i.filePath === filePath)
+        : undefined;
+      const defaultFileName = ensurePdfExtension(sanitizeFileName(doc.title || 'Untitled.pdf'));
+      const choice = await askSaveDestination(
+        defaultFileName,
+        freshLib.folders.map((f) => ({ id: f.id, name: f.name })),
+        existingItem?.folderId ?? null,
+        saveAs,
+      );
+      if (!choice) {
+        updateDocument(docId, { saveStatus: 'idle' });
+        return false;
+      }
+
+      const finalName = ensurePdfExtension(sanitizeFileName(choice.fileName));
+
+      if (choice.target === 'files') {
+        // Keep app copy up to date if it already lives in Library, then open native iPadOS Files/Share sheet
+        if (filePath && window.electronAPI?.writeFile) {
+          await window.electronAPI.writeFile(filePath, exportResult.data.buffer as ArrayBuffer);
+          void useLibraryStore.getState().recordDocumentSaved(filePath, finalName, exportResult.data, doc.pageCount);
+        }
+        if (window.electronAPI?.sharePdf) {
+          await window.electronAPI.sharePdf(finalName, exportResult.data);
+        } else {
+          // Browser fallback download
+          const blob = new Blob([exportResult.data as BlobPart], { type: 'application/pdf' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = finalName;
+          a.click();
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }
+        updateDocument(docId, {
+          savedStateId: targetStateId,
+          saveStatus: 'idle',
+          title: finalName,
+        });
+        return true;
+      }
+
+      // Target = MaliPDF Library (Home or chosen/new folder)
+      let targetFolderId = choice.folderId;
+      let folderLabel = 'Ana Klasör';
+      if (choice.newFolderName) {
+        const created = await useLibraryStore.getState().createFolder(choice.newFolderName);
+        targetFolderId = created.id;
+        folderLabel = created.name;
+      } else if (targetFolderId) {
+        folderLabel = useLibraryStore.getState().folders.find((f) => f.id === targetFolderId)?.name ?? 'Klasör';
+      }
+
+      const prefix = isIpadApp() ? DOCUMENTS_PREFIX : PREVIEW_PREFIX;
+      const targetPath = prefix + finalName;
+
+      if (isBrowserTabletSave) {
+        const saved = await useLibraryStore.getState().upsertDocument({
+          title: finalName,
+          filePath: targetPath,
+          folderId: targetFolderId,
+          bytes: exportResult.data,
+          pageCount: doc.pageCount,
+          writeBytes: true,
+        });
+        filePath = saved.filePath;
+      } else {
+        const ok = await window.electronAPI.writeFile(targetPath, exportResult.data.buffer as ArrayBuffer);
+        if (!ok) throw new Error('Failed to write PDF to disk.');
+        filePath = targetPath;
+        await useLibraryStore.getState().upsertDocument({
+          title: finalName,
+          filePath: targetPath,
+          folderId: targetFolderId,
+          bytes: exportResult.data,
+          pageCount: doc.pageCount,
+          writeBytes: false, // already written via writeFile above
+        });
+      }
+
+      updateDocument(docId, {
+        filePath,
+        savedStateId: targetStateId,
+        saveStatus: 'idle',
+        title: finalName,
+      });
+      const latest = useDocumentStore.getState().documents.get(docId);
+      if (latest && latest.currentStateId === latest.savedStateId) {
+        await removeRecoverySnapshot(docId);
+      }
+      notifyUser('success', `${folderLabel} › ${finalName}`);
+      return true;
+    }
 
     if (isBrowserTabletSave) {
       const saved = await useLibraryStore.getState().upsertDocument({
@@ -119,7 +223,7 @@ export async function autoSaveDirtyTabletDocuments(): Promise<void> {
   const { documents } = useDocumentStore.getState();
   for (const doc of documents.values()) {
     if (doc.currentStateId !== doc.savedStateId && doc.filePath && doc.saveStatus !== 'saving') {
-      await performSave(doc.id, false);
+      await performSave(doc.id, false, { silent: true });
     }
   }
 }
