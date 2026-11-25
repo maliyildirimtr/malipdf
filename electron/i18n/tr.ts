@@ -1108,6 +1108,33 @@ export const TR: Readonly<Record<string, string>> = {
   Cool: 'Soğuk',
   'Saving…': 'Kaydediliyor…',
   'Could not save edited image': 'Düzenlenen görsel kaydedilemedi',
+  // ── Cloud Sync ───────────────────────────────────────────────────────────
+  Sync: 'Senkronizasyon',
+  'Cloud Sync': 'Bulut Senkronizasyonu',
+  'Keep your PDFs, folders, and editable handwritten notes in sync across Mac, Windows, iPad, and iPhone — using your own cloud storage with zero server fees.':
+    'PDF’lerinizi, klasörlerinizi ve düzenlenebilir el yazısı notlarınızı Mac, Windows, iPad ve iPhone arasında kendi bulut alanınızla ücretsiz senkronize tutun.',
+  'This Device Only': 'Yalnızca Bu Cihaz',
+  'Offline storage — no cloud sync': 'Çevrimdışı depolama — bulut senkronizasyonu yok',
+  'Cloud / Desktop Folder': 'Bulut / Masaüstü Klasörü',
+  'Desktop Cloud Folder…': 'Masaüstü Bulut Klasörü…',
+  'OneDrive, Google Drive Desktop, Dropbox, or any folder': 'OneDrive, Google Drive Masaüstü, Dropbox veya herhangi bir klasör',
+  'Mac · iPad · iPhone (+ iCloud for Windows)': 'Mac · iPad · iPhone (+ Windows için iCloud)',
+  'Detected Cloud Folders on This Computer': 'Bu Bilgisayarda Bulunan Bulut Klasörleri',
+  'Google Drive Connection': 'Google Drive Bağlantısı',
+  'Google OAuth Client ID (optional)': 'Google OAuth İstemci Kimliği (isteğe bağlı)',
+  'Or paste OAuth Access Token': 'Veya OAuth Erişim Belirteci yapıştırın',
+  Connect: 'Bağlan',
+  Reconnect: 'Yeniden Bağlan',
+  'Sync Now': 'Şimdi Senkronize Et',
+  'Syncing documents…': 'Belgeler senkronize ediliyor…',
+  'Sync completed': 'Senkronizasyon tamamlandı',
+  'Never synced yet': 'Henüz senkronize edilmedi',
+  'Switched to local device storage': 'Yerel cihaz depolamasına geçildi',
+  'Choose MaliPDF Sync Folder': 'MaliPDF Senkronizasyon Klasörünü Seçin',
+  'Enter a Google OAuth Client ID or access token to connect Google Drive.':
+    'Google Drive’a bağlanmak için bir Google OAuth İstemci Kimliği veya erişim belirteci girin.',
+  'Auto-sync when saving documents or switching back to MaliPDF':
+    'Belgeleri kaydederken veya MaliPDF’e geri dönerken otomatik senkronize et',
 };
 
 type Pattern = readonly [RegExp, (...groups: string[]) => string];
@@ -1182,6 +1209,9 @@ export const TR_PATTERNS: readonly Pattern[] = [
   [/^You have version (.+)\.\n\nWhat's new:\n([\s\S]*)$/, (v, notes) => `Sizdeki sürüm: ${v}.\n\nYenilikler:\n${notes}`],
   [/^MaliPDF (.+) was downloaded\.$/, (v) => `MaliPDF ${v} indirildi.`],
   [/^(.+)\n\nYou can download it manually from (.+)\.$/s, (e, u) => `${e}\n\nElle şuradan indirebilirsiniz: ${u}.`],
+  [/^(\d+) documents stored locally$/, (n) => `Yerel olarak ${n} belge saklanıyor`],
+  [/^Copy existing library \((\d+) docs, (\d+) folders\) when switching cloud providers$/, (d, f) =>
+    `Bulut sağlayıcısı değiştirilirken mevcut kütüphaneyi (${d} belge, ${f} klasör) kopyala`],
 ];
 
 /**

@@ -11,6 +11,7 @@ import { isTabletMode } from '../platform/touchMode';
 import { isIpadApp } from '../platform/native';
 import { askSaveDestination } from '../platform/ipadDialogs';
 import { notifyUser } from '../utils/notify';
+import { scheduleAutoSync } from '../sync/syncManager';
 
 async function performSave(docId: string, saveAs: boolean, options?: { silent?: boolean }): Promise<boolean> {
   const { documents, updateDocument } = useDocumentStore.getState();
@@ -135,6 +136,7 @@ async function performSave(docId: string, saveAs: boolean, options?: { silent?: 
         await removeRecoverySnapshot(docId);
       }
       notifyUser('success', `${folderLabel} › ${finalName}`);
+      scheduleAutoSync();
       return true;
     }
 
@@ -183,6 +185,7 @@ async function performSave(docId: string, saveAs: boolean, options?: { silent?: 
       await removeRecoverySnapshot(docId);
     }
 
+    scheduleAutoSync();
     return true;
   } catch (error) {
     console.error('Save failed:', error);

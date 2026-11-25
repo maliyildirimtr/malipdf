@@ -60,6 +60,7 @@ import { RecoveryDialog } from './components/RecoveryDialog/RecoveryDialog';
 import { Ruler } from './components/Ruler/Ruler';
 import { startAutoSave } from './document/autoSave';
 import { NOTIFY_EVENT, type NotifyDetail } from './utils/notify';
+import { scheduleAutoSync } from './sync/syncManager';
 
 // ─── Export toast ─────────────────────────────────────────────────────────────
 
@@ -251,6 +252,25 @@ export default function App() {
   // ── Auto save (crash recovery snapshots) ───────────────────────────────
 
   useEffect(() => startAutoSave(), []);
+
+  // ── Background Cloud Sync (startup + returning to foreground) ──────────
+
+  useEffect(() => {
+    scheduleAutoSync(2200);
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') scheduleAutoSync(900);
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    const stopNative = isIpadApp()
+      ? onNative('App', 'appStateChange', (state: { isActive?: boolean }) => {
+          if (state?.isActive === true) scheduleAutoSync(900);
+        })
+      : () => {};
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      stopNative();
+    };
+  }, []);
 
   // ── Save error surfacing ───────────────────────────────────────────────
   // saveCommands records failures on the document; show each new one once.

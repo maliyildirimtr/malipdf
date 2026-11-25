@@ -589,6 +589,124 @@ handleTrusted('fs:writeFilesToFolder', isDev, async (_event, folder: unknown, ra
   return writeFilesToFolder(folder, files);
 });
 
+// ── Cross-device Sync Folder (iCloud Drive / Google Drive / OneDrive / Local) ─
+
+function detectCloudSyncFolders(): Array<{ id: 'icloud' | 'gdrive' | 'onedrive' | 'dropbox'; label: string; path: string }> {
+  const home = os.homedir();
+  const found: Array<{ id: 'icloud' | 'gdrive' | 'onedrive' | 'dropbox'; label: string; path: string }> = [];
+  const tryBase = (id: 'icloud' | 'gdrive' | 'onedrive' | 'dropbox', label: string, baseDir: string) => {
+    try {
+      if (fs.existsSync(baseDir) && fs.statSync(baseDir).isDirectory()) {
+        found.push({ id, label, path: path.join(baseDir, 'MaliPDF') });
+      }
+    } catch {
+      // Ignore inaccessible mount
+    }
+  };
+
+  if (process.platform === 'darwin') {
+    tryBase('icloud', 'iCloud Drive', path.join(home, 'Library', 'Mobile Documents', 'com~apple~CloudDocs'));
+    const cloudStorage = path.join(home, 'Library', 'CloudStorage');
+    try {
+      if (fs.existsSync(cloudStorage)) {
+        for (const entry of fs.readdirSync(cloudStorage)) {
+          if (entry.startsWith('GoogleDrive-')) {
+            const myDrive = path.join(cloudStorage, entry, 'My Drive');
+            tryBase('gdrive', 'Google Drive', fs.existsSync(myDrive) ? myDrive : path.join(cloudStorage, entry));
+          } else if (entry.startsWith('OneDrive-')) {
+            tryBase('onedrive', 'OneDrive', path.join(cloudStorage, entry));
+          } else if (entry.startsWith('Dropbox')) {
+            tryBase('dropbox', 'Dropbox', path.join(cloudStorage, entry));
+          }
+        }
+      }
+    } catch {
+      // Ignore
+    }
+    tryBase('dropbox', 'Dropbox', path.join(home, 'Dropbox'));
+  } else if (process.platform === 'win32') {
+    tryBase('icloud', 'iCloud Drive', path.join(home, 'iCloudDrive'));
+    tryBase('onedrive', 'OneDrive', process.env.OneDrive || path.join(home, 'OneDrive'));
+    tryBase('gdrive', 'Google Drive', path.join(home, 'Google Drive'));
+    tryBase('dropbox', 'Dropbox', path.join(home, 'Dropbox'));
+  } else {
+    tryBase('dropbox', 'Dropbox', path.join(home, 'Dropbox'));
+  }
+
+  // Deduplicate by id
+  const seen = new Set<string>();
+  return found.filter((f) => (seen.has(f.id) ? false : (seen.add(f.id), true)));
+}
+
+let activeSyncFolder: string | null = null;
+
+function resolveSyncTarget(folder: unknown, name: unknown): string {
+  const dir = requireString(folder, 'folder', 2048);
+  const resolvedDir = path.resolve(dir);
+  const detectedPaths = new Set(detectCloudSyncFolders().map((d) => path.resolve(d.path)));
+  if (activeSyncFolder !== resolvedDir && !folderGrants.has(resolvedDir) && !detectedPaths.has(resolvedDir)) {
+    throw new Error('Sync folder is not authorized.');
+  }
+  const safe = requireString(name, 'name', 260);
+  if (safe.includes('/') || safe.includes('\\') || safe === '.' || safe === '..') {
+    throw new TypeError('Invalid sync file name.');
+  }
+  return path.join(resolvedDir, safe);
+}
+
+handleTrusted('sync:detectCloudFolders', isDev, async () => detectCloudSyncFolders());
+
+handleTrusted('sync:activateFolder', isDev, async (_event, rawFolder: unknown) => {
+  const dir = path.resolve(requireString(rawFolder, 'folder', 2048));
+  await fs.promises.mkdir(dir, { recursive: true });
+  activeSyncFolder = dir;
+  folderGrants.grant(dir);
+  return dir;
+});
+
+handleTrusted('sync:list', isDev, async (_event, rawFolder: unknown) => {
+  const dir = path.resolve(requireString(rawFolder, 'folder', 2048));
+  activeSyncFolder = dir;
+  await fs.promises.mkdir(dir, { recursive: true });
+  const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+  const out: Array<{ name: string; size: number; updatedAt: number }> = [];
+  for (const e of entries) {
+    if (!e.isFile()) continue;
+    try {
+      const st = await fs.promises.stat(path.join(dir, e.name));
+      out.push({ name: e.name, size: st.size, updatedAt: Math.round(st.mtimeMs) });
+    } catch {
+      // Skip transient cloud placeholder
+    }
+  }
+  return out;
+});
+
+handleTrusted('sync:readFile', isDev, async (_event, rawFolder: unknown, rawName: unknown) => {
+  const target = resolveSyncTarget(rawFolder, rawName);
+  try {
+    const buf = await fs.promises.readFile(target);
+    return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+  } catch (err: any) {
+    if (err?.code === 'ENOENT') return null;
+    throw err;
+  }
+});
+
+handleTrusted('sync:writeFile', isDev, async (_event, rawFolder: unknown, rawName: unknown, rawData: unknown) => {
+  const target = resolveSyncTarget(rawFolder, rawName);
+  const bytes = requireBinary(rawData, 'data', MAX_WRITE_BYTES);
+  await fs.promises.mkdir(path.dirname(target), { recursive: true });
+  await fs.promises.writeFile(target, bytes);
+  return true;
+});
+
+handleTrusted('sync:deleteFile', isDev, async (_event, rawFolder: unknown, rawName: unknown) => {
+  const target = resolveSyncTarget(rawFolder, rawName);
+  await fs.promises.rm(target, { force: true });
+  return true;
+});
+
 // Close confirm dialog
 handleTrusted('dialog:askCloseConfirm', isDev, async (_event, rawFileName: unknown) => {
   if (!mainWindow) return 'cancel';

@@ -25,6 +25,17 @@ const ENTRIES = {
   LSSupportsOpeningDocumentsInPlace: '<false/>',
   ITSAppUsesNonExemptEncryption: '<false/>',
   UIRequiresFullScreen: '<false/>',
+  NSUbiquitousContainers: `<dict>
+		<key>iCloud.com.maliyildirimtr.malipdf</key>
+		<dict>
+			<key>NSUbiquitousContainerIsDocumentScopePublic</key>
+			<true/>
+			<key>NSUbiquitousContainerName</key>
+			<string>MaliPDF</string>
+			<key>NSUbiquitousContainerSupportedFolderLevels</key>
+			<string>Any</string>
+		</dict>
+	</dict>`,
   NSPhotoLibraryUsageDescription: '<string>MaliPDF adds the pictures you choose to your documents.</string>',
   NSCameraUsageDescription: '<string>MaliPDF adds the photos you take to your documents.</string>',
   CFBundleDocumentTypes: `<array>

@@ -13,6 +13,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
+  Cloud,
   Copy,
   FilePlus,
   FileText,
@@ -51,6 +52,8 @@ import { isIpadApp } from '../../platform/native';
 import { useLibraryStore, type LibraryCategory, type LibrarySortBy } from '../../store/libraryStore';
 import { useDocumentStore } from '../../store/documentStore';
 import { useUIStore } from '../../store/uiStore';
+import { useSyncStore } from '../../store/syncStore';
+import { OPEN_SYNC_SETTINGS_EVENT } from '../Settings/SettingsDialog';
 import { openDocumentBytes } from '../../document/openDocumentBytes';
 import { SHOW_RECOVERY_EVENT } from '../RecoveryDialog/recoveryEvents';
 import { notifyUser } from '../../utils/notify';
@@ -171,6 +174,8 @@ export function TabletLibrary() {
 
   const activeDocId = useDocumentStore((s) => s.activeDocId);
   const activeDoc = useDocumentStore((s) => (s.activeDocId ? s.documents.get(s.activeDocId) ?? null : null));
+  const syncProvider = useSyncStore((s) => s.provider);
+  const syncStatus = useSyncStore((s) => s.status);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [fabOpen, setFabOpen] = useState(false);
@@ -620,6 +625,29 @@ export function TabletLibrary() {
                 <span>Desktop Mode</span>
               </button>
             )}
+            <button
+              type="button"
+              className={styles.navItem}
+              onClick={() => {
+                window.dispatchEvent(new Event(OPEN_SYNC_SETTINGS_EVENT));
+                setDrawerOpen(false);
+              }}
+            >
+              {syncStatus === 'syncing' ? (
+                <RefreshCw size={18} className="animate-spin" />
+              ) : (
+                <Cloud size={18} />
+              )}
+              <span className={styles.navItemLabel}>
+                {syncProvider === 'icloud'
+                  ? 'iCloud Drive'
+                  : syncProvider === 'gdrive'
+                    ? 'Google Drive'
+                    : syncProvider === 'folder'
+                      ? 'Cloud Sync'
+                      : 'Cloud Sync'}
+              </span>
+            </button>
             <button
               type="button"
               className={styles.navItem}

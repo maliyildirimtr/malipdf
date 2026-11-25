@@ -103,6 +103,14 @@ export interface ElectronAPI {
   logRendererError: (error: { message: string; stack?: string }) => Promise<boolean>;
   ocrIsAvailable: () => Promise<boolean>;
   ocrRecognize: (png: ArrayBuffer, languages?: string[]) => Promise<OcrLine[]>;
+
+  // Cross-device Sync Folder (Desktop Mac / Windows)
+  syncDetectCloudFolders: () => Promise<Array<{ id: 'icloud' | 'gdrive' | 'onedrive' | 'dropbox'; label: string; path: string }>>;
+  syncActivateFolder: (folder: string) => Promise<string>;
+  syncList: (folder: string) => Promise<Array<{ name: string; size: number; updatedAt: number }>>;
+  syncReadFile: (folder: string, name: string) => Promise<ArrayBuffer | null>;
+  syncWriteFile: (folder: string, name: string, data: ArrayBuffer) => Promise<boolean>;
+  syncDeleteFile: (folder: string, name: string) => Promise<boolean>;
 }
 
 const electronAPI: ElectronAPI = {
@@ -178,6 +186,12 @@ const electronAPI: ElectronAPI = {
   logRendererError: (error) => ipcRenderer.invoke('app:logRendererError', error),
   ocrIsAvailable: () => ipcRenderer.invoke('ocr:isAvailable'),
   ocrRecognize: (png, languages) => ipcRenderer.invoke('ocr:recognize', png, languages),
+  syncDetectCloudFolders: () => ipcRenderer.invoke('sync:detectCloudFolders'),
+  syncActivateFolder: (folder) => ipcRenderer.invoke('sync:activateFolder', folder),
+  syncList: (folder) => ipcRenderer.invoke('sync:list', folder),
+  syncReadFile: (folder, name) => ipcRenderer.invoke('sync:readFile', folder, name),
+  syncWriteFile: (folder, name, data) => ipcRenderer.invoke('sync:writeFile', folder, name, data),
+  syncDeleteFile: (folder, name) => ipcRenderer.invoke('sync:deleteFile', folder, name),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);

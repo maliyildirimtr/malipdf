@@ -8,13 +8,17 @@ import { APP_COMMANDS, TOOL_SHORTCUTS } from '../../commands/commandRegistry';
 import { MEASURE_UNITS } from '../../pdf/measure';
 import { LANGUAGES, type Language } from '../../../electron/i18n';
 import type { MeasureUnit, PenOptions, Theme } from '../../types/annotations';
+import { SyncSettingsSection } from './SyncSettingsSection';
 import styles from './SettingsDialog.module.css';
 
-type Tab = 'appearance' | 'pen' | 'tools' | 'shortcuts';
+export const OPEN_SYNC_SETTINGS_EVENT = 'malipdf:open-sync-settings';
+
+type Tab = 'appearance' | 'pen' | 'tools' | 'sync' | 'shortcuts';
 const TABS: { id: Tab; label: string }[] = [
   { id: 'appearance', label: 'Appearance' },
   { id: 'pen', label: 'Pen & Ink' },
   { id: 'tools', label: 'Tools' },
+  { id: 'sync', label: 'Sync' },
   { id: 'shortcuts', label: 'Shortcuts' },
 ];
 
@@ -75,6 +79,15 @@ export function SettingsDialog() {
   useEffect(() => {
     if (!open) setConfirmReset(false);
   }, [open]);
+
+  useEffect(() => {
+    const onOpenSync = () => {
+      setTab('sync');
+      setOpen(true);
+    };
+    window.addEventListener(OPEN_SYNC_SETTINGS_EVENT, onOpenSync);
+    return () => window.removeEventListener(OPEN_SYNC_SETTINGS_EVENT, onOpenSync);
+  }, [setOpen]);
 
   if (!open) return null;
   const { toolOptions: t } = ui;
@@ -188,6 +201,8 @@ export function SettingsDialog() {
               </div>
             </section>
           )}
+
+          {tab === 'sync' && <SyncSettingsSection />}
 
           {tab === 'shortcuts' && (
             <section>

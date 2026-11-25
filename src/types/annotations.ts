@@ -585,6 +585,13 @@ declare global {
       ocrRecognize?: (png: ArrayBuffer, languages?: string[]) => Promise<import('../pdf/ocr').OcrLine[]>;
       /** iPad: opens the share sheet for a PDF (send, save to Files, print). */
       sharePdf?: (name: string, data: ArrayBuffer | Uint8Array) => Promise<boolean>;
+      /** Desktop cross-device sync folder bridge (iCloud Drive / Google Drive / OneDrive / custom). */
+      syncDetectCloudFolders?: () => Promise<Array<{ id: 'icloud' | 'gdrive' | 'onedrive' | 'dropbox'; label: string; path: string }>>;
+      syncActivateFolder?: (folder: string) => Promise<string>;
+      syncList?: (folder: string) => Promise<Array<{ name: string; size: number; updatedAt: number }>>;
+      syncReadFile?: (folder: string, name: string) => Promise<ArrayBuffer | null>;
+      syncWriteFile?: (folder: string, name: string, data: ArrayBuffer) => Promise<boolean>;
+      syncDeleteFile?: (folder: string, name: string) => Promise<boolean>;
     };
   }
 }
