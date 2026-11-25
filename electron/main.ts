@@ -605,7 +605,13 @@ function detectCloudSyncFolders(): Array<{ id: 'icloud' | 'gdrive' | 'onedrive' 
   };
 
   if (process.platform === 'darwin') {
-    tryBase('icloud', 'iCloud Drive', path.join(home, 'Library', 'Mobile Documents', 'com~apple~CloudDocs'));
+    const mobileDocs = path.join(home, 'Library', 'Mobile Documents');
+    const appContainer = path.join(mobileDocs, 'iCloud~com~maliyildirimtr~malipdf');
+    if (fs.existsSync(appContainer)) {
+      found.push({ id: 'icloud', label: 'iCloud Drive', path: path.join(appContainer, 'Documents') });
+    } else {
+      tryBase('icloud', 'iCloud Drive', path.join(mobileDocs, 'com~apple~CloudDocs'));
+    }
     const cloudStorage = path.join(home, 'Library', 'CloudStorage');
     try {
       if (fs.existsSync(cloudStorage)) {

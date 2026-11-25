@@ -65,10 +65,52 @@ for (const [key, value] of Object.entries(ENTRIES)) {
 fs.writeFileSync(plistPath, plist);
 
 let project = fs.readFileSync(projectPath, 'utf8');
+let projectChanged = false;
 const ipadOnly = project.replace(/TARGETED_DEVICE_FAMILY = "1,2";/g, 'TARGETED_DEVICE_FAMILY = 2;');
 if (ipadOnly !== project) {
-  fs.writeFileSync(projectPath, ipadOnly);
+  project = ipadOnly;
+  projectChanged = true;
   added.push('iPad only');
+}
+
+// iCloud Drive entitlement for container iCloud.com.maliyildirimtr.malipdf
+const entitlementsPath = path.join(root, 'ios/App/App/App.entitlements');
+const entitlementsContent = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+\t<key>com.apple.developer.icloud-container-identifiers</key>
+\t<array>
+\t\t<string>iCloud.com.maliyildirimtr.malipdf</string>
+\t</array>
+\t<key>com.apple.developer.icloud-services</key>
+\t<array>
+\t\t<string>CloudDocuments</string>
+\t</array>
+\t<key>com.apple.developer.ubiquity-container-identifiers</key>
+\t<array>
+\t\t<string>iCloud.com.maliyildirimtr.malipdf</string>
+\t</array>
+</dict>
+</plist>
+`;
+if (!fs.existsSync(entitlementsPath) || fs.readFileSync(entitlementsPath, 'utf8') !== entitlementsContent) {
+  fs.writeFileSync(entitlementsPath, entitlementsContent);
+  added.push('App.entitlements (iCloud Drive)');
+}
+if (!project.includes('CODE_SIGN_ENTITLEMENTS')) {
+  const withEntitlements = project.replace(
+    /INFOPLIST_FILE = App\/Info\.plist;/g,
+    'CODE_SIGN_ENTITLEMENTS = App/App.entitlements;\n\t\t\t\tINFOPLIST_FILE = App/Info.plist;',
+  );
+  if (withEntitlements !== project) {
+    project = withEntitlements;
+    projectChanged = true;
+    added.push('CODE_SIGN_ENTITLEMENTS');
+  }
+}
+if (projectChanged) {
+  fs.writeFileSync(projectPath, project);
 }
 
 // App Store Connect requires PrivacyInfo.xcprivacy declaring Required Reason APIs
@@ -121,7 +163,7 @@ if (fs.existsSync(appDelegatePath)) {
     if (!swift.includes('import WebKit')) {
       swift = swift.replace('import UIKit', 'import UIKit\nimport WebKit');
     }
-    const attachCall = '\n        MaliPDFPencilHandler.shared.attach(to: window)\n';
+    const attachCall = '\n        MaliPDFPencilHandler.shared.attach(to: window)\n        MaliPDFiCloudBridge.shared.attach(to: window)\n';
     if (swift.includes('func applicationDidBecomeActive(_ application: UIApplication) {')) {
       swift = swift.replace(
         'func applicationDidBecomeActive(_ application: UIApplication) {',
@@ -180,6 +222,179 @@ final class MaliPDFPencilHandler: NSObject, UIPencilInteractionDelegate {
                 "window.dispatchEvent(new CustomEvent('malipdf:pencil-squeeze', { detail: \\(detail) }))",
                 completionHandler: nil
             )
+        }
+    }
+}
+
+// MARK: - MaliPDF Native iCloud Drive Ubiquity Container Bridge
+
+final class MaliPDFiCloudBridge: NSObject, WKScriptMessageHandler {
+    static let shared = MaliPDFiCloudBridge()
+    private static let containerId = "iCloud.com.maliyildirimtr.malipdf"
+    private weak var webView: WKWebView?
+    private weak var attachedController: WKUserContentController?
+    private let workQueue = DispatchQueue(label: "com.maliyildirimtr.malipdf.icloud", qos: .userInitiated)
+
+    func attach(to window: UIWindow?) {
+        guard let bridgeVC = window?.rootViewController as? CAPBridgeViewController,
+              let wv = bridgeVC.webView else { return }
+        self.webView = wv
+        let controller = wv.configuration.userContentController
+        if attachedController !== controller {
+            controller.removeScriptMessageHandler(forName: "malipdfICloud")
+            controller.add(self, name: "malipdfICloud")
+            attachedController = controller
+        }
+    }
+
+    private func docsDirectory() -> URL? {
+        guard let root = FileManager.default.url(forUbiquityContainerIdentifier: Self.containerId) else {
+            return nil
+        }
+        let docs = root.appendingPathComponent("Documents", isDirectory: true)
+        if !FileManager.default.fileExists(atPath: docs.path) {
+            try? FileManager.default.createDirectory(at: docs, withIntermediateDirectories: true)
+        }
+        return docs
+    }
+
+    private func safeFileURL(in docs: URL, name: String) -> URL? {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              !trimmed.contains("/"),
+              !trimmed.contains("\\\\"),
+              trimmed != ".",
+              trimmed != ".." else { return nil }
+        return docs.appendingPathComponent(trimmed)
+    }
+
+    private func reply(id: String, payload: [String: Any]) {
+        var msg = payload
+        msg["id"] = id
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: msg, options: []),
+              let jsonStr = String(data: jsonData, encoding: .utf8) else { return }
+        DispatchQueue.main.async {
+            self.webView?.evaluateJavaScript(
+                "window.__malipdfICloudResolve && window.__malipdfICloudResolve(\\(jsonStr))",
+                completionHandler: nil
+            )
+        }
+    }
+
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard let body = message.body as? [String: Any],
+              let id = body["id"] as? String,
+              let op = body["op"] as? String else { return }
+
+        workQueue.async { [weak self] in
+            guard let self = self else { return }
+            let docs = self.docsDirectory()
+
+            if op == "status" {
+                self.reply(id: id, payload: ["ok": true, "available": docs != nil])
+                return
+            }
+
+            guard let docs = docs else {
+                self.reply(id: id, payload: ["ok": false, "error": "iCloud Drive is unavailable on this device."])
+                return
+            }
+
+            switch op {
+            case "list":
+                var files: [[String: Any]] = []
+                if let urls = try? FileManager.default.contentsOfDirectory(
+                    at: docs,
+                    includingPropertiesForKeys: [.fileSizeKey, .contentModificationDateKey, .isRegularFileKey],
+                    options: []
+                ) {
+                    for url in urls {
+                        var fileName = url.lastPathComponent
+                        if fileName.hasPrefix(".") && fileName.hasSuffix(".icloud") {
+                            fileName = String(fileName.dropFirst().dropLast(".icloud".count))
+                        } else if fileName.hasPrefix(".") {
+                            continue
+                        }
+                        let vals = try? url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+                        let size = vals?.fileSize ?? 0
+                        let mtime = Int((vals?.contentModificationDate?.timeIntervalSince1970 ?? Date().timeIntervalSince1970) * 1000)
+                        files.append(["name": fileName, "size": size, "updatedAt": mtime])
+                    }
+                }
+                self.reply(id: id, payload: ["ok": true, "files": files])
+
+            case "read":
+                guard let name = body["name"] as? String,
+                      let fileURL = self.safeFileURL(in: docs, name: name) else {
+                    self.reply(id: id, payload: ["ok": false, "error": "Invalid file name."])
+                    return
+                }
+                let fm = FileManager.default
+                if !fm.fileExists(atPath: fileURL.path) {
+                    let placeholder = docs.appendingPathComponent("." + name + ".icloud")
+                    if fm.fileExists(atPath: placeholder.path) {
+                        try? fm.startDownloadingUbiquitousItem(at: fileURL)
+                        for _ in 0..<40 {
+                            if fm.fileExists(atPath: fileURL.path) { break }
+                            Thread.sleep(forTimeInterval: 0.2)
+                        }
+                    }
+                } else {
+                    try? fm.startDownloadingUbiquitousItem(at: fileURL)
+                }
+                guard fm.fileExists(atPath: fileURL.path) else {
+                    self.reply(id: id, payload: ["ok": true, "data": NSNull()])
+                    return
+                }
+                var coordError: NSError?
+                var fileData: Data?
+                NSFileCoordinator().coordinate(readingItemAt: fileURL, options: [], error: &coordError) { url in
+                    fileData = try? Data(contentsOf: url)
+                }
+                if let data = fileData {
+                    self.reply(id: id, payload: ["ok": true, "data": data.base64EncodedString()])
+                } else {
+                    self.reply(id: id, payload: ["ok": true, "data": NSNull()])
+                }
+
+            case "write":
+                guard let name = body["name"] as? String,
+                      let base64 = body["data"] as? String,
+                      let data = Data(base64Encoded: base64),
+                      let fileURL = self.safeFileURL(in: docs, name: name) else {
+                    self.reply(id: id, payload: ["ok": false, "error": "Invalid write payload."])
+                    return
+                }
+                var coordError: NSError?
+                var writeError: Error?
+                NSFileCoordinator().coordinate(writingItemAt: fileURL, options: .forReplacing, error: &coordError) { url in
+                    do {
+                        try data.write(to: url, options: .atomic)
+                    } catch {
+                        writeError = error
+                    }
+                }
+                if let err = writeError ?? coordError {
+                    self.reply(id: id, payload: ["ok": false, "error": err.localizedDescription])
+                } else {
+                    self.reply(id: id, payload: ["ok": true])
+                }
+
+            case "delete":
+                guard let name = body["name"] as? String,
+                      let fileURL = self.safeFileURL(in: docs, name: name) else {
+                    self.reply(id: id, payload: ["ok": false, "error": "Invalid file name."])
+                    return
+                }
+                var coordError: NSError?
+                NSFileCoordinator().coordinate(writingItemAt: fileURL, options: .forDeleting, error: &coordError) { url in
+                    try? FileManager.default.removeItem(at: url)
+                }
+                self.reply(id: id, payload: ["ok": true])
+
+            default:
+                self.reply(id: id, payload: ["ok": false, "error": "Unknown op"])
+            }
         }
     }
 }

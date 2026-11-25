@@ -1135,6 +1135,8 @@ export const TR: Readonly<Record<string, string>> = {
     'Google Drive’a bağlanmak için bir Google OAuth İstemci Kimliği veya erişim belirteci girin.',
   'Auto-sync when saving documents or switching back to MaliPDF':
     'Belgeleri kaydederken veya MaliPDF’e geri dönerken otomatik senkronize et',
+  'iCloud Drive is turned off on this iPad. Enable iCloud Drive in Settings › Apple Account › iCloud.':
+    'Bu iPad’de iCloud Drive kapalı. Ayarlar › Apple Hesabı › iCloud bölümünden iCloud Drive’ı açın.',
 };
 
 type Pattern = readonly [RegExp, (...groups: string[]) => string];
