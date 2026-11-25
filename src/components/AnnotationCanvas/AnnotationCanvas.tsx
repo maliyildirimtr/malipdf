@@ -75,7 +75,8 @@ import {
   renderFreeform,
   isMultiplyAnnotation,
 } from '../../pdf/annotationRenderer';
-import { simplifyInkPoints, stabilizePoints } from '../../pdf/inkGeometry';
+import { commandsToPath2D, simplifyInkPoints, stabilizePoints, type PathCommand } from '../../pdf/inkGeometry';
+import { LiveInkBuilder, lowLatencyContext, type LiveInkFrame, type LiveInkStyle } from '../../pdf/liveInk';
 import { annotationsInLasso } from '../../pdf/lassoSelect';
 import { recognizeShape, type RecognizedShape } from '../../pdf/shapeRecognizer';
 import { isScribbleGesture, findScribbleTargets } from '../../pdf/scribbleErase';
@@ -308,6 +309,8 @@ function annotationFromShape(
 
 /** Points closer than this (screen px) to the drawn line are dropped on pen-up. */
 const INK_SIMPLIFY_PX = 0.35;
+/** Predicted pointer positions are drawn at most this far (screen px) ahead of the pen. */
+const MAX_PREDICTION_PX = 16;
 /** Touches this soon after pen input are treated as a resting palm. */
 const PALM_REJECTION_MS = 1000;
 
@@ -323,6 +326,24 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
   // the ink layer, so the page text below them stays dark.
   const highlightCanvasRef  = useRef<HTMLCanvasElement>(null);
   const drawingCanvasRef    = useRef<HTMLCanvasElement>(null);
+  // Live ink: the "dry" part of the stroke being drawn (never cleared during
+  // the stroke, low-latency context) under the "wet" tail on drawingCanvasRef.
+  // Both sit in inkGroupRef, which carries the stroke's opacity/blend mode.
+  const inkDryCanvasRef     = useRef<HTMLCanvasElement>(null);
+  const inkGroupRef         = useRef<HTMLDivElement>(null);
+  const inkDryContextRef    = useRef<CanvasRenderingContext2D | null>(null);
+  const inkDryDirtyRef      = useRef(false);
+  const inkDryClearRaf      = useRef<number | null>(null);
+  const liveInkRef          = useRef<{
+    builder: LiveInkBuilder;
+    style: LiveInkStyle;
+    color: string;
+    mode: LiveInkFrame['mode'];
+    /** Area of the wet tail drawn last (CSS px, layer coordinates), cleared on the next event. */
+    wetBounds: { x0: number; y0: number; x1: number; y1: number } | null;
+  } | null>(null);
+  /** The pen-down event had no pressure (some Windows/Wacom drivers): take the first real one. */
+  const firstPressurePendingRef = useRef(false);
   const interactionRef      = useRef<HTMLDivElement>(null);
   const textareaRef         = useRef<HTMLTextAreaElement>(null);
 
@@ -617,6 +638,7 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     sizeCanvas(highlightCanvasRef.current);
     sizeCanvas(annotationCanvasRef.current);
     sizeCanvas(drawingCanvasRef.current);
+    sizeCanvas(inkDryCanvasRef.current);
     lastLayerDraw.current = null;
     redrawAnnotationLayer();
     if (mode.current !== 'idle') renderPreview();
@@ -787,10 +809,186 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
   // ── Drawing canvas helpers ────────────────────────────────────────────────
 
   function clearDrawingCanvas() {
+    endLiveInk();
     const canvas = drawingCanvasRef.current;
     if (!canvas) return;
     const ctx = layerContext(canvas);
     if (ctx) clearLayer(ctx, canvas);
+  }
+
+  // ── Live ink (wet / dry) ──────────────────────────────────────────────────
+  //
+  // Only the new part of the stroke is tessellated and drawn per pointer
+  // event: finished pieces go once onto the dry canvas, the short tail near
+  // the pen (stabilizer catch-up + prediction) is redrawn on the wet canvas.
+  // Before, the whole stroke was rebuilt and filled every frame (O(n²)).
+
+  /** Live geometry settings for a gesture tool, or null when it is drawn by the full preview (styled nibs). */
+  function liveInkSettings(tool: ToolType | null): { style: LiveInkStyle; color: string; opacity: number; blend: string } | null {
+    if (tool === 'highlighter') {
+      const o = toolOptions.highlighter;
+      return { style: { kind: 'highlighter', width: o.width * scale, smooth: true, pressure: false }, color: o.color, opacity: o.opacity, blend: 'multiply' };
+    }
+    if (tool === 'pen') {
+      const o = toolOptions.pen;
+      // Nib styles are shaped in PDF space with whole-stroke tapers: full preview.
+      if (o.penStyle && o.penStyle !== 'ballpoint') return null;
+      return {
+        style: { kind: 'pen', width: o.width * scale, smooth: o.smooth, pressure: o.pressureSensitive, stabilizer: o.stabilizer },
+        color: o.color, opacity: o.opacity, blend: 'normal',
+      };
+    }
+    return null;
+  }
+
+  function clearInkDryCanvas() {
+    if (inkDryClearRaf.current !== null) cancelAnimationFrame(inkDryClearRaf.current);
+    inkDryClearRaf.current = null;
+    const canvas = inkDryCanvasRef.current;
+    const ctx = inkDryContextRef.current;
+    if (canvas && ctx && inkDryDirtyRef.current) clearLayer(ctx, canvas);
+    inkDryDirtyRef.current = false;
+  }
+
+  function beginLiveInk(tool: ToolType | null): boolean {
+    const settings = liveInkSettings(tool);
+    const dryCanvas = inkDryCanvasRef.current;
+    const group = inkGroupRef.current;
+    if (!settings || !dryCanvas || !group || !drawingCanvasRef.current) {
+      liveInkRef.current = null;
+      return false;
+    }
+    if (!inkDryContextRef.current) inkDryContextRef.current = lowLatencyContext(dryCanvas);
+    if (!inkDryContextRef.current) return false;
+    clearInkDryCanvas();
+    dryCanvas.style.visibility = '';
+    // Both layers are drawn opaque; the group applies opacity once, so the
+    // pieces never darken where they overlap (like the committed stroke).
+    group.style.opacity = String(Math.max(0, Math.min(1, settings.opacity)));
+    group.style.mixBlendMode = settings.blend;
+    drawingCanvasRef.current.style.mixBlendMode = 'normal';
+    liveInkRef.current = { builder: new LiveInkBuilder(settings.style), style: settings.style, color: settings.color, mode: 'fill', wetBounds: null };
+    return true;
+  }
+
+  /**
+   * Ends the live stroke. The dry canvas may be low-latency (presented
+   * outside the normal frame), so clearing it right away could show a frame
+   * without the stroke before the committed one appears: hide it with the
+   * normal frame instead and clear it a little later.
+   */
+  function endLiveInk() {
+    const wasLive = liveInkRef.current !== null;
+    liveInkRef.current = null;
+    const group = inkGroupRef.current;
+    if (wasLive && group) {
+      group.style.opacity = '';
+      group.style.mixBlendMode = '';
+    }
+    const dryCanvas = inkDryCanvasRef.current;
+    if (!dryCanvas || !inkDryDirtyRef.current || inkDryClearRaf.current !== null) return;
+    dryCanvas.style.visibility = 'hidden';
+    inkDryClearRaf.current = requestAnimationFrame(() => {
+      inkDryClearRaf.current = requestAnimationFrame(() => {
+        inkDryClearRaf.current = null;
+        clearInkDryCanvas();
+      });
+    });
+  }
+
+  function paintInkCommands(ctx: CanvasRenderingContext2D, commands: PathCommand[], mode: LiveInkFrame['mode'], color: string, width: number) {
+    const region = layerRegionRef.current;
+    const out = dprRef.current;
+    ctx.setTransform(out, 0, 0, out, -region.x * out, -region.y * out);
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+    const path = commandsToPath2D(commands);
+    if (mode === 'fill') {
+      ctx.fillStyle = color;
+      ctx.fill(path);
+    } else {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.stroke(path);
+    }
+  }
+
+  /** Draws the new part of the live stroke now (called straight from pointer events). */
+  function renderLiveInk(full = false) {
+    const live = liveInkRef.current;
+    const dryCanvas = inkDryCanvasRef.current;
+    const dryCtx = inkDryContextRef.current;
+    const wetCanvas = drawingCanvasRef.current;
+    const wetCtx = wetCanvas?.getContext('2d') ?? null;
+    if (!live || !dryCanvas || !dryCtx || !wetCanvas || !wetCtx) return;
+    if (full) {
+      live.builder = new LiveInkBuilder(live.style);
+      live.wetBounds = null;
+    }
+    const frame = live.builder.update(activePoints.current, predictedPoints.current);
+    live.mode = frame.mode;
+    const width = live.style.width;
+
+    if (frame.reset || full) {
+      inkDryDirtyRef.current = true; // force the clear
+      clearInkDryCanvas();
+    }
+    if (frame.dry.length) {
+      paintInkCommands(dryCtx, frame.dry, frame.mode, live.color, width);
+      inkDryDirtyRef.current = true;
+    }
+
+    // Wet tail: clear only where it was drawn last time.
+    const old = live.wetBounds;
+    if (old && !full) {
+      const region = layerRegionRef.current;
+      const out = dprRef.current;
+      wetCtx.setTransform(out, 0, 0, out, -region.x * out, -region.y * out);
+      wetCtx.clearRect(old.x0, old.y0, old.x1 - old.x0, old.y1 - old.y0);
+    } else {
+      clearLayer(wetCtx, wetCanvas);
+    }
+    live.wetBounds = null;
+    if (frame.wet.length) {
+      paintInkCommands(wetCtx, frame.wet, frame.mode, live.color, width);
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const c of frame.wet) {
+        if (c.op === 'Z') continue;
+        if (c.x < x0) x0 = c.x; if (c.x > x1) x1 = c.x;
+        if (c.y < y0) y0 = c.y; if (c.y > y1) y1 = c.y;
+        if (c.op === 'C') {
+          x0 = Math.min(x0, c.x1, c.x2); x1 = Math.max(x1, c.x1, c.x2);
+          y0 = Math.min(y0, c.y1, c.y2); y1 = Math.max(y1, c.y1, c.y2);
+        }
+      }
+      const pad = 2 + (frame.mode === 'stroke' ? width / 2 : 0);
+      live.wetBounds = { x0: x0 - pad, y0: y0 - pad, x1: x1 + pad, y1: y1 + pad };
+    }
+  }
+
+  /** Predicted pen positions (drawn, never kept), capped and with the last real pressure. */
+  function predictedInkPoints(native: PointerEvent, last: InputPoint | undefined): InputPoint[] {
+    if (!last) return [];
+    let events: PointerEvent[] = [];
+    try {
+      events = native.getPredictedEvents?.() ?? [];
+    } catch {
+      return [];
+    }
+    const out: InputPoint[] = [];
+    for (const ev of events.slice(0, 2)) {
+      if (!Number.isFinite(ev.clientX) || !Number.isFinite(ev.clientY) || (ev.clientX === 0 && ev.clientY === 0)) continue;
+      const local = toLocalInkPoint(ev.clientX, ev.clientY);
+      const dx = local.x - last.x;
+      const dy = local.y - last.y;
+      const d = Math.hypot(dx, dy);
+      const k = d > MAX_PREDICTION_PX ? MAX_PREDICTION_PX / d : 1;
+      // Predicted pressure is unreliable (WebKit reports 0 / stale values): keep the real one.
+      out.push({ x: last.x + dx * k, y: last.y + dy * k, pressure: last.pressure, timestamp: ev.timeStamp, tilt: last.tilt });
+    }
+    return out;
   }
 
   function schedulePreviewRender() {
@@ -810,8 +1008,11 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
     clearLayer(ctx, canvas);
 
     const m = mode.current;
+    if (m !== 'drawing' && liveInkRef.current) endLiveInk();
 
-    if (m === 'drawing') {
+    if (m === 'drawing' && liveInkRef.current) {
+      renderLiveInk(true);
+    } else if (m === 'drawing') {
       const pts = [...activePoints.current, ...predictedPoints.current];
       const preview = buildInkAnnotation(pts, gestureToolRef.current ?? interactionTool);
       if (preview) renderAnnotations(ctx, [preview], transform, dpr);
@@ -1718,9 +1919,11 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
       rulerSnapRef.current = edge ? { edge, offset: inkWidth / 2 } : null;
       const start = toLocalInkPoint(e.clientX, e.clientY);
       activePoints.current = [{ x: start.x, y: start.y, pressure: sanitizePressure(e.pressure), timestamp: e.timeStamp, tilt: pointerTilt(e) }];
+      firstPressurePendingRef.current = e.pointerType === 'pen' && !(e.pressure > 0);
       holdShape.current = null;
       armHoldToShape(start.x, start.y, true);
-      schedulePreviewRender();
+      if (beginLiveInk(interactionTool)) renderLiveInk(true);
+      else schedulePreviewRender();
       return;
     }
 
@@ -2065,6 +2268,14 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
       const events = getSafeCoalescedEvents(e);
       for (const ev of events) {
         const local = toLocalInkPoint(ev.clientX, ev.clientY);
+        if (firstPressurePendingRef.current && Number.isFinite(ev.pressure) && ev.pressure > 0) {
+          // The pen-down sample had no pressure: start from the first real one
+          // instead of a 0.5 guess (no fat blob at the start of light strokes).
+          firstPressurePendingRef.current = false;
+          if (activePoints.current.length === 1) {
+            activePoints.current[0] = { ...activePoints.current[0], pressure: sanitizePressure(ev.pressure) };
+          }
+        }
         const prev = activePoints.current[activePoints.current.length - 1];
         const nextPressure = sanitizePressure(ev.pressure, prev?.pressure);
         const stepDist = prev ? Math.hypot(local.x - prev.x, local.y - prev.y) : Infinity;
@@ -2083,23 +2294,18 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
           tilt: pointerTilt(ev),
         });
       }
-      // Predicted points shorten visible lag on desktop; on iPadOS WKWebView
-      // predicted events often carry zero/stale pressure and cause dot flicker.
+      // Predicted points shorten visible lag (desktop and iPad). Their pressure
+      // is not used (iPadOS WKWebView reports zero/stale values, which used to
+      // flicker as dots): they repeat the last real pressure.
       const lastPoint = activePoints.current[activePoints.current.length - 1];
-      predictedPoints.current = isIpadApp()
-        ? []
-        : (e.nativeEvent.getPredictedEvents?.() ?? []).slice(0, 2).map((ev) => {
-            const local = toLocalInkPoint(ev.clientX, ev.clientY);
-            return {
-              x: local.x,
-              y: local.y,
-              pressure: sanitizePressure(ev.pressure, lastPoint?.pressure),
-              timestamp: ev.timeStamp,
-              tilt: pointerTilt(ev),
-            };
-          });
+      predictedPoints.current = predictedInkPoints(e.nativeEvent, lastPoint);
       if (lastPoint) armHoldToShape(lastPoint.x, lastPoint.y);
-      schedulePreviewRender();
+      if (liveInkRef.current) {
+        // Draw now, in the input event, instead of waiting for the next frame.
+        renderLiveInk();
+      } else {
+        schedulePreviewRender();
+      }
       return;
     }
 
@@ -3294,16 +3500,27 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
           pointerEvents: 'none',
         }}
       />
-      <canvas
-        ref={drawingCanvasRef}
-        style={{
-          position: 'absolute',
-          left: 0,
-          top: 0,
-          pointerEvents: 'none',
-          opacity: (mode.current === 'moving' || mode.current === 'resizing') ? 0.7 : 1, // Visual feedback during transient moves
-        }}
-      />
+      <div ref={inkGroupRef} style={{ position: 'absolute', left: 0, top: 0, width: 0, height: 0, pointerEvents: 'none' }}>
+        <canvas
+          ref={inkDryCanvasRef}
+          style={{
+            position: 'absolute',
+            left: 0,
+            top: 0,
+            pointerEvents: 'none',
+          }}
+        />
+        <canvas
+          ref={drawingCanvasRef}
+          style={{
+            position: 'absolute',
+            left: 0,
+            top: 0,
+            pointerEvents: 'none',
+            opacity: (mode.current === 'moving' || mode.current === 'resizing') ? 0.7 : 1, // Visual feedback during transient moves
+          }}
+        />
+      </div>
 
       {replaying && (
         <div
