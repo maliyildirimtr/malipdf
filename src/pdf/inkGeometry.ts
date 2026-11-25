@@ -41,7 +41,7 @@ export function hasRealPressure(points: readonly InputPoint[]): boolean {
 // ─── Path building ───────────────────────────────────────────────────────────
 
 /** Quadratic (from, control, to) as an exact cubic. */
-function quadToCubic(from: XY, control: XY, to: XY): PathCommand {
+export function quadToCubic(from: XY, control: XY, to: XY): PathCommand {
   return {
     op: 'C',
     x1: from.x + (2 / 3) * (control.x - from.x),
@@ -89,7 +89,7 @@ export function circlePath(cx: number, cy: number, r: number): PathCommand[] {
   ];
 }
 
-function mid(a: XY, b: XY): XY {
+export function mid(a: XY, b: XY): XY {
   return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
 }
 
@@ -131,6 +131,39 @@ function sampleSmoothed(points: readonly InputPoint[], smooth: boolean): InputPo
   }
   out.push(points[points.length - 1]);
   return out;
+}
+
+/**
+ * The convex outer-tangent trapezoid joining circle (p0, r0) to circle
+ * (p1, r1), in CCW order. Shared by the full outline and the live (streaming)
+ * renderer so both emit exactly the same geometry.
+ */
+export function pushCapsuleTrapezoid(commands: PathCommand[], p0: XY, p1: XY, r0: number, r1: number): void {
+  const dx = p1.x - p0.x;
+  const dy = p1.y - p0.y;
+  const dist = Math.hypot(dx, dy);
+  if (!(dist > 1e-6)) return;
+  // Exact outer-tangent offset when radius changes, clamped safely when one
+  // circle nearly contains the other.
+  const dr = r0 - r1;
+  if (!(Math.abs(dr) < dist * 0.98)) return;
+  const ux = dx / dist;
+  const uy = dy / dist;
+  const cosA = dr / dist;
+  const sinA = Math.sqrt(Math.max(0, 1 - cosA * cosA));
+  // Left & right unit normals rotated by outer-tangent angle
+  const lx = ux * cosA - uy * sinA;
+  const ly = uy * cosA + ux * sinA;
+  const rx = ux * cosA + uy * sinA;
+  const ry = uy * cosA - ux * sinA;
+  // Emit in CCW order (A -> D -> C -> B) matching circlePath's CCW winding.
+  commands.push(
+    { op: 'M', x: p0.x + lx * r0, y: p0.y + ly * r0 },
+    { op: 'L', x: p0.x + rx * r0, y: p0.y + ry * r0 },
+    { op: 'L', x: p1.x + rx * r1, y: p1.y + ry * r1 },
+    { op: 'L', x: p1.x + lx * r1, y: p1.y + ly * r1 },
+    { op: 'Z' },
+  );
 }
 
 /**
@@ -185,43 +218,8 @@ export function buildCapsuleOutline(
   for (let i = 0; i < pts.length - 1; i++) {
     const p0 = pts[i];
     const p1 = pts[i + 1];
-    const r0 = rads[i];
     const r1 = rads[i + 1];
-    const dx = p1.x - p0.x;
-    const dy = p1.y - p0.y;
-    const dist = Math.hypot(dx, dy);
-    if (dist > 1e-6) {
-      // Exact outer-tangent offset when radius changes, clamped safely when one
-      // circle nearly contains the other.
-      const dr = r0 - r1;
-      if (Math.abs(dr) < dist * 0.98) {
-        const ux = dx / dist;
-        const uy = dy / dist;
-        const cosA = dr / dist;
-        const sinA = Math.sqrt(Math.max(0, 1 - cosA * cosA));
-        // Left & right unit normals rotated by outer-tangent angle
-        const lx = ux * cosA - uy * sinA;
-        const ly = uy * cosA + ux * sinA;
-        const rx = ux * cosA + uy * sinA;
-        const ry = uy * cosA - ux * sinA;
-        const ax = p0.x + lx * r0;
-        const ay = p0.y + ly * r0;
-        const bx = p1.x + lx * r1;
-        const by = p1.y + ly * r1;
-        const cx = p1.x + rx * r1;
-        const cy = p1.y + ry * r1;
-        const ddx = p0.x + rx * r0;
-        const ddy = p0.y + ry * r0;
-        // Emit in CCW order (A -> D -> C -> B) matching circlePath's CCW winding.
-        commands.push(
-          { op: 'M', x: ax, y: ay },
-          { op: 'L', x: ddx, y: ddy },
-          { op: 'L', x: cx, y: cy },
-          { op: 'L', x: bx, y: by },
-          { op: 'Z' },
-        );
-      }
-    }
+    pushCapsuleTrapezoid(commands, p0, p1, rads[i], r1);
     if (i < pts.length - 2 || roundEndCaps) {
       pushCircle(p1.x, p1.y, r1);
     }
