@@ -190,8 +190,6 @@ export function TabletLibrary() {
   const syncProvider = useSyncStore((s) => s.provider);
   const syncStatus = useSyncStore((s) => s.status);
   const syncFolderPath = useSyncStore((s) => s.folderPath);
-  const googleClientId = useSyncStore((s) => s.googleClientId);
-  const setGoogleClientId = useSyncStore((s) => s.setGoogleClientId);
   const cloudOnboardingSeen = useSyncStore((s) => s.cloudOnboardingSeen);
   const setCloudOnboardingSeen = useSyncStore((s) => s.setCloudOnboardingSeen);
 
@@ -209,11 +207,11 @@ export function TabletLibrary() {
   const [modalColor, setModalColor] = useState<FolderColorId>('blue');
   const [creatingQuick, setCreatingQuick] = useState(false);
   const [chosenCloudProvider, setChosenCloudProvider] = useState<Exclude<SyncProviderId, 'local'>>(
-    syncProvider !== 'local' ? syncProvider : 'icloud',
+    // Google Drive is not selectable (see GOOGLE_DRIVE_UNAVAILABLE in syncManager).
+    syncProvider !== 'local' && syncProvider !== 'gdrive' ? syncProvider : 'icloud',
   );
   const [detectedFolders, setDetectedFolders] = useState<DetectedCloudFolder[]>([]);
   const [chosenFolderPath, setChosenFolderPath] = useState<string>(syncFolderPath ?? '');
-  const [googleTokenInput, setGoogleTokenInput] = useState('');
   const [connectingCloud, setConnectingCloud] = useState(false);
   const [isCompactPhone, setIsCompactPhone] = useState(() => typeof window !== 'undefined' && window.innerWidth < 640);
 
@@ -590,25 +588,18 @@ export function TabletLibrary() {
       folderArg = picked;
       setChosenFolderPath(picked);
     }
-    if (chosenCloudProvider === 'gdrive' && !googleTokenInput.trim() && !googleClientId.trim()) {
-      notifyUser('info', 'Enter a Google OAuth Client ID or access token to connect Google Drive.');
-      return;
-    }
 
     setConnectingCloud(true);
     try {
       const ok = await switchSyncProvider(chosenCloudProvider, {
         migrateExisting: false,
         folderPath: chosenCloudProvider === 'folder' ? folderArg : undefined,
-        accessToken: googleTokenInput.trim() || undefined,
-        clientId: googleClientId.trim() || undefined,
       });
       if (!ok) {
         const err = useSyncStore.getState().lastError;
         if (err) notifyUser('error', err);
         return;
       }
-      setGoogleTokenInput('');
       setCloudOnboardingSeen(true);
       const pending = modal?.kind === 'cloudModal' ? modal.pendingTransfer : undefined;
       setModal(null);
@@ -1637,13 +1628,17 @@ export function TabletLibrary() {
                     <Cloud size={15} />
                     <span data-no-translate>iCloud Drive</span>
                   </button>
+                  {/* Not selectable: direct Google Drive sync cannot work in the packaged app. */}
                   <button
                     type="button"
-                    className={`${styles.cloudProviderTab} ${chosenCloudProvider === 'gdrive' ? styles.cloudProviderTabActive : ''}`}
-                    onClick={() => setChosenCloudProvider('gdrive')}
+                    className={styles.cloudProviderTab}
+                    disabled
+                    aria-disabled="true"
+                    style={{ opacity: 0.55, cursor: 'not-allowed' }}
                   >
                     <Cloud size={15} />
                     <span data-no-translate>Google Drive</span>
+                    <span>· Coming soon</span>
                   </button>
                   {isDesktopElectron && (
                     <button
@@ -1656,25 +1651,6 @@ export function TabletLibrary() {
                     </button>
                   )}
                 </div>
-
-                {chosenCloudProvider === 'gdrive' && (
-                  <div className={styles.cloudInlineInputs}>
-                    <input
-                      type="text"
-                      className={styles.cloudInlineInput}
-                      placeholder="Google OAuth Client ID (optional)"
-                      value={googleClientId}
-                      onChange={(e) => setGoogleClientId(e.target.value)}
-                    />
-                    <input
-                      type="password"
-                      className={styles.cloudInlineInput}
-                      placeholder="Or paste OAuth Access Token"
-                      value={googleTokenInput}
-                      onChange={(e) => setGoogleTokenInput(e.target.value)}
-                    />
-                  </div>
-                )}
 
                 {chosenCloudProvider === 'folder' && isDesktopElectron && (
                   <div className={styles.cloudInlineFolders}>

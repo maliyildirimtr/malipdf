@@ -7,7 +7,7 @@
  */
 
 import { useSyncStore } from '../../store/syncStore';
-import type { RemoteFileEntry, SyncAdapter, SyncManifest } from '../syncTypes';
+import { parseSyncManifest, type RemoteFileEntry, type SyncAdapter, type SyncManifest } from '../syncTypes';
 
 const DRIVE_API = 'https://www.googleapis.com/drive/v3';
 const DRIVE_UPLOAD = 'https://www.googleapis.com/upload/drive/v3';
@@ -204,17 +204,13 @@ export class GoogleDriveSyncAdapter implements SyncAdapter {
     if (!res.ok) throw new Error(`Google Drive upload failed for ${name} (${res.status})`);
   }
 
+  /** null ONLY when the manifest file does not exist; any failure throws (see SyncAdapter). */
   async readManifest(): Promise<SyncManifest | null> {
     const file = await this.findFileByName(MANIFEST_NAME);
     if (!file) return null;
     const res = await fetch(`${DRIVE_API}/files/${file.id}?alt=media`, { headers: this.authHeaders() });
-    if (!res.ok) return null;
-    try {
-      const parsed = (await res.json()) as SyncManifest;
-      return parsed?.version === 1 ? parsed : null;
-    } catch {
-      return null;
-    }
+    if (!res.ok) throw new Error(`Google Drive could not read the sync index (${res.status}).`);
+    return parseSyncManifest(new Uint8Array(await res.arrayBuffer()));
   }
 
   async writeManifest(manifest: SyncManifest): Promise<void> {

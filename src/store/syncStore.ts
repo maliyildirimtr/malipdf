@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { nanoid } from '../utils/nanoid';
-import type { SyncProviderId, SyncStatus } from '../sync/syncTypes';
+import type { SyncProviderId, SyncStatus, SyncTombstone } from '../sync/syncTypes';
 
 export interface SyncStats {
   uploaded: number;
@@ -27,6 +27,12 @@ interface SyncStoreState {
   googleEmail: string | null;
   googleRootFolderId: string | null;
   cloudOnboardingSeen: boolean;
+  /**
+   * Cloud documents permanently deleted on this device that have not yet been
+   * published to the remote manifest. Without them the next sync would bring
+   * the document back from the remote copy.
+   */
+  tombstones: SyncTombstone[];
 
   setProvider: (provider: SyncProviderId) => void;
   setStatus: (status: SyncStatus, error?: string | null) => void;
@@ -36,7 +42,14 @@ interface SyncStoreState {
   setGoogleSession: (session: { accessToken: string; expiresAt: number; email?: string | null } | null) => void;
   setGoogleRootFolderId: (id: string | null) => void;
   setCloudOnboardingSeen: (seen: boolean) => void;
-  recordSyncSuccess: (stats: SyncStats) => void;
+  addTombstones: (tombstones: SyncTombstone[]) => void;
+  /** Drops tombstones that are now recorded in the remote manifest. */
+  clearTombstones: (ids: string[]) => void;
+  /**
+   * `startedAt` is when the sync began: anything changed while it ran has a
+   * later `updatedAt` and is therefore still seen as "changed since last sync".
+   */
+  recordSyncSuccess: (stats: SyncStats, startedAt: number) => void;
 }
 
 export const useSyncStore = create<SyncStoreState>()(
@@ -56,6 +69,7 @@ export const useSyncStore = create<SyncStoreState>()(
       googleEmail: null,
       googleRootFolderId: null,
       cloudOnboardingSeen: false,
+      tombstones: [],
 
       setProvider: (provider) => set({ provider, lastError: null }),
       setStatus: (status, error = null) => set({ status, lastError: error }),
@@ -71,10 +85,21 @@ export const useSyncStore = create<SyncStoreState>()(
         }),
       setGoogleRootFolderId: (googleRootFolderId) => set({ googleRootFolderId }),
       setCloudOnboardingSeen: (cloudOnboardingSeen) => set({ cloudOnboardingSeen }),
-      recordSyncSuccess: (stats) =>
+      addTombstones: (tombstones) =>
+        set((s) => {
+          const byId = new Map(s.tombstones.map((t) => [t.id, t]));
+          for (const t of tombstones) byId.set(t.id, t);
+          return { tombstones: Array.from(byId.values()) };
+        }),
+      clearTombstones: (ids) =>
+        set((s) => {
+          const drop = new Set(ids);
+          return { tombstones: s.tombstones.filter((t) => !drop.has(t.id)) };
+        }),
+      recordSyncSuccess: (stats, startedAt) =>
         set({
           status: 'synced',
-          lastSyncedAt: Date.now(),
+          lastSyncedAt: startedAt,
           lastError: null,
           stats,
         }),
@@ -93,6 +118,7 @@ export const useSyncStore = create<SyncStoreState>()(
         googleEmail: state.googleEmail,
         googleRootFolderId: state.googleRootFolderId,
         cloudOnboardingSeen: state.cloudOnboardingSeen,
+        tombstones: state.tombstones,
       }),
     },
   ),

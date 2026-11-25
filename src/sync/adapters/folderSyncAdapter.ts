@@ -7,7 +7,7 @@
  */
 
 import { useSyncStore } from '../../store/syncStore';
-import type { RemoteFileEntry, SyncAdapter, SyncManifest } from '../syncTypes';
+import { parseSyncManifest, type RemoteFileEntry, type SyncAdapter, type SyncManifest } from '../syncTypes';
 
 const MANIFEST_NAME = 'library-sync.json';
 
@@ -51,19 +51,19 @@ export class FolderSyncAdapter implements SyncAdapter {
     useSyncStore.getState().setFolderPath(null);
   }
 
+  /**
+   * Returns null ONLY when there is no manifest file yet. Any other failure
+   * (IPC/disk error, partial write, bad JSON, unknown version) throws: treating
+   * it as "no manifest" would make the sync re-upload every local document
+   * over possibly newer remote files.
+   */
   async readManifest(): Promise<SyncManifest | null> {
     const folder = this.getFolder();
-    if (!folder || !hasDesktopSyncIPC()) return null;
+    if (!folder || !hasDesktopSyncIPC()) throw new Error('Sync folder not configured.');
     await window.electronAPI.syncActivateFolder!(folder);
     const buf = await window.electronAPI.syncReadFile!(folder, MANIFEST_NAME);
     if (!buf) return null;
-    try {
-      const text = new TextDecoder().decode(new Uint8Array(buf));
-      const parsed = JSON.parse(text) as SyncManifest;
-      return parsed?.version === 1 ? parsed : null;
-    } catch {
-      return null;
-    }
+    return parseSyncManifest(new Uint8Array(buf));
   }
 
   async writeManifest(manifest: SyncManifest): Promise<void> {
@@ -97,7 +97,7 @@ export class FolderSyncAdapter implements SyncAdapter {
 
   async listRemotePdfs(): Promise<RemoteFileEntry[]> {
     const folder = this.getFolder();
-    if (!folder || !hasDesktopSyncIPC()) return [];
+    if (!folder || !hasDesktopSyncIPC()) throw new Error('Sync folder not configured.');
     const entries = await window.electronAPI.syncList!(folder);
     return entries.filter((e) => /\.pdf$/i.test(e.name));
   }

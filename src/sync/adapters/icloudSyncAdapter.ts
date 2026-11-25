@@ -4,16 +4,18 @@
  * - On Mac & Windows Desktop: automatically connects to the system iCloud Drive
  *   `MaliPDF` container (`iCloud~com~maliyildirimtr~malipdf/Documents`) via Electron IPC.
  * - On iPadOS / iOS: talks directly to the native Apple Ubiquity Container
- *   (`iCloud.com.maliyildirimtr.malipdf/Documents`) via `MaliPDFiCloudBridge`,
- *   falling back to Capacitor `DOCUMENTS` if running in an older shell.
+ *   (`iCloud.com.maliyildirimtr.malipdf/Documents`) via `MaliPDFiCloudBridge`.
+ *   Without that bridge (older shell) iCloud is reported UNAVAILABLE: the
+ *   app's local Documents folder must never be used as the "remote", or cloud
+ *   docs would overwrite/delete local ones while the UI says "synced".
  */
 
-import { base64ToBytes, bytesToBase64, callNative, isIpadApp } from '../../platform/native';
+import { base64ToBytes, bytesToBase64, isIpadApp } from '../../platform/native';
 import { useSyncStore } from '../../store/syncStore';
-import type { RemoteFileEntry, SyncAdapter, SyncManifest } from '../syncTypes';
+import { parseSyncManifest, type RemoteFileEntry, type SyncAdapter, type SyncManifest } from '../syncTypes';
 
 const MANIFEST_NAME = 'library-sync.json';
-const DOCUMENTS = 'DOCUMENTS';
+const NO_BRIDGE_MESSAGE = 'iCloud Drive sync needs the latest MaliPDF app on this iPad. Please update the app.';
 
 interface NativeICloudReply {
   id: string;
@@ -45,7 +47,7 @@ function callNativeICloud(op: string, extra?: Record<string, unknown>): Promise<
   const win = window as WebKitWindow;
   const handler = win.webkit?.messageHandlers?.malipdfICloud;
   if (!handler) {
-    return Promise.reject(new Error('Native iCloud bridge unavailable.'));
+    return Promise.reject(new Error(NO_BRIDGE_MESSAGE));
   }
   if (!win.__malipdfICloudResolve) {
     win.__malipdfICloudResolve = (reply: NativeICloudReply) => {
@@ -78,17 +80,21 @@ export class ICloudSyncAdapter implements SyncAdapter {
     return detected.find((d) => d.id === 'icloud')?.path ?? null;
   }
 
+  private async desktopFolder(): Promise<string> {
+    const folder = useSyncStore.getState().folderPath ?? (await this.resolveDesktopICloudPath());
+    if (!folder || !window.electronAPI?.syncReadFile) throw new Error('iCloud Drive folder not found.');
+    return folder;
+  }
+
   async isAvailable(): Promise<boolean> {
     if (isIpadApp()) {
-      if (hasNativeICloudBridge()) {
-        try {
-          const res = await callNativeICloud('status');
-          return Boolean(res.available);
-        } catch {
-          return false;
-        }
+      if (!hasNativeICloudBridge()) return false;
+      try {
+        const res = await callNativeICloud('status');
+        return Boolean(res.available);
+      } catch {
+        return false;
       }
-      return true;
     }
     return Boolean(await this.resolveDesktopICloudPath());
   }
@@ -101,11 +107,10 @@ export class ICloudSyncAdapter implements SyncAdapter {
 
   async connect(): Promise<boolean> {
     if (isIpadApp()) {
-      if (hasNativeICloudBridge()) {
-        const res = await callNativeICloud('status');
-        if (!res.available) {
-          throw new Error('iCloud Drive is turned off on this iPad. Enable iCloud Drive in Settings › Apple Account › iCloud.');
-        }
+      if (!hasNativeICloudBridge()) throw new Error(NO_BRIDGE_MESSAGE);
+      const res = await callNativeICloud('status');
+      if (!res.available) {
+        throw new Error('iCloud Drive is turned off on this iPad. Enable iCloud Drive in Settings › Apple Account › iCloud.');
       }
       return true;
     }
@@ -120,152 +125,77 @@ export class ICloudSyncAdapter implements SyncAdapter {
     // Keep local files untouched on disconnect
   }
 
+  /** null ONLY when the manifest does not exist; bridge/IPC/parse failures throw. */
   async readManifest(): Promise<SyncManifest | null> {
     if (isIpadApp()) {
-      if (hasNativeICloudBridge()) {
-        try {
-          const res = await callNativeICloud('read', { name: MANIFEST_NAME });
-          if (!res.data) return null;
-          const json = new TextDecoder().decode(base64ToBytes(res.data));
-          const parsed = JSON.parse(json) as SyncManifest;
-          return parsed?.version === 1 ? parsed : null;
-        } catch {
-          return null;
-        }
-      }
-      try {
-        const res = await callNative<{ data: string }>('Filesystem', 'readFile', {
-          path: MANIFEST_NAME,
-          directory: DOCUMENTS,
-          encoding: 'utf8',
-        });
-        const parsed = JSON.parse(res.data) as SyncManifest;
-        return parsed?.version === 1 ? parsed : null;
-      } catch {
-        return null;
-      }
+      // Rejects without the bridge or when the native side reports an error
+      // (e.g. the file is still an undownloaded iCloud placeholder).
+      const res = await callNativeICloud('read', { name: MANIFEST_NAME });
+      if (res.data == null) return null;
+      return parseSyncManifest(base64ToBytes(res.data));
     }
-    const folder = useSyncStore.getState().folderPath ?? (await this.resolveDesktopICloudPath());
-    if (!folder || !window.electronAPI?.syncReadFile) return null;
+    const folder = await this.desktopFolder();
     await window.electronAPI.syncActivateFolder!(folder);
-    const buf = await window.electronAPI.syncReadFile(folder, MANIFEST_NAME);
+    const buf = await window.electronAPI.syncReadFile!(folder, MANIFEST_NAME);
     if (!buf) return null;
-    try {
-      const parsed = JSON.parse(new TextDecoder().decode(new Uint8Array(buf))) as SyncManifest;
-      return parsed?.version === 1 ? parsed : null;
-    } catch {
-      return null;
-    }
+    return parseSyncManifest(new Uint8Array(buf));
   }
 
   async writeManifest(manifest: SyncManifest): Promise<void> {
-    const json = JSON.stringify(manifest, null, 2);
+    const enc = new TextEncoder().encode(JSON.stringify(manifest, null, 2));
     if (isIpadApp()) {
-      if (hasNativeICloudBridge()) {
-        const enc = new TextEncoder().encode(json);
-        await callNativeICloud('write', { name: MANIFEST_NAME, data: bytesToBase64(enc) });
-        return;
-      }
-      await callNative('Filesystem', 'writeFile', {
-        path: MANIFEST_NAME,
-        directory: DOCUMENTS,
-        data: json,
-        encoding: 'utf8',
-        recursive: true,
-      });
+      await callNativeICloud('write', { name: MANIFEST_NAME, data: bytesToBase64(enc) });
       return;
     }
-    const folder = useSyncStore.getState().folderPath ?? (await this.resolveDesktopICloudPath());
-    if (!folder || !window.electronAPI?.syncWriteFile) throw new Error('iCloud Drive folder not found.');
+    const folder = await this.desktopFolder();
     await window.electronAPI.syncActivateFolder!(folder);
-    const enc = new TextEncoder().encode(json);
-    await window.electronAPI.syncWriteFile(folder, MANIFEST_NAME, enc.buffer.slice(enc.byteOffset, enc.byteOffset + enc.byteLength));
+    await window.electronAPI.syncWriteFile!(folder, MANIFEST_NAME, enc.buffer.slice(enc.byteOffset, enc.byteOffset + enc.byteLength));
   }
 
   async readPdf(remoteName: string): Promise<Uint8Array | null> {
     if (isIpadApp()) {
-      if (hasNativeICloudBridge()) {
-        try {
-          const res = await callNativeICloud('read', { name: remoteName });
-          return res.data ? base64ToBytes(res.data) : null;
-        } catch {
-          return null;
-        }
-      }
+      if (!hasNativeICloudBridge()) throw new Error(NO_BRIDGE_MESSAGE);
       try {
-        const res = await callNative<{ data: string }>('Filesystem', 'readFile', {
-          path: remoteName,
-          directory: DOCUMENTS,
-        });
-        return base64ToBytes(res.data);
+        const res = await callNativeICloud('read', { name: remoteName });
+        return res.data ? base64ToBytes(res.data) : null;
       } catch {
         return null;
       }
     }
-    const folder = useSyncStore.getState().folderPath ?? (await this.resolveDesktopICloudPath());
-    if (!folder || !window.electronAPI?.syncReadFile) return null;
-    const buf = await window.electronAPI.syncReadFile(folder, remoteName);
+    const folder = await this.desktopFolder();
+    const buf = await window.electronAPI.syncReadFile!(folder, remoteName);
     return buf ? new Uint8Array(buf) : null;
   }
 
   async writePdf(remoteName: string, bytes: Uint8Array): Promise<void> {
     if (isIpadApp()) {
-      if (hasNativeICloudBridge()) {
-        await callNativeICloud('write', { name: remoteName, data: bytesToBase64(bytes) });
-        return;
-      }
-      await callNative('Filesystem', 'writeFile', {
-        path: remoteName,
-        directory: DOCUMENTS,
-        data: bytesToBase64(bytes),
-        recursive: true,
-      });
+      await callNativeICloud('write', { name: remoteName, data: bytesToBase64(bytes) });
       return;
     }
-    const folder = useSyncStore.getState().folderPath ?? (await this.resolveDesktopICloudPath());
-    if (!folder || !window.electronAPI?.syncWriteFile) throw new Error('iCloud Drive folder not found.');
+    const folder = await this.desktopFolder();
     const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
-    await window.electronAPI.syncWriteFile(folder, remoteName, ab);
+    await window.electronAPI.syncWriteFile!(folder, remoteName, ab);
   }
 
   async deletePdf(remoteName: string): Promise<void> {
     if (isIpadApp()) {
-      if (hasNativeICloudBridge()) {
-        await callNativeICloud('delete', { name: remoteName }).catch(() => undefined);
-        return;
-      }
-      await callNative('Filesystem', 'deleteFile', { path: remoteName, directory: DOCUMENTS }).catch(() => undefined);
+      if (!hasNativeICloudBridge()) throw new Error(NO_BRIDGE_MESSAGE);
+      await callNativeICloud('delete', { name: remoteName }).catch(() => undefined);
       return;
     }
-    const folder = useSyncStore.getState().folderPath ?? (await this.resolveDesktopICloudPath());
-    if (!folder || !window.electronAPI?.syncDeleteFile) return;
+    const folder = await this.desktopFolder();
+    if (!window.electronAPI?.syncDeleteFile) return;
     await window.electronAPI.syncDeleteFile(folder, remoteName);
   }
 
   async listRemotePdfs(): Promise<RemoteFileEntry[]> {
     if (isIpadApp()) {
-      if (hasNativeICloudBridge()) {
-        try {
-          const res = await callNativeICloud('list');
-          return (res.files ?? []).filter((f) => /\.pdf$/i.test(f.name));
-        } catch {
-          return [];
-        }
-      }
-      try {
-        const res = await callNative<{ files: Array<{ name: string; size?: number; mtime?: number } | string> }>('Filesystem', 'readdir', {
-          path: '',
-          directory: DOCUMENTS,
-        });
-        return (res.files ?? [])
-          .map((f) => (typeof f === 'string' ? { name: f, size: 0, updatedAt: Date.now() } : { name: f.name, size: f.size ?? 0, updatedAt: f.mtime ?? Date.now() }))
-          .filter((f) => /\.pdf$/i.test(f.name));
-      } catch {
-        return [];
-      }
+      // Errors propagate: an empty list must mean an empty folder, not a failure.
+      const res = await callNativeICloud('list');
+      return (res.files ?? []).filter((f) => /\.pdf$/i.test(f.name));
     }
-    const folder = useSyncStore.getState().folderPath ?? (await this.resolveDesktopICloudPath());
-    if (!folder || !window.electronAPI?.syncList) return [];
+    const folder = await this.desktopFolder();
+    if (!window.electronAPI?.syncList) throw new Error('iCloud Drive folder not found.');
     const entries = await window.electronAPI.syncList(folder);
     return entries.filter((e) => /\.pdf$/i.test(e.name));
   }

@@ -24,11 +24,7 @@ export function SyncSettingsSection() {
     lastError,
     stats,
     folderPath,
-    googleClientId,
-    googleEmail,
-    googleAccessToken,
     setAutoSync,
-    setGoogleClientId,
   } = useSyncStore();
 
   const itemCount = useLibraryStore((s) => s.items.filter((i) => !i.trashedAt).length);
@@ -36,8 +32,6 @@ export function SyncSettingsSection() {
 
   const [detectedFolders, setDetectedFolders] = useState<DetectedCloudFolder[]>([]);
   const [migrateExisting, setMigrateExisting] = useState(false);
-  const [googleTokenInput, setGoogleTokenInput] = useState('');
-  const [showGoogleConfig, setShowGoogleConfig] = useState(false);
 
   const isDesktop = Boolean(window.electronAPI?.syncDetectCloudFolders) && !isIpadApp();
 
@@ -46,12 +40,10 @@ export function SyncSettingsSection() {
     void window.electronAPI?.syncDetectCloudFolders?.().then(setDetectedFolders).catch(() => {});
   }, [isDesktop]);
 
-  const handleSelectProvider = async (next: SyncProviderId, extra?: { folderPath?: string; accessToken?: string }) => {
+  const handleSelectProvider = async (next: SyncProviderId, extra?: { folderPath?: string }) => {
     const ok = await switchSyncProvider(next, {
       migrateExisting,
       folderPath: extra?.folderPath,
-      accessToken: extra?.accessToken,
-      clientId: googleClientId,
     });
     if (ok) {
       notifyUser('success', next === 'local' ? 'Switched to local device storage' : 'Sync completed');
@@ -62,21 +54,6 @@ export function SyncSettingsSection() {
     const chosen = await window.electronAPI?.chooseFolder?.('Choose MaliPDF Sync Folder');
     if (!chosen) return;
     await handleSelectProvider('folder', { folderPath: chosen });
-  };
-
-  const handleGoogleConnect = async () => {
-    const token = googleTokenInput.trim();
-    if (token) {
-      setGoogleTokenInput('');
-      await handleSelectProvider('gdrive', { accessToken: token });
-      return;
-    }
-    if (!googleClientId.trim()) {
-      setShowGoogleConfig(true);
-      notifyUser('info', 'Enter a Google OAuth Client ID or access token to connect Google Drive.');
-      return;
-    }
-    await handleSelectProvider('gdrive');
   };
 
   const formatLastSync = (ts: number | null) => {
@@ -117,9 +94,6 @@ export function SyncSettingsSection() {
             </div>
             {folderPath && (provider === 'folder' || (provider === 'icloud' && isDesktop)) && (
               <div className={styles.pathBadge} data-no-translate>{folderPath}</div>
-            )}
-            {googleEmail && provider === 'gdrive' && (
-              <div className={styles.pathBadge} data-no-translate>{googleEmail}</div>
             )}
           </div>
         </div>
@@ -176,15 +150,21 @@ export function SyncSettingsSection() {
           </div>
         </button>
 
+        {/* Direct Google Drive sync cannot work in the packaged app (CSP,
+            window-open policy, file:// / capacitor:// OAuth redirect), so it is
+            shown but not selectable. A Google Drive for Desktop folder can still
+            be used through "Desktop Cloud Folder". */}
         <button
           type="button"
-          className={`${styles.card} ${provider === 'gdrive' ? styles.cardActive : ''}`}
-          onClick={() => setShowGoogleConfig(true)}
+          className={styles.card}
+          disabled
+          aria-disabled="true"
+          style={{ opacity: 0.55, cursor: 'not-allowed' }}
         >
           <Cloud size={19} />
           <div className={styles.cardBody}>
             <div className={styles.cardTitle}>Google Drive</div>
-            <div className={styles.cardSub}>iPad · iPhone · Windows · Mac · Android</div>
+            <div className={styles.cardSub}>Coming soon</div>
           </div>
         </button>
 
@@ -219,37 +199,6 @@ export function SyncSettingsSection() {
                 <span data-no-translate>{d.label}</span>
               </button>
             ))}
-          </div>
-        </div>
-      )}
-
-      {/* Google Drive Direct Connection Panel */}
-      {(showGoogleConfig || provider === 'gdrive') && (
-        <div className={styles.gdriveBox}>
-          <div className={styles.subHeading}>Google Drive Connection</div>
-          <p className={styles.smallNote}>
-            Uses Google Drive API v3 (<code>drive.file</code> scope) inside a dedicated <strong>MaliPDF</strong> folder. Switch freely between iCloud Drive and Google Drive anytime without losing notes.
-          </p>
-          <div className={styles.inputRow}>
-            <input
-              type="text"
-              className={styles.textInput}
-              placeholder="Google OAuth Client ID (optional)"
-              value={googleClientId}
-              onChange={(e) => setGoogleClientId(e.target.value)}
-            />
-          </div>
-          <div className={styles.inputRow}>
-            <input
-              type="password"
-              className={styles.textInput}
-              placeholder="Or paste OAuth Access Token"
-              value={googleTokenInput}
-              onChange={(e) => setGoogleTokenInput(e.target.value)}
-            />
-            <button type="button" className={styles.connectBtn} onClick={() => void handleGoogleConnect()}>
-              {googleAccessToken ? 'Reconnect' : 'Connect'}
-            </button>
           </div>
         </div>
       )}

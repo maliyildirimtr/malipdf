@@ -36,6 +36,15 @@ import { offerPendingCrashReport, setupCrashReporting } from './services/crashRe
 let crashReportOffered = false;
 import { setupOcrIpc } from './services/ocr/ocrIpc';
 import { FolderGrants, outputExtension, writeFilesToFolder } from './services/files/folderWrite';
+import {
+  authorizeSyncFolder,
+  deleteSyncFile,
+  listSyncFolder,
+  loadRememberedSyncFolder,
+  readSyncFile,
+  rememberSyncFolder,
+  writeSyncFile,
+} from './services/files/syncFolder';
 import { setupRecoveryIpc } from './services/recovery';
 import { setupUpdates } from './services/updates';
 import { appIconPath, applyAppIcon, logCrash, setupAppInfo } from './services/appInfo';
@@ -644,72 +653,63 @@ function detectCloudSyncFolders(): Array<{ id: 'icloud' | 'gdrive' | 'onedrive' 
   return found.filter((f) => (seen.has(f.id) ? false : (seen.add(f.id), true)));
 }
 
-let activeSyncFolder: string | null = null;
+/**
+ * Only folders the user picked in the folder dialog (folderGrants) or the
+ * detected cloud folders may be used for sync. The renderer cannot grant a
+ * folder to itself: activating/listing an arbitrary path is refused.
+ */
+const rememberedSyncFolderFile = () => path.join(app.getPath('userData'), 'sync-folder.json');
+let rememberedSyncFolder: Promise<string | null> | null = null;
 
-function resolveSyncTarget(folder: unknown, name: unknown): string {
-  const dir = requireString(folder, 'folder', 2048);
-  const resolvedDir = path.resolve(dir);
-  const detectedPaths = new Set(detectCloudSyncFolders().map((d) => path.resolve(d.path)));
-  if (activeSyncFolder !== resolvedDir && !folderGrants.has(resolvedDir) && !detectedPaths.has(resolvedDir)) {
-    throw new Error('Sync folder is not authorized.');
-  }
-  const safe = requireString(name, 'name', 260);
-  if (safe.includes('/') || safe.includes('\\') || safe === '.' || safe === '..') {
-    throw new TypeError('Invalid sync file name.');
-  }
-  return path.join(resolvedDir, safe);
+async function authorizedSyncFolders(): Promise<string[]> {
+  rememberedSyncFolder ??= loadRememberedSyncFolder(rememberedSyncFolderFile());
+  const remembered = await rememberedSyncFolder;
+  return [
+    ...folderGrants.list(),
+    ...detectCloudSyncFolders().map((d) => d.path),
+    ...(remembered ? [remembered] : []),
+  ];
+}
+
+async function requireSyncFolder(rawFolder: unknown): Promise<string> {
+  return authorizeSyncFolder(rawFolder, await authorizedSyncFolders());
 }
 
 handleTrusted('sync:detectCloudFolders', isDev, async () => detectCloudSyncFolders());
 
 handleTrusted('sync:activateFolder', isDev, async (_event, rawFolder: unknown) => {
-  const dir = path.resolve(requireString(rawFolder, 'folder', 2048));
+  const dir = await requireSyncFolder(rawFolder);
   await fs.promises.mkdir(dir, { recursive: true });
-  activeSyncFolder = dir;
-  folderGrants.grant(dir);
+  // Keep a folder the user picked usable after a restart (folderGrants is per session).
+  if (folderGrants.has(dir) && (await rememberedSyncFolder) !== dir) {
+    rememberedSyncFolder = Promise.resolve(dir);
+    await rememberSyncFolder(rememberedSyncFolderFile(), dir).catch(() => {});
+  }
   return dir;
 });
 
 handleTrusted('sync:list', isDev, async (_event, rawFolder: unknown) => {
-  const dir = path.resolve(requireString(rawFolder, 'folder', 2048));
-  activeSyncFolder = dir;
-  await fs.promises.mkdir(dir, { recursive: true });
-  const entries = await fs.promises.readdir(dir, { withFileTypes: true });
-  const out: Array<{ name: string; size: number; updatedAt: number }> = [];
-  for (const e of entries) {
-    if (!e.isFile()) continue;
-    try {
-      const st = await fs.promises.stat(path.join(dir, e.name));
-      out.push({ name: e.name, size: st.size, updatedAt: Math.round(st.mtimeMs) });
-    } catch {
-      // Skip transient cloud placeholder
-    }
-  }
-  return out;
+  const dir = await requireSyncFolder(rawFolder);
+  return listSyncFolder(dir);
 });
 
 handleTrusted('sync:readFile', isDev, async (_event, rawFolder: unknown, rawName: unknown) => {
-  const target = resolveSyncTarget(rawFolder, rawName);
-  try {
-    const buf = await fs.promises.readFile(target);
-    return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
-  } catch (err: any) {
-    if (err?.code === 'ENOENT') return null;
-    throw err;
-  }
+  const dir = await requireSyncFolder(rawFolder);
+  const buf = await readSyncFile(dir, rawName);
+  if (!buf) return null;
+  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
 });
 
 handleTrusted('sync:writeFile', isDev, async (_event, rawFolder: unknown, rawName: unknown, rawData: unknown) => {
-  const target = resolveSyncTarget(rawFolder, rawName);
+  const dir = await requireSyncFolder(rawFolder);
   const bytes = requireBinary(rawData, 'data', MAX_WRITE_BYTES);
-  await fs.promises.mkdir(path.dirname(target), { recursive: true });
-  await fs.promises.writeFile(target, bytes);
+  await writeSyncFile(dir, rawName, bytes);
   return true;
 });
 
 handleTrusted('sync:deleteFile', isDev, async (_event, rawFolder: unknown, rawName: unknown) => {
-  const target = resolveSyncTarget(rawFolder, rawName);
-  await fs.promises.rm(target, { force: true });
+  const dir = await requireSyncFolder(rawFolder);
+  await deleteSyncFile(dir, rawName);
   return true;
 });
 

@@ -303,12 +303,20 @@ final class MaliPDFiCloudBridge: NSObject, WKScriptMessageHandler {
             switch op {
             case "list":
                 var files: [[String: Any]] = []
-                if let urls = try? FileManager.default.contentsOfDirectory(
-                    at: docs,
-                    includingPropertiesForKeys: [.fileSizeKey, .contentModificationDateKey, .isRegularFileKey],
-                    options: []
-                ) {
-                    for url in urls {
+                // A listing failure must be an error, not an empty folder.
+                let listed: [URL]
+                do {
+                    listed = try FileManager.default.contentsOfDirectory(
+                        at: docs,
+                        includingPropertiesForKeys: [.fileSizeKey, .contentModificationDateKey, .isRegularFileKey],
+                        options: []
+                    )
+                } catch {
+                    self.reply(id: id, payload: ["ok": false, "error": error.localizedDescription])
+                    return
+                }
+                do {
+                    for url in listed {
                         var fileName = url.lastPathComponent
                         if fileName.hasPrefix(".") && fileName.hasSuffix(".icloud") {
                             fileName = String(fileName.dropFirst().dropLast(".icloud".count))
@@ -343,7 +351,15 @@ final class MaliPDFiCloudBridge: NSObject, WKScriptMessageHandler {
                     try? fm.startDownloadingUbiquitousItem(at: fileURL)
                 }
                 guard fm.fileExists(atPath: fileURL.path) else {
-                    self.reply(id: id, payload: ["ok": true, "data": NSNull()])
+                    // data:null means "does not exist". A placeholder that has not
+                    // finished downloading is an ERROR: treating it as missing would
+                    // make the app overwrite the newer cloud file.
+                    let placeholder = docs.appendingPathComponent("." + name + ".icloud")
+                    if fm.fileExists(atPath: placeholder.path) {
+                        self.reply(id: id, payload: ["ok": false, "error": "iCloud is still downloading \\(name). Try again in a moment."])
+                    } else {
+                        self.reply(id: id, payload: ["ok": true, "data": NSNull()])
+                    }
                     return
                 }
                 var coordError: NSError?
@@ -354,7 +370,7 @@ final class MaliPDFiCloudBridge: NSObject, WKScriptMessageHandler {
                 if let data = fileData {
                     self.reply(id: id, payload: ["ok": true, "data": data.base64EncodedString()])
                 } else {
-                    self.reply(id: id, payload: ["ok": true, "data": NSNull()])
+                    self.reply(id: id, payload: ["ok": false, "error": coordError?.localizedDescription ?? "Could not read \\(name) from iCloud Drive."])
                 }
 
             case "write":

@@ -50,6 +50,7 @@ export class FolderGrants {
   has(folder: unknown): folder is string {
     return typeof folder === 'string' && path.isAbsolute(folder) && this.folders.has(path.resolve(folder));
   }
+  list(): string[] { return Array.from(this.folders); }
 }
 
 export interface FolderFile { name: string; data: Uint8Array; ext?: OutputExtension }

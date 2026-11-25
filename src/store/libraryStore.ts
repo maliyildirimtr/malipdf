@@ -37,6 +37,8 @@ import { useUIStore } from './uiStore';
 import { openDocumentBytes } from '../document/openDocumentBytes';
 import { generateNewDocument } from '../document/newDocumentGenerator';
 import { notifyUser } from '../utils/notify';
+import { useSyncStore } from './syncStore';
+import { remoteNameForDocument } from '../sync/syncTypes';
 
 export type LibrarySection = 'home' | 'favorites' | 'recent' | 'recovered' | 'trash' | 'folder';
 export type LibraryCategory = 'all' | 'pdf' | 'notebook';
@@ -56,6 +58,19 @@ function readInitialScope(): LibraryStorageScope {
     // ignore
   }
   return 'local';
+}
+
+/**
+ * Remembers permanently deleted cloud documents so the next sync deletes the
+ * remote copy (and tells other devices) instead of downloading it again.
+ */
+function recordCloudTombstones(items: readonly LibraryDocument[]): void {
+  const now = Date.now();
+  const cloud = items.filter((i) => getScope(i) === 'cloud');
+  if (cloud.length === 0) return;
+  useSyncStore.getState().addTombstones(
+    cloud.map((i) => ({ id: i.id, remoteName: remoteNameForDocument(i), deletedAt: now })),
+  );
 }
 
 function triggerCloudSync(delayMs = 250): void {
@@ -734,6 +749,7 @@ export const useLibraryStore = create<LibraryStore>()((set, get) => ({
     const wasCloud = item ? getScope(item) === 'cloud' : false;
     if (item) {
       await deleteLibraryPdfBytes(item.filePath);
+      recordCloudTombstones([item]);
     }
     set((state) => ({
       items: state.items.filter((i) => i.id !== itemId),
@@ -748,6 +764,7 @@ export const useLibraryStore = create<LibraryStore>()((set, get) => ({
     for (const item of trashed) {
       await deleteLibraryPdfBytes(item.filePath);
     }
+    recordCloudTombstones(trashed);
     const trashedIds = new Set(trashed.map((i) => i.id));
     set((state) => ({
       items: state.items.filter((i) => !trashedIds.has(i.id)),
