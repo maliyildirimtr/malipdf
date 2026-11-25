@@ -6,49 +6,43 @@ const faqs = [
     id: 'what-is',
     question: 'What is MaliPDF?',
     answer:
-      'MaliPDF is a native desktop PDF annotation application for Apple silicon Macs and Windows. It lets you draw, highlight, add text, insert shapes and arrows, and annotate directly on PDF pages — without modifying the original file.',
+      'MaliPDF is a native PDF annotation and notebook workspace for Apple silicon Macs, iPad (with full Apple Pencil & Pencil Pro support), and Windows. Draw, highlight, add LaTeX formulas, edit images, and organize notebooks — with zero accounts or subscriptions.',
+  },
+  {
+    id: 'ipad-sync',
+    question: 'How does syncing work between Mac, iPad, and Windows?',
+    answer:
+      'Your library includes a simple Device ⇄ Cloud switch. Files in This Device mode stay strictly local and are never uploaded. Files created in or moved to Cloud mode sync automatically through your own iCloud Drive (Mac & iPad) or Google Drive / OneDrive (iPad, Windows & Mac) with conflict protection.',
   },
   {
     id: 'modifies-pdf',
-    question: 'Does MaliPDF modify my original PDF?',
+    question: 'Are my handwritten notes still editable after saving?',
     answer:
-      'No. MaliPDF stores all annotations in its own project file, separate from your source PDF. Your original document is never overwritten or changed.',
+      'Yes. MaliPDF saves standard .pdf files that open in any PDF viewer while keeping your strokes, highlights, text boxes, and images fully editable whenever you reopen them in MaliPDF on any device.',
   },
   {
     id: 'lecture-slides',
-    question: 'Can I annotate lecture slides?',
+    question: 'Can I annotate lecture slides and present live?',
     answer:
-      'Yes. You can open any PDF — including lecture slides exported from presentation software — and annotate directly on top with pen, highlighter, text, shapes and more. You can also import a PDF as a printout and annotate page by page.',
-  },
-  {
-    id: 'printout',
-    question: 'Can I insert another PDF as a printout?',
-    answer:
-      'Yes. The PDF Printout feature lets you import any PDF, placing each of its pages as an annotatable layer within your current document. This is useful for annotating lecture slides, textbook pages, or specification documents in context.',
+      'Yes. Open any PDF or slide deck, present in Slide Show mode with a live laser pointer and smooth pen ink, or import slides as annotatable printout pages with extra writing room.',
   },
   {
     id: 'images',
-    question: 'Does MaliPDF support inserting images?',
+    question: 'Does MaliPDF include image editing tools?',
     answer:
-      'Yes. You can insert image files directly, drag and drop images onto the canvas, paste from your clipboard, take a full screenshot, or capture a specific region of your screen — all inserted as annotation elements that can be moved and resized.',
+      'Yes. Insert photos from files, camera, clipboard, or region screenshots, then open the built-in Image Studio to crop, enhance scanned pages, remove white backgrounds, or mosaic-censor sensitive details.',
   },
   {
     id: 'offline',
-    question: 'Does it work offline?',
+    question: 'Does it work completely offline?',
     answer:
-      'Yes, MaliPDF is a fully local desktop application. It does not require an internet connection to run, annotate, or save your work. Your files remain on your machine.',
+      'Yes. MaliPDF is offline-first on Mac, iPad, and Windows. No internet connection or user account is required to read, create notebooks, annotate, or save your work.',
   },
   {
     id: 'windows',
-    question: 'Is there a Windows version?',
+    question: 'Where can I download MaliPDF?',
     answer:
-      'Yes. MaliPDF for Windows 10 and 11 is available on the Microsoft Store, and the Store keeps it up to date automatically.',
-  },
-  {
-    id: 'powerpoint',
-    question: 'Does MaliPDF support PowerPoint files?',
-    answer:
-      'PowerPoint Printout support is currently in active development. The goal is to allow you to import .pptx slide decks and annotate each slide as a printout page, similar to the PDF printout workflow. This feature is not yet available in the current release.',
+      'MaliPDF is available on the App Store for Mac and iPad, and on the Microsoft Store for Windows 10 and 11, with automatic store updates.',
   },
 ];
 

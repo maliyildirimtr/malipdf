@@ -1,0 +1,318 @@
+/* ============================================================
+   IPAD & CLOUD SYNC SHOWCASE
+   ============================================================ */
+
+.ipad-cloud {
+  background-color: var(--bg-surface-alt);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.ipad-cloud__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr);
+  gap: clamp(32px, 5vw, 72px);
+  align-items: center;
+}
+
+.ipad-cloud__title {
+  margin-top: var(--space-3);
+  margin-bottom: var(--space-5);
+  font-size: clamp(2rem, 3.6vw, 2.85rem);
+  letter-spacing: -0.04em;
+  line-height: 1.08;
+  color: var(--text-primary);
+}
+
+.ipad-cloud__lead {
+  color: var(--text-secondary);
+  font-size: 1.02rem;
+  line-height: 1.72;
+  margin-bottom: var(--space-8);
+}
+
+.ipad-cloud__cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-8);
+}
+
+.ipad-cloud__card {
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+}
+
+.ipad-cloud__card-title {
+  font-size: 0.92rem;
+  font-weight: 650;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+
+.ipad-cloud__card-body {
+  font-size: 0.83rem;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+.ipad-cloud__cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.ipad-cloud__cta-meta {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+/* --- Stylized iPad Pro Hardware Frame --- */
+
+.ipad-cloud__visual {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.ipad-mockup {
+  border-radius: 24px;
+  padding: 12px;
+  background: #101b2b;
+  border: 2px solid #24364f;
+  box-shadow: var(--shadow-mockup);
+}
+
+.ipad-mockup__topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 14px 14px 0 0;
+  background: #17263b;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.ipad-mockup__dots {
+  display: flex;
+  gap: 5px;
+}
+
+.ipad-mockup__dots span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.24);
+}
+
+.ipad-mockup__tools {
+  display: flex;
+  gap: 5px;
+  padding: 3px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.ipad-mockup__tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  font-size: 0.74rem;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.ipad-mockup__tool--active {
+  background: #2d6ec4;
+  color: #ffffff;
+}
+
+.ipad-mockup__sync-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(56, 189, 248, 0.14);
+  color: #bae6fd;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.ipad-mockup__sync-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #38bdf8;
+}
+
+.ipad-mockup__body {
+  display: grid;
+  grid-template-columns: 152px 1fr;
+  min-height: 286px;
+  border-radius: 0 0 14px 14px;
+  overflow: hidden;
+  background: #132033;
+}
+
+.ipad-mockup__sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 12px 10px;
+  background: rgba(15, 28, 46, 0.85);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.73rem;
+}
+
+.ipad-mockup__nav {
+  padding: 6px 9px;
+  border-radius: 8px;
+}
+
+.ipad-mockup__nav--active {
+  background: rgba(56, 189, 248, 0.18);
+  color: #e0f2fe;
+  font-weight: 600;
+}
+
+.ipad-mockup__folder {
+  padding: 5px 9px;
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.ipad-mockup__scope-switch {
+  margin-top: auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.ipad-mockup__scope-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 26px;
+  border-radius: 7px;
+  font-size: 0.78rem;
+}
+
+.ipad-mockup__scope-btn--on {
+  background: #ffffff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+}
+
+.ipad-mockup__canvas {
+  padding: 14px;
+  display: flex;
+  align-items: stretch;
+  background: #1b2a40;
+}
+
+.ipad-mockup__page {
+  position: relative;
+  flex: 1;
+  border-radius: 10px;
+  padding: 14px;
+  background-color: #fffdf8;
+  background-image:
+    linear-gradient(rgba(45, 95, 168, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(45, 95, 168, 0.08) 1px, transparent 1px);
+  background-size: 18px 18px;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.28);
+  overflow: hidden;
+}
+
+.ipad-mockup__page-tag {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #5b6d84;
+  margin-bottom: 4px;
+}
+
+.ipad-mockup__ink {
+  width: 100%;
+  height: auto;
+}
+
+.ipad-mockup__squeeze-palette {
+  position: absolute;
+  right: 14px;
+  bottom: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(15, 28, 46, 0.92);
+  color: #e2e8f0;
+  box-shadow: 0 8px 20px rgba(15, 28, 46, 0.3);
+}
+
+.ipad-mockup__swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.65);
+}
+
+.ipad-mockup__squeeze-label {
+  font-size: 0.66rem;
+  font-weight: 600;
+  margin-left: 2px;
+}
+
+.ipad-cloud__ecosystems {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.ipad-cloud__ecosystems span {
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  font-size: 0.76rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+@media (max-width: 960px) {
+  .ipad-cloud__layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .ipad-cloud__cards {
+    grid-template-columns: 1fr;
+  }
+
+  .ipad-mockup__body {
+    grid-template-columns: 1fr;
+  }
+
+  .ipad-mockup__sidebar {
+    display: none;
+  }
+
+  .ipad-mockup__sync-pill {
+    display: none;
+  }
+}

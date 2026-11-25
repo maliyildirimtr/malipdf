@@ -1,4 +1,3 @@
-import { macAppStore, windowsStore } from '../../config/downloads';
 import './Hero.css';
 
 const lineWidths = ['82%', '66%', '91%', '74%', '86%', '58%', '78%', '92%', '69%'];
@@ -22,45 +21,42 @@ export function Hero() {
 
       <div className="container--wide hero__container">
         <div className="hero__text">
-          <p className="hero__eyebrow">PDF annotation for serious work</p>
+          <p className="hero__eyebrow">Native on Mac · iPad · Windows</p>
           <h1 id="hero-title" className="hero__headline">
             Your PDFs.<br />
             <em className="hero__headline-em">Your workspace.</em>
           </h1>
           <p className="hero__description">
-            Annotate documents, teach from lecture slides, organize visual
-            notes, and work directly on PDFs — with a fast, focused desktop
-            workflow built for Mac and Windows.
+            Write naturally with Apple Pencil on iPad, teach from lecture slides,
+            and work across tabs on Mac and Windows — with optional iCloud Drive
+            and Google Drive sync where you stay in control.
           </p>
 
           <div className="hero__actions">
             <a
-              href={macAppStore.url}
+              href="/download/"
               className="btn btn--primary btn--lg hero__btn-primary"
               target="_blank"
               rel="noopener noreferrer"
-              aria-label="Download MaliPDF on the Mac App Store"
+              aria-label="Open MaliPDF Download Center in a new tab"
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
               </svg>
-              {macAppStore.label}
+              Download MaliPDF
             </a>
+
             <a
-              href={windowsStore.url}
+              href="#features"
               className="btn btn--outline btn--lg hero__btn-secondary"
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="Get MaliPDF from the Microsoft Store for Windows"
             >
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                <path d="M3 5.1 10.4 4v7.2H3V5.1zm8.3-1.2L21 2.5v8.7h-9.7V3.9zM3 12.6h7.4v7.2L3 18.8v-6.2zm8.3 0H21v8.9l-9.7-1.4v-7.5z" />
-              </svg>
-              {windowsStore.label}
+              Explore Features
             </a>
           </div>
           <p className="hero__notice">
-            Free on the Mac App Store and the Microsoft Store · Updates install automatically.
+            Free for macOS, iPadOS &amp; Windows · Optional iCloud Drive &amp; Google Drive sync.
           </p>
         </div>
 
@@ -98,8 +94,8 @@ export function Hero() {
             <svg viewBox="0 0 74 62" fill="none"><path d="M4 6c30 4 48 20 60 45M53 45l11 7 3-13" /></svg>
           </div>
           <div className="hero__note hero__note--organize">Organize.<br />Understand.<br />Make it yours.</div>
-          <div className="hero__note hero__note--context">Knowledge<br />in context.</div>
-          <div className="hero__checklist"><span>Ideas</span><span>Notes</span><span>References</span></div>
+          <div className="hero__note hero__note--context">Mac · iPad<br />Windows</div>
+          <div className="hero__checklist"><span>Apple Pencil</span><span>iCloud &amp; Drive</span><span>Offline-first</span></div>
           <span className="hero__cross hero__cross--one" />
           <span className="hero__cross hero__cross--two" />
         </div>

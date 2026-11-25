@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { Header } from './components/Header/Header';
 import { Hero } from './components/Hero/Hero';
+import { IpadCloudSection } from './components/IpadCloudSection/IpadCloudSection';
 import { AnnotationShowcase } from './components/AnnotationShowcase/AnnotationShowcase';
 import { WorkspaceShowcase } from './components/WorkspaceShowcase/WorkspaceShowcase';
 import { TeachingSection } from './components/TeachingSection/TeachingSection';
@@ -45,6 +46,7 @@ function App() {
       <Header />
       <main id="main-content">
         <Hero />
+        <IpadCloudSection />
         <AnnotationShowcase />
         <WorkspaceShowcase />
         <TeachingSection />

@@ -98,13 +98,13 @@
 .hero__actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 16px;
+  gap: 14px;
   margin-bottom: var(--space-6);
 }
 
-.hero__actions .btn { min-height: 58px; justify-content: center; }
-.hero__btn-primary { min-width: 238px; box-shadow: 0 14px 34px rgba(45, 95, 168, 0.2); }
-.hero__btn-secondary { min-width: 220px; background: rgba(255, 255, 255, 0.38); }
+.hero__actions .btn { min-height: 56px; justify-content: center; padding-inline: 26px; }
+.hero__btn-primary { min-width: 224px; box-shadow: 0 14px 34px rgba(45, 95, 168, 0.22); }
+.hero__btn-secondary { min-width: 184px; background: rgba(255, 255, 255, 0.45); }
 .hero__btn-primary svg, .hero__btn-secondary svg { flex-shrink: 0; }
 
 .hero__notice {

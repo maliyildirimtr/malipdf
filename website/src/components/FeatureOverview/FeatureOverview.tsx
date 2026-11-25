@@ -51,13 +51,15 @@ const featureGroups = [
     ],
   },
   {
-    category: 'Workflow',
-    description: 'Project and file organization',
+    category: 'Workflow & Sync',
+    description: 'Cross-device library and file freedom',
     features: [
-      'Save annotation project',
-      'Open existing project',
-      'Non-destructive — original PDF unmodified',
-      'PowerPoint printout (in development)',
+      'Native on Mac, iPad (Apple Pencil Pro), and Windows',
+      'Dual library modes: This Device Only or Cloud Sync',
+      'iCloud Drive & Google Drive cross-device sync',
+      'Built-in Image Studio (crop, enhance, cutout)',
+      'LaTeX formulas, OCR search & Word/Office support',
+      'Standard PDFs with embedded editable annotations',
     ],
   },
 ];

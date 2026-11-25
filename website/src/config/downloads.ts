@@ -8,7 +8,7 @@
 // ============================================================
 
 const REPO_URL = 'https://github.com/maliyildirimtr/malipdf';
-const RELEASE_TAG = 'v1.0.2';
+const RELEASE_TAG = 'v1.0.6';
 const RELEASE_DOWNLOAD_BASE = `${REPO_URL}/releases/download/${RELEASE_TAG}`;
 
 const assetUrl = (fileName: string) => `${RELEASE_DOWNLOAD_BASE}/${fileName}`;
@@ -41,7 +41,7 @@ export interface DownloadConfig {
 }
 
 export const downloads: DownloadConfig = {
-  version: '1.0.2',
+  version: '1.0.6',
   tag: RELEASE_TAG,
   releaseNotesUrl: `${REPO_URL}/releases/tag/${RELEASE_TAG}`,
 
@@ -52,8 +52,8 @@ export const downloads: DownloadConfig = {
         id: 'macos-apple-silicon',
         label: 'Apple Silicon',
         description: 'M1, M2, M3, M4 and later',
-        fileName: 'MaliPDF-1.0.0-mac-arm64.dmg',
-        url: assetUrl('MaliPDF-1.0.0-mac-arm64.dmg'),
+        fileName: 'MaliPDF-macOS-Apple-Silicon.dmg',
+        url: assetUrl('MaliPDF-macOS-Apple-Silicon.dmg'),
         arch: 'arm64',
         sizeLabel: '~170 MB',
       },
@@ -63,15 +63,26 @@ export const downloads: DownloadConfig = {
 
 /** Mac: Mac App Store (updates come from the App Store). */
 export const macAppStore = {
-  label: 'Download on the Mac App Store',
+  label: 'Mac App Store',
+  fullLabel: 'Download on the Mac App Store',
   url: 'https://apps.apple.com/app/id6818672314',
   appId: '6818672314',
-  meta: 'macOS 12 or later · Apple Silicon (M1 and later)',
+  meta: 'macOS 12 or later · Apple Silicon',
+};
+
+/** iPad: App Store (universal App Store ID with Mac). */
+export const ipadAppStore = {
+  label: 'App Store · iPad',
+  fullLabel: 'Download on the App Store for iPad',
+  url: 'https://apps.apple.com/app/id6818672314',
+  appId: '6818672314',
+  meta: 'iPadOS 16 or later · Apple Pencil & Pencil Pro',
 };
 
 /** Windows: Microsoft Store (updates come from the Store). */
 export const windowsStore = {
-  label: 'Get it from Microsoft Store',
+  label: 'Microsoft Store',
+  fullLabel: 'Get it from Microsoft Store',
   url: 'https://apps.microsoft.com/detail/9PMT0XR7DGKH',
   storeId: '9PMT0XR7DGKH',
   meta: 'Windows 10 and 11 · x64',

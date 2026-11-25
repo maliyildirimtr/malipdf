@@ -4,11 +4,12 @@ const currentYear = new Date().getFullYear();
 
 const footerLinks = {
   product: [
-    { label: 'Features', href: '#features' },
-    { label: 'Workflow', href: '#workflow' },
-    { label: 'Use Cases', href: '#use-cases' },
-    { label: 'Download', href: '#download' },
-    { label: 'FAQ', href: '#faq' },
+    { label: 'Features', href: '/#features' },
+    { label: 'iPad & Sync', href: '/#ipad' },
+    { label: 'Workflow', href: '/#workflow' },
+    { label: 'Use Cases', href: '/#use-cases' },
+    { label: 'Download', href: '/download/' },
+    { label: 'FAQ', href: '/#faq' },
   ],
   legal: [
     { label: 'Privacy Policy', href: '/privacy' },
@@ -23,7 +24,7 @@ export function Footer() {
         <div className="footer__grid">
           {/* Brand column */}
           <div className="footer__brand">
-            <a href="#" className="footer__logo" aria-label="MaliPDF home">
+            <a href="/" className="footer__logo" aria-label="MaliPDF home">
               <img
                 src="/malipdf-icon.png"
                 alt=""
@@ -36,8 +37,7 @@ export function Footer() {
               PDF annotation for serious work.
             </p>
             <p className="footer__desc">
-              A native desktop application for Apple silicon Macs, built
-              for students, lecturers, engineers and researchers. Available for Mac and on the Microsoft Store for Windows.
+              A native PDF &amp; notebook workspace for Mac, iPad with Apple Pencil, and Windows — built for students, lecturers, engineers, and researchers.
             </p>
           </div>
 

@@ -1,0 +1,541 @@
+/* ============================================================
+   DEDICATED DOWNLOAD PAGE (/download/)
+   Matches main site's blueprint-grid + warm-ivory banner DNA
+   ============================================================ */
+
+.dl-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-page);
+}
+
+/* --- Sticky Navy Header matching main site --- */
+
+.dl-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  height: var(--header-h);
+  background: rgba(15, 28, 46, 0.96);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border-navy);
+}
+
+.dl-header__inner {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.dl-header__logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: #ffffff;
+  text-decoration: none;
+}
+
+.dl-header__logo:hover {
+  color: #ffffff;
+}
+
+.dl-header__logo-img {
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+}
+
+.dl-header__logo-text {
+  font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: -0.02em;
+}
+
+.dl-header__badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(107, 163, 216, 0.18);
+  border: 1px solid rgba(107, 163, 216, 0.34);
+  color: #9dc6ee;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+.dl-header__nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+}
+
+.dl-header__nav a {
+  color: var(--text-on-navy-muted);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.dl-header__nav a:hover {
+  color: #ffffff;
+}
+
+.dl-header__back {
+  color: #e8e4de;
+  border-color: rgba(255, 255, 255, 0.22);
+  padding: 7px 14px;
+  font-size: 0.82rem;
+}
+
+.dl-header__back:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.38);
+}
+
+/* --- Hero Banner: Identical Blueprint Grid + Radial Wash as Home Hero --- */
+
+.dl-hero {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  background: #f8f5ee;
+  border-bottom: 1px solid var(--border);
+  padding-block: clamp(52px, 7vh, 88px);
+}
+
+.dl-hero__bg-grid {
+  position: absolute;
+  inset: 0;
+  z-index: -3;
+  background-image:
+    linear-gradient(rgba(45, 95, 168, 0.09) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(45, 95, 168, 0.09) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: linear-gradient(to bottom, transparent 0, #000 12%, #000 88%, transparent 100%);
+}
+
+.dl-hero__wash {
+  position: absolute;
+  z-index: -2;
+  width: 440px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: rgba(162, 198, 238, 0.38);
+  pointer-events: none;
+}
+
+.dl-hero__wash--top {
+  top: -260px;
+  right: 2%;
+}
+
+.dl-hero__wash--bottom {
+  bottom: -290px;
+  left: -130px;
+  width: 500px;
+}
+
+.dl-hero__inner {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+  gap: clamp(28px, 4vw, 56px);
+  align-items: center;
+}
+
+.dl-hero__eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: var(--space-5);
+  color: var(--accent);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.115em;
+  text-transform: uppercase;
+}
+
+.dl-hero__eyebrow::before {
+  content: '';
+  width: 26px;
+  height: 2px;
+  background: var(--accent);
+}
+
+.dl-hero__title {
+  color: #0a1a2d;
+  font-size: clamp(2.6rem, 4.8vw, 4.1rem);
+  font-weight: 700;
+  letter-spacing: -0.055em;
+  line-height: 1.03;
+  margin-bottom: var(--space-5);
+}
+
+.dl-hero__em {
+  color: #2868bd;
+  font-style: normal;
+}
+
+.dl-hero__subtitle {
+  max-width: 590px;
+  font-size: 1.04rem;
+  line-height: 1.68;
+  color: #4b4b4d;
+}
+
+/* --- Smart Recommended Device Card --- */
+
+.dl-detected-card {
+  padding: 26px 28px;
+  border-radius: var(--radius-xl);
+  background: rgba(255, 254, 250, 0.94);
+  border: 1px solid rgba(45, 95, 168, 0.2);
+  box-shadow: 0 26px 54px rgba(15, 28, 46, 0.11), 0 4px 12px rgba(15, 28, 46, 0.05);
+}
+
+.dl-detected-card__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: var(--space-3);
+}
+
+.dl-detected-card__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--accent-light);
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.dl-detected-card__ver {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.dl-detected-card__os {
+  font-size: 1.38rem;
+  letter-spacing: -0.02em;
+  margin-bottom: 4px;
+}
+
+.dl-detected-card__meta {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-bottom: var(--space-5);
+}
+
+.dl-detected-card__actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.dl-detected-card__btn {
+  width: 100%;
+  justify-content: center;
+  min-height: 50px;
+}
+
+.dl-detected-card__alt-link {
+  text-align: center;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--accent);
+}
+
+/* --- OS Filter Bar --- */
+
+.dl-main {
+  flex: 1;
+  padding-block: var(--space-16) var(--space-24);
+}
+
+.dl-filter-bar {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 5px;
+  margin-bottom: var(--space-10);
+  border-radius: 999px;
+  background: var(--bg-surface-alt);
+  border: 1px solid var(--border);
+}
+
+.dl-filter-btn {
+  padding: 8px 18px;
+  border-radius: 999px;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  transition: background var(--transition-fast), color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.dl-filter-btn:hover {
+  color: var(--text-primary);
+}
+
+.dl-filter-btn--active {
+  background: var(--bg-surface);
+  color: var(--accent);
+  box-shadow: var(--shadow-sm);
+}
+
+/* --- Operating System Cards Grid --- */
+
+.dl-os-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-6);
+  margin-bottom: var(--space-20);
+}
+
+.dl-os-card {
+  display: flex;
+  flex-direction: column;
+  padding: 28px;
+  border-radius: var(--radius-xl);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  scroll-margin-top: 88px;
+}
+
+.dl-os-card--upcoming {
+  background: rgba(255, 255, 255, 0.65);
+  border-style: dashed;
+}
+
+.dl-os-card__header {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: var(--space-4);
+}
+
+.dl-os-card__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 13px;
+  background: var(--bg-navy);
+  color: #ffffff;
+  flex-shrink: 0;
+}
+
+.dl-os-card__icon--muted {
+  background: var(--bg-muted);
+  color: var(--text-secondary);
+}
+
+.dl-os-card__title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 3px;
+}
+
+.dl-os-card__title-row h3 {
+  font-size: 1.35rem;
+}
+
+.dl-version-tag {
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--accent-light);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  font-weight: 600;
+}
+
+.dl-soon-pill {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--bg-muted);
+  color: var(--text-muted);
+  font-size: 0.73rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.dl-os-card__req {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.dl-os-card__desc {
+  font-size: 0.93rem;
+  line-height: 1.62;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-6);
+}
+
+.dl-channels {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: auto;
+  margin-bottom: var(--space-5);
+}
+
+.dl-channel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 13px 16px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-page);
+  border: 1px solid var(--border);
+}
+
+.dl-channel--upcoming {
+  opacity: 0.82;
+}
+
+.dl-channel__info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.dl-channel__info strong {
+  font-size: 0.9rem;
+  color: var(--text-primary);
+}
+
+.dl-channel__info span {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.dl-os-card__footer {
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+/* --- Releases & Version Matrix Table --- */
+
+.dl-releases {
+  padding-top: var(--space-10);
+  border-top: 1px solid var(--border);
+  scroll-margin-top: 88px;
+}
+
+.dl-releases__head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin-bottom: var(--space-8);
+}
+
+.dl-table-wrap {
+  overflow-x: auto;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+}
+
+.dl-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 0.88rem;
+}
+
+.dl-table th,
+.dl-table td {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.dl-table th {
+  background: var(--bg-surface-alt);
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.dl-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.dl-table code {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--bg-page);
+}
+
+.dl-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.dl-status--live {
+  background: rgba(63, 184, 121, 0.14);
+  color: #1f7a4c;
+}
+
+.dl-status--soon {
+  background: var(--bg-muted);
+  color: var(--text-muted);
+}
+
+@media (max-width: 960px) {
+  .dl-hero__inner {
+    grid-template-columns: 1fr;
+  }
+
+  .dl-os-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dl-header__nav {
+    display: none;
+  }
+}
+
+@media (max-width: 560px) {
+  .dl-channel {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .dl-channel .btn {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .dl-filter-bar {
+    border-radius: var(--radius-lg);
+    width: 100%;
+  }
+}

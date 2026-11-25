@@ -3,6 +3,7 @@ import './Header.css';
 
 const navLinks = [
   { label: 'Features', href: '#features' },
+  { label: 'iPad & Sync', href: '#ipad' },
   { label: 'Workflow', href: '#workflow' },
   { label: 'Use Cases', href: '#use-cases' },
   { label: 'FAQ', href: '#faq' },
@@ -60,7 +61,9 @@ export function Header() {
 
         {/* Desktop CTA */}
         <a
-          href="#download"
+          href="/download/"
+          target="_blank"
+          rel="noopener noreferrer"
           className="btn btn--primary btn--sm header__cta"
           aria-label="Download MaliPDF"
         >
@@ -102,7 +105,9 @@ export function Header() {
             ))}
             <li>
               <a
-                href="#download"
+                href="/download/"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="btn btn--primary header__mobile-cta"
                 onClick={handleLinkClick}
               >
