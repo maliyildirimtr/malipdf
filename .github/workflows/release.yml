@@ -31,7 +31,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Existing v* tag to build and publish"
+        description: "Version or tag to release (e.g. 1.0.6 or v1.0.6)"
         required: true
         type: string
 
@@ -40,17 +40,55 @@ permissions:
 
 env:
   ELECTRON_BUILDER: electron-builder@25.1.8
-  RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
 
 jobs:
+  prepare-tag:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Normalize and create tag if missing
+        id: resolve
+        env:
+          RAW_INPUT: ${{ inputs.release_tag || github.ref_name }}
+        run: |
+          RAW="$(printf '%s' "$RAW_INPUT" | tr -d '[:space:]')"
+          if [[ -z "$RAW" ]]; then
+            echo "::error::Release version cannot be empty."
+            exit 1
+          fi
+          if [[ "$RAW" == v* ]]; then
+            TAG="$RAW"
+          else
+            TAG="v$RAW"
+          fi
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "Using existing tag $TAG"
+          else
+            echo "Creating and pushing new tag $TAG on HEAD ($(git rev-parse --short HEAD))"
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag "$TAG"
+            git push origin "$TAG"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
   build-mac-app-store:
+    needs: prepare-tag
     runs-on: macos-15
+    env:
+      RELEASE_TAG: ${{ needs.prepare-tag.outputs.tag }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v5
         with:
-          ref: ${{ env.RELEASE_TAG }}
+          ref: ${{ needs.prepare-tag.outputs.tag }}
 
       - name: Setup Node
         uses: actions/setup-node@v5
@@ -100,13 +138,16 @@ jobs:
           path: store/MaliPDF-MacAppStore.pkg
 
   build-macos-dmg:
+    needs: prepare-tag
     runs-on: macos-15
+    env:
+      RELEASE_TAG: ${{ needs.prepare-tag.outputs.tag }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v5
         with:
-          ref: ${{ env.RELEASE_TAG }}
+          ref: ${{ needs.prepare-tag.outputs.tag }}
 
       - name: Setup Node
         uses: actions/setup-node@v5
@@ -159,13 +200,16 @@ jobs:
           path: artifacts/MaliPDF-macOS-Apple-Silicon.dmg
 
   build-windows:
+    needs: prepare-tag
     runs-on: windows-latest
+    env:
+      RELEASE_TAG: ${{ needs.prepare-tag.outputs.tag }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v5
         with:
-          ref: ${{ env.RELEASE_TAG }}
+          ref: ${{ needs.prepare-tag.outputs.tag }}
 
       - name: Setup Node
         uses: actions/setup-node@v5
@@ -210,11 +254,14 @@ jobs:
 
   release:
     needs:
+      - prepare-tag
       - build-mac-app-store
       - build-macos-dmg
       - build-windows
 
     runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ needs.prepare-tag.outputs.tag }}
 
     steps:
       - name: Download DMG
@@ -226,7 +273,7 @@ jobs:
       - name: Checkout release notes
         uses: actions/checkout@v5
         with:
-          ref: ${{ env.RELEASE_TAG }}
+          ref: ${{ needs.prepare-tag.outputs.tag }}
           path: source
           sparse-checkout: release-notes
 
@@ -245,9 +292,9 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           body_path: release-body.md
-          tag_name: ${{ env.RELEASE_TAG }}
-          name: MaliPDF ${{ env.RELEASE_TAG }}
-          prerelease: ${{ contains(env.RELEASE_TAG, '-') }}
+          tag_name: ${{ needs.prepare-tag.outputs.tag }}
+          name: MaliPDF ${{ needs.prepare-tag.outputs.tag }}
+          prerelease: ${{ contains(needs.prepare-tag.outputs.tag, '-') }}
           generate_release_notes: true
           files: |
             release-files/MaliPDF-macOS-Apple-Silicon.dmg
