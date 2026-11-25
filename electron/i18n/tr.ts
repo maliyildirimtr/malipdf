@@ -1137,6 +1137,33 @@ export const TR: Readonly<Record<string, string>> = {
     'Belgeleri kaydederken veya MaliPDF’e geri dönerken otomatik senkronize et',
   'iCloud Drive is turned off on this iPad. Enable iCloud Drive in Settings › Apple Account › iCloud.':
     'Bu iPad’de iCloud Drive kapalı. Ayarlar › Apple Hesabı › iCloud bölümünden iCloud Drive’ı açın.',
+  Library: 'Kütüphane',
+  'Library & Cloud': 'Kütüphane ve Bulut',
+  'PDF Workspace': 'PDF Çalışma Alanı',
+  'This Device': 'Cihazım',
+  'Cloud Storage': 'Bulut Depolama',
+  'Use Cloud Storage': 'Bulut Depolamayı Kullanın',
+  'Stay on This Device': 'Cihazımda kal',
+  'Use iCloud Drive': 'iCloud Drive’ı kullan',
+  'Use Google Drive': 'Google Drive’ı kullan',
+  'Use Cloud Folder': 'Bulut Klasörünü kullan',
+  'Cloud Folder': 'Bulut Klasörü',
+  'Choose Folder…': 'Klasör Seç…',
+  'Switch Cloud Provider': 'Bulut Sağlayıcısını Değiştir',
+  'Make sure you have enough cloud space': 'Bulut alanınızda yer olduğundan emin olun',
+  'Only files created in Cloud mode or moved to Cloud are synced automatically — your local device files remain untouched on this device.':
+    'Yalnızca Bulut modunda oluşturulan veya Bulut’a taşınan dosyalar otomatik senkronize edilir — cihazınızdaki diğer dosyalar yalnızca bu cihazda kalır.',
+  'Back up before turning off Cloud': 'Bulut’u kapatmadan önce yedekleyin',
+  'Copy important documents to This Device before signing out or disconnecting cloud storage.':
+    'Çıkış yapmadan veya bulut bağlantısını kesmeden önce önemli belgeleri Cihazım konumuna kopyalayın.',
+  'Move to Cloud': 'Buluta Taşı',
+  'Copy to Cloud': 'Buluta Kopyala',
+  'Move to This Device': 'Cihazıma Taşı',
+  'Copy to This Device': 'Cihazıma Kopyala',
+  'Moved to Cloud': 'Buluta taşındı',
+  'Copied to Cloud': 'Buluta kopyalandı',
+  'Moved to This Device': 'Cihazıma taşındı',
+  'Copied to This Device': 'Cihazıma kopyalandı',
 };
 
 type Pattern = readonly [RegExp, (...groups: string[]) => string];
@@ -1214,6 +1241,7 @@ export const TR_PATTERNS: readonly Pattern[] = [
   [/^(\d+) documents stored locally$/, (n) => `Yerel olarak ${n} belge saklanıyor`],
   [/^Copy existing library \((\d+) docs, (\d+) folders\) when switching cloud providers$/, (d, f) =>
     `Bulut sağlayıcısı değiştirilirken mevcut kütüphaneyi (${d} belge, ${f} klasör) kopyala`],
+  [/^Home Folder \((.+)\)$/, (p) => `Ana Klasör (${p === 'Cloud' ? 'Bulut' : p})`],
 ];
 
 /**

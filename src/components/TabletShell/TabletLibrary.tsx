@@ -19,6 +19,8 @@ import {
   FileText,
   FolderInput,
   FolderPlus,
+  FolderSync,
+  HardDrive,
   History,
   Home,
   ImagePlus,
@@ -34,8 +36,10 @@ import {
   Search,
   Settings,
   Share,
+  Smartphone,
   Star,
   Sun,
+  Tablet,
   Trash2,
   Upload,
   X,
@@ -44,16 +48,19 @@ import {
 import {
   FOLDER_COLORS,
   displayDocName,
+  getScope,
   type FolderColorId,
   type LibraryDocument,
   type LibraryFolder,
 } from '../../platform/ipadLibrary';
 import { isIpadApp } from '../../platform/native';
+import { isIpadPreviewUrl } from '../../platform/touchMode';
 import { useLibraryStore, type LibraryCategory, type LibrarySortBy } from '../../store/libraryStore';
 import { useDocumentStore } from '../../store/documentStore';
 import { useUIStore } from '../../store/uiStore';
 import { useSyncStore } from '../../store/syncStore';
-import { OPEN_SYNC_SETTINGS_EVENT } from '../Settings/SettingsDialog';
+import { switchSyncProvider, syncNow } from '../../sync/syncManager';
+import type { DetectedCloudFolder, SyncProviderId } from '../../sync/syncTypes';
 import { openDocumentBytes } from '../../document/openDocumentBytes';
 import { SHOW_RECOVERY_EVENT } from '../RecoveryDialog/recoveryEvents';
 import { notifyUser } from '../../utils/notify';
@@ -118,6 +125,7 @@ type ModalState =
   | { kind: 'editFolder'; folder: LibraryFolder }
   | { kind: 'renameDoc'; item: LibraryDocument }
   | { kind: 'moveDocs'; itemIds: string[] }
+  | { kind: 'cloudModal'; pendingTransfer?: { itemIds: string[]; mode: 'move' | 'copy' } }
   | null;
 
 // ── Main Component ──────────────────────────────────────────────────────────
@@ -127,6 +135,7 @@ export function TabletLibrary() {
     folders,
     items,
     loading,
+    storageScope,
     activeSection,
     activeFolderId,
     categoryFilter,
@@ -136,6 +145,7 @@ export function TabletLibrary() {
     searchQuery,
     initialize,
     refresh,
+    setStorageScope,
     setActiveView,
     setActiveSection,
     setCategoryFilter,
@@ -152,6 +162,7 @@ export function TabletLibrary() {
     createQuickNote,
     renameDocument,
     moveDocuments,
+    transferDocumentsScope,
     duplicateDocument,
     toggleFavorite,
     trashDocument,
@@ -166,16 +177,27 @@ export function TabletLibrary() {
     resolvedTheme,
     setTheme,
     language,
+    tabletMode,
     setSettingsOpen,
     setNewDocumentDialogOpen,
     setImagesToPdfOpen,
     setTabletMode,
+    setDesktopLibraryOpen,
   } = useUIStore();
 
   const activeDocId = useDocumentStore((s) => s.activeDocId);
   const activeDoc = useDocumentStore((s) => (s.activeDocId ? s.documents.get(s.activeDocId) ?? null : null));
   const syncProvider = useSyncStore((s) => s.provider);
   const syncStatus = useSyncStore((s) => s.status);
+  const syncFolderPath = useSyncStore((s) => s.folderPath);
+  const googleClientId = useSyncStore((s) => s.googleClientId);
+  const setGoogleClientId = useSyncStore((s) => s.setGoogleClientId);
+  const cloudOnboardingSeen = useSyncStore((s) => s.cloudOnboardingSeen);
+  const setCloudOnboardingSeen = useSyncStore((s) => s.setCloudOnboardingSeen);
+
+  const isTabletUI = isIpadApp() || tabletMode || isIpadPreviewUrl();
+  const isMacDesktop = !isIpadApp() && window.electronAPI?.platform === 'darwin';
+  const isDesktopElectron = Boolean(window.electronAPI?.syncDetectCloudFolders) && !isIpadApp();
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [fabOpen, setFabOpen] = useState(false);
@@ -186,12 +208,48 @@ export function TabletLibrary() {
   const [modalText, setModalText] = useState('');
   const [modalColor, setModalColor] = useState<FolderColorId>('blue');
   const [creatingQuick, setCreatingQuick] = useState(false);
+  const [chosenCloudProvider, setChosenCloudProvider] = useState<Exclude<SyncProviderId, 'local'>>(
+    syncProvider !== 'local' ? syncProvider : 'icloud',
+  );
+  const [detectedFolders, setDetectedFolders] = useState<DetectedCloudFolder[]>([]);
+  const [chosenFolderPath, setChosenFolderPath] = useState<string>(syncFolderPath ?? '');
+  const [googleTokenInput, setGoogleTokenInput] = useState('');
+  const [connectingCloud, setConnectingCloud] = useState(false);
+  const [isCompactPhone, setIsCompactPhone] = useState(() => typeof window !== 'undefined' && window.innerWidth < 640);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     void initialize();
   }, [initialize]);
+
+  // Detect desktop cloud folders (iCloud Drive, Google Drive, OneDrive, Dropbox)
+  useEffect(() => {
+    if (!isDesktopElectron) return;
+    void window.electronAPI?.syncDetectCloudFolders?.().then((found) => {
+      setDetectedFolders(found);
+      if (!chosenFolderPath && found.length > 0) {
+        const nonIcloud = found.find((f) => f.id !== 'icloud') ?? found[0];
+        setChosenFolderPath(nonIcloud.path);
+      }
+    }).catch(() => {});
+  }, [isDesktopElectron, chosenFolderPath]);
+
+  // Track compact phone width for device icon
+  useEffect(() => {
+    const onResize = () => setIsCompactPhone(window.innerWidth < 640);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  // If Cloud scope was persisted from a previous session, ensure cloud is connected or fall back to Device
+  useEffect(() => {
+    if (storageScope === 'cloud' && syncProvider === 'local') {
+      setStorageScope('local');
+    } else if (storageScope === 'cloud' && syncProvider !== 'local') {
+      void syncNow();
+    }
+  }, [storageScope, syncProvider, setStorageScope]);
 
   // Close popovers on outside click / Escape
   useEffect(() => {
@@ -217,25 +275,35 @@ export function TabletLibrary() {
     };
   }, [menu, fabOpen]);
 
-  // Reset selection when navigating sections
+  // Reset selection when navigating sections or switching storage scope
   useEffect(() => {
     setSelectMode(false);
     setSelectedIds(new Set());
-  }, [activeSection, activeFolderId]);
+  }, [activeSection, activeFolderId, storageScope]);
+
+  const scopedFolders = useMemo(
+    () => folders.filter((f) => getScope(f) === storageScope),
+    [folders, storageScope],
+  );
+
+  const scopedItems = useMemo(
+    () => items.filter((i) => getScope(i) === storageScope),
+    [items, storageScope],
+  );
 
   const activeFolder = useMemo(
-    () => (activeFolderId ? folders.find((f) => f.id === activeFolderId) ?? null : null),
-    [folders, activeFolderId],
+    () => (activeFolderId ? scopedFolders.find((f) => f.id === activeFolderId) ?? null : null),
+    [scopedFolders, activeFolderId],
   );
 
   const favoritesCount = useMemo(
-    () => items.filter((i) => !i.trashedAt && i.favorite).length + folders.filter((f) => f.favorite).length,
-    [items, folders],
+    () => scopedItems.filter((i) => !i.trashedAt && i.favorite).length + scopedFolders.filter((f) => f.favorite).length,
+    [scopedItems, scopedFolders],
   );
 
   const trashCount = useMemo(
-    () => items.filter((i) => i.trashedAt !== null).length,
-    [items],
+    () => scopedItems.filter((i) => i.trashedAt !== null).length,
+    [scopedItems],
   );
 
   // Filtered folders for the current view
@@ -243,22 +311,22 @@ export function TabletLibrary() {
     const q = searchQuery.trim().toLowerCase();
     let list: LibraryFolder[] = [];
     if (activeSection === 'home') {
-      list = folders.filter((f) => f.parentId === null);
+      list = scopedFolders.filter((f) => f.parentId === null);
     } else if (activeSection === 'favorites') {
-      list = folders.filter((f) => f.favorite);
+      list = scopedFolders.filter((f) => f.favorite);
     } else if (activeSection === 'folder' && activeFolderId) {
-      list = folders.filter((f) => f.parentId === activeFolderId);
+      list = scopedFolders.filter((f) => f.parentId === activeFolderId);
     }
     if (q) {
       list = list.filter((f) => f.name.toLowerCase().includes(q));
     }
     return list.sort((a, b) => a.name.localeCompare(b.name));
-  }, [folders, activeSection, activeFolderId, searchQuery]);
+  }, [scopedFolders, activeSection, activeFolderId, searchQuery]);
 
   // Filtered & sorted documents for the current view
   const visibleDocs = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    let list = items.filter((item) => {
+    let list = scopedItems.filter((item) => {
       if (activeSection === 'trash') return item.trashedAt !== null;
       if (item.trashedAt !== null) return false;
       if (activeSection === 'home') return item.folderId === null;
@@ -291,13 +359,18 @@ export function TabletLibrary() {
       }
       return (a.updatedAt - b.updatedAt) * dir;
     });
-  }, [items, activeSection, activeFolderId, categoryFilter, searchQuery, sortBy, sortDir]);
+  }, [scopedItems, activeSection, activeFolderId, categoryFilter, searchQuery, sortBy, sortDir]);
 
   // ── Actions ───────────────────────────────────────────────────────────────
 
+  const exitLibraryToWorkspace = () => {
+    setDesktopLibraryOpen(false);
+    setActiveView('workspace');
+  };
+
   const handleImportPdfs = async () => {
     setFabOpen(false);
-    if (isIpadApp() && window.electronAPI?.openFile) {
+    if (window.electronAPI?.openFile) {
       try {
         const files = await window.electronAPI.openFile('pdf');
         if (!files?.length) return;
@@ -305,9 +378,10 @@ export function TabletLibrary() {
           const bytes = new Uint8Array(file.data);
           const saved = await upsertDocument({
             title: file.name,
-            filePath: file.filePath || undefined,
+            filePath: isIpadApp() && storageScope === 'local' ? (file.filePath || undefined) : undefined,
             bytes,
             kind: 'pdf',
+            scope: storageScope,
           });
           await openDocumentBytes(
             saved.title,
@@ -315,9 +389,9 @@ export function TabletLibrary() {
             bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
           );
         }
-        setActiveView('workspace');
+        exitLibraryToWorkspace();
       } catch (error) {
-        console.error('Failed to import PDF on iPad:', error);
+        console.error('Failed to import PDF:', error);
         notifyUser('error', `Could not open PDF: ${error instanceof Error ? error.message : String(error)}`);
       }
       return;
@@ -339,6 +413,7 @@ export function TabletLibrary() {
           title: file.name,
           bytes,
           kind: 'pdf',
+          scope: storageScope,
         });
         await openDocumentBytes(
           saved.title,
@@ -347,7 +422,7 @@ export function TabletLibrary() {
         );
         openedAny = true;
       }
-      if (openedAny) setActiveView('workspace');
+      if (openedAny) exitLibraryToWorkspace();
     } catch (error) {
       console.error('Failed to open selected PDF:', error);
       notifyUser('error', `Could not open PDF: ${error instanceof Error ? error.message : String(error)}`);
@@ -444,20 +519,121 @@ export function TabletLibrary() {
   };
 
   const folderDocCount = (folderId: string) =>
-    items.filter((i) => !i.trashedAt && i.folderId === folderId).length;
+    scopedItems.filter((i) => !i.trashedAt && i.folderId === folderId).length;
+
+  const cloudProviderLabel = useMemo(() => {
+    if (syncProvider === 'icloud') return 'iCloud Drive';
+    if (syncProvider === 'gdrive') return 'Google Drive';
+    if (syncProvider === 'folder') {
+      const matched = detectedFolders.find((d) => d.path === syncFolderPath);
+      return matched?.label ?? 'Cloud';
+    }
+    return 'iCloud Drive';
+  }, [syncProvider, syncFolderPath, detectedFolders]);
+
+  const homeFolderLabel = storageScope === 'cloud'
+    ? `Home Folder (${cloudProviderLabel})`
+    : 'Home Folder';
 
   const sectionHeading = (() => {
     if (activeSection === 'folder' && activeFolder) return activeFolder.name;
     if (activeSection === 'favorites') return 'Favorites';
     if (activeSection === 'recent') return 'Recent';
     if (activeSection === 'trash') return 'Trash';
-    return 'Home Folder';
+    return homeFolderLabel;
   })();
+
+  const openCloudModal = (pendingTransfer?: { itemIds: string[]; mode: 'move' | 'copy' }) => {
+    setChosenCloudProvider(syncProvider !== 'local' ? syncProvider : 'icloud');
+    setModal({ kind: 'cloudModal', pendingTransfer });
+  };
+
+  const handleSelectCloudScope = () => {
+    if (syncProvider === 'local' || !cloudOnboardingSeen) {
+      openCloudModal();
+      return;
+    }
+    setStorageScope('cloud');
+    setDrawerOpen(false);
+    void syncNow();
+  };
+
+  const handleTransferToScope = async (
+    itemIds: string[],
+    targetScope: 'local' | 'cloud',
+    mode: 'move' | 'copy',
+  ) => {
+    setMenu(null);
+    if (targetScope === 'cloud' && syncProvider === 'local') {
+      openCloudModal({ itemIds, mode });
+      return;
+    }
+    const count = await transferDocumentsScope(itemIds, targetScope, mode);
+    setSelectMode(false);
+    setSelectedIds(new Set());
+    if (count > 0) {
+      notifyUser(
+        'success',
+        targetScope === 'cloud'
+          ? (mode === 'move' ? 'Moved to Cloud' : 'Copied to Cloud')
+          : (mode === 'move' ? 'Moved to This Device' : 'Copied to This Device'),
+      );
+    }
+  };
+
+  const handleConfirmCloudModal = async () => {
+    if (connectingCloud) return;
+    let folderArg = chosenFolderPath;
+    if (chosenCloudProvider === 'folder' && !folderArg) {
+      const picked = await window.electronAPI?.chooseFolder?.('Choose MaliPDF Sync Folder');
+      if (!picked) return;
+      folderArg = picked;
+      setChosenFolderPath(picked);
+    }
+    if (chosenCloudProvider === 'gdrive' && !googleTokenInput.trim() && !googleClientId.trim()) {
+      notifyUser('info', 'Enter a Google OAuth Client ID or access token to connect Google Drive.');
+      return;
+    }
+
+    setConnectingCloud(true);
+    try {
+      const ok = await switchSyncProvider(chosenCloudProvider, {
+        migrateExisting: false,
+        folderPath: chosenCloudProvider === 'folder' ? folderArg : undefined,
+        accessToken: googleTokenInput.trim() || undefined,
+        clientId: googleClientId.trim() || undefined,
+      });
+      if (!ok) {
+        const err = useSyncStore.getState().lastError;
+        if (err) notifyUser('error', err);
+        return;
+      }
+      setGoogleTokenInput('');
+      setCloudOnboardingSeen(true);
+      const pending = modal?.kind === 'cloudModal' ? modal.pendingTransfer : undefined;
+      setModal(null);
+      if (pending) {
+        const count = await transferDocumentsScope(pending.itemIds, 'cloud', pending.mode);
+        setSelectMode(false);
+        setSelectedIds(new Set());
+        if (count > 0) {
+          notifyUser('success', pending.mode === 'move' ? 'Moved to Cloud' : 'Copied to Cloud');
+        }
+      } else {
+        setStorageScope('cloud');
+        setDrawerOpen(false);
+      }
+    } finally {
+      setConnectingCloud(false);
+    }
+  };
+
+  const DeviceIcon = isCompactPhone ? Smartphone : isIpadApp() ? Tablet : Monitor;
 
   const sortLabel = sortBy === 'title' ? 'Name' : sortBy === 'sizeBytes' ? 'Size' : 'Date';
 
   return (
-    <div className={styles.shell}>
+    <div className={`${styles.shell} ${isMacDesktop ? styles.shellMacDesktop : ''}`}>
       <input
         ref={fileInputRef}
         type="file"
@@ -507,11 +683,11 @@ export function TabletLibrary() {
         </div>
 
         <div className={styles.topRightArea}>
-          {activeDocId && activeDoc && (
+          {activeDocId && activeDoc ? (
             <button
               type="button"
               className={styles.returnDocBtn}
-              onClick={() => setActiveView('workspace')}
+              onClick={exitLibraryToWorkspace}
               title={activeDoc.title}
             >
               <FileText size={15} />
@@ -520,7 +696,17 @@ export function TabletLibrary() {
               </span>
               <ChevronRight size={15} />
             </button>
-          )}
+          ) : !isTabletUI ? (
+            <button
+              type="button"
+              className={styles.returnDocBtn}
+              onClick={exitLibraryToWorkspace}
+            >
+              <FileText size={15} />
+              <span className={styles.returnDocTitle}>PDF Workspace</span>
+              <ChevronRight size={15} />
+            </button>
+          ) : null}
         </div>
       </header>
 
@@ -538,7 +724,7 @@ export function TabletLibrary() {
               onClick={() => { setActiveSection('home'); setDrawerOpen(false); }}
             >
               <Home size={18} />
-              <span className={styles.navItemLabel}>Home Folder</span>
+              <span className={styles.navItemLabel}>{homeFolderLabel}</span>
             </button>
             <button
               type="button"
@@ -593,10 +779,10 @@ export function TabletLibrary() {
           </div>
 
           <div className={styles.treeList}>
-            {folders.length === 0 ? (
+            {scopedFolders.length === 0 ? (
               <div className={styles.treeEmpty}>No folders yet</div>
             ) : (
-              folders.map((folder) => (
+              scopedFolders.map((folder) => (
                 <button
                   key={folder.id}
                   type="button"
@@ -615,7 +801,40 @@ export function TabletLibrary() {
           </div>
 
           <div className={styles.sidebarFooter}>
-            {!isIpadApp() && (
+            {/* CollaNote-style Device <-> Cloud Storage Switcher Pill */}
+            <div className={styles.scopeSwitchPill} role="tablist" aria-label="Storage location">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={storageScope === 'local'}
+                aria-label="This Device"
+                title="This Device"
+                className={`${styles.scopeSwitchBtn} ${storageScope === 'local' ? styles.scopeSwitchBtnActive : ''}`}
+                onClick={() => {
+                  setStorageScope('local');
+                  setDrawerOpen(false);
+                }}
+              >
+                <DeviceIcon size={17} />
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={storageScope === 'cloud'}
+                aria-label="Cloud Storage"
+                title={syncProvider !== 'local' ? cloudProviderLabel : 'Cloud Storage'}
+                className={`${styles.scopeSwitchBtn} ${storageScope === 'cloud' ? styles.scopeSwitchBtnCloudActive : ''}`}
+                onClick={handleSelectCloudScope}
+              >
+                {syncStatus === 'syncing' ? (
+                  <RefreshCw size={17} className="animate-spin" />
+                ) : (
+                  <Cloud size={18} />
+                )}
+              </button>
+            </div>
+
+            {isTabletUI && !isIpadApp() && (
               <button
                 type="button"
                 className={styles.desktopSwitchBtn}
@@ -625,29 +844,6 @@ export function TabletLibrary() {
                 <span>Desktop Mode</span>
               </button>
             )}
-            <button
-              type="button"
-              className={styles.navItem}
-              onClick={() => {
-                window.dispatchEvent(new Event(OPEN_SYNC_SETTINGS_EVENT));
-                setDrawerOpen(false);
-              }}
-            >
-              {syncStatus === 'syncing' ? (
-                <RefreshCw size={18} className="animate-spin" />
-              ) : (
-                <Cloud size={18} />
-              )}
-              <span className={styles.navItemLabel}>
-                {syncProvider === 'icloud'
-                  ? 'iCloud Drive'
-                  : syncProvider === 'gdrive'
-                    ? 'Google Drive'
-                    : syncProvider === 'folder'
-                      ? 'Cloud Sync'
-                      : 'Cloud Sync'}
-              </span>
-            </button>
             <button
               type="button"
               className={styles.navItem}
@@ -680,7 +876,7 @@ export function TabletLibrary() {
                   onClick={() => setActiveSection('home')}
                 >
                   <ChevronLeft size={16} />
-                  <span>Home Folder</span>
+                  <span>{homeFolderLabel}</span>
                 </button>
               )}
               <h1 className={styles.panelTitle} data-no-translate={activeSection === 'folder' ? '' : undefined}>
@@ -691,10 +887,28 @@ export function TabletLibrary() {
                 className={styles.headerIconBtn}
                 aria-label="Refresh library"
                 title="Refresh"
-                onClick={() => void refresh()}
+                onClick={() => {
+                  if (storageScope === 'cloud' && syncProvider !== 'local') {
+                    void syncNow().then(() => refresh());
+                  } else {
+                    void refresh();
+                  }
+                }}
               >
-                <RefreshCw size={17} className={loading ? 'animate-spin' : undefined} />
+                <RefreshCw size={17} className={(loading || (storageScope === 'cloud' && syncStatus === 'syncing')) ? 'animate-spin' : undefined} />
               </button>
+              {storageScope === 'cloud' && (
+                <button
+                  type="button"
+                  className={styles.cloudProviderBadgeBtn}
+                  onClick={() => openCloudModal()}
+                  title="Switch Cloud Provider"
+                >
+                  <Cloud size={14} />
+                  <span data-no-translate>{cloudProviderLabel}</span>
+                  <ChevronDown size={13} />
+                </button>
+              )}
               {activeSection !== 'trash' && (
                 <button
                   type="button"
@@ -921,7 +1135,11 @@ export function TabletLibrary() {
                             <img src={item.thumbnail} alt="" className={styles.docThumbImg} draggable={false} />
                           ) : (
                             <div className={styles.docPlaceholder}>
-                              <FileText size={32} opacity={0.45} />
+                              {storageScope === 'cloud' ? (
+                                <Cloud size={44} className={styles.cloudDocPlaceholderIcon} />
+                              ) : (
+                                <FileText size={32} opacity={0.45} />
+                              )}
                             </div>
                           )}
 
@@ -1045,6 +1263,20 @@ export function TabletLibrary() {
               >
                 <FolderInput size={15} />
                 <span>Move</span>
+              </button>
+              <button
+                type="button"
+                className={styles.sortBtn}
+                onClick={() =>
+                  void handleTransferToScope(
+                    Array.from(selectedIds),
+                    storageScope === 'local' ? 'cloud' : 'local',
+                    'move',
+                  )
+                }
+              >
+                {storageScope === 'local' ? <Cloud size={15} /> : <HardDrive size={15} />}
+                <span>{storageScope === 'local' ? 'Move to Cloud' : 'Move to This Device'}</span>
               </button>
               <button
                 type="button"
@@ -1243,6 +1475,45 @@ export function TabletLibrary() {
                 <FolderInput size={16} />
                 <span>Move to Folder…</span>
               </button>
+              {storageScope === 'local' ? (
+                <>
+                  <button
+                    type="button"
+                    className={styles.menuItem}
+                    onClick={() => void handleTransferToScope([menu.item.id], 'cloud', 'move')}
+                  >
+                    <Cloud size={16} />
+                    <span>Move to Cloud</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.menuItem}
+                    onClick={() => void handleTransferToScope([menu.item.id], 'cloud', 'copy')}
+                  >
+                    <Copy size={16} />
+                    <span>Copy to Cloud</span>
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className={styles.menuItem}
+                    onClick={() => void handleTransferToScope([menu.item.id], 'local', 'move')}
+                  >
+                    <HardDrive size={16} />
+                    <span>Move to This Device</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.menuItem}
+                    onClick={() => void handleTransferToScope([menu.item.id], 'local', 'copy')}
+                  >
+                    <Copy size={16} />
+                    <span>Copy to This Device</span>
+                  </button>
+                </>
+              )}
               <button
                 type="button"
                 className={styles.menuItem}
@@ -1306,13 +1577,185 @@ export function TabletLibrary() {
         </div>
       )}
 
-      {/* ── Clean iPadOS Modals (New/Edit Folder, Rename Doc, Move to Folder) ── */}
+      {/* ── Clean iPadOS Modals (Cloud Onboarding, New/Edit Folder, Rename Doc, Move to Folder) ── */}
       {modal && (
         <div
           className={styles.modalBackdrop}
           onMouseDown={(e) => { if (e.target === e.currentTarget) setModal(null); }}
         >
-          {modal.kind === 'moveDocs' ? (
+          {modal.kind === 'cloudModal' ? (
+            <div className={styles.cloudModalCard} role="dialog" aria-modal="true" aria-label="Cloud Storage">
+              <div className={styles.cloudModalHeader}>
+                <div className={styles.cloudModalHeaderTitle}>
+                  <Cloud size={17} className={styles.cloudModalHeaderIcon} />
+                  <span>Use Cloud Storage</span>
+                </div>
+                <button
+                  type="button"
+                  className={styles.cloudModalClose}
+                  aria-label="Close"
+                  onClick={() => setModal(null)}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Cloud Hero Visual + Provider Selector */}
+              <div className={styles.cloudHero}>
+                <div className={styles.cloudHeroGraphic}>
+                  <div className={styles.cloudBarGroup}>
+                    <div className={styles.cloudBarLabel}>
+                      {chosenCloudProvider === 'icloud'
+                        ? 'iCloud Drive'
+                        : chosenCloudProvider === 'gdrive'
+                          ? 'Google Drive'
+                          : 'Cloud Folder'}
+                    </div>
+                    <div className={styles.cloudBarTrack}>
+                      <span className={styles.cloudBarSeg1} />
+                      <span className={styles.cloudBarSeg2} />
+                      <span className={styles.cloudBarSeg3} />
+                    </div>
+                    <div className={styles.cloudBarLegend}>
+                      <span><i style={{ background: '#facc15' }} />PDF</span>
+                      <span><i style={{ background: '#c084fc' }} />Notebooks</span>
+                      <span><i style={{ background: '#38bdf8' }} />Notes</span>
+                    </div>
+                  </div>
+                  <div className={styles.cloudGlyphBox}>
+                    <Cloud size={52} strokeWidth={1.7} />
+                  </div>
+                </div>
+
+                {/* Provider Choice Pills */}
+                <div className={styles.cloudProviderRow}>
+                  <button
+                    type="button"
+                    className={`${styles.cloudProviderTab} ${chosenCloudProvider === 'icloud' ? styles.cloudProviderTabActive : ''}`}
+                    onClick={() => setChosenCloudProvider('icloud')}
+                  >
+                    <Cloud size={15} />
+                    <span data-no-translate>iCloud Drive</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`${styles.cloudProviderTab} ${chosenCloudProvider === 'gdrive' ? styles.cloudProviderTabActive : ''}`}
+                    onClick={() => setChosenCloudProvider('gdrive')}
+                  >
+                    <Cloud size={15} />
+                    <span data-no-translate>Google Drive</span>
+                  </button>
+                  {isDesktopElectron && (
+                    <button
+                      type="button"
+                      className={`${styles.cloudProviderTab} ${chosenCloudProvider === 'folder' ? styles.cloudProviderTabActive : ''}`}
+                      onClick={() => setChosenCloudProvider('folder')}
+                    >
+                      <FolderSync size={15} />
+                      <span>Cloud Folder</span>
+                    </button>
+                  )}
+                </div>
+
+                {chosenCloudProvider === 'gdrive' && (
+                  <div className={styles.cloudInlineInputs}>
+                    <input
+                      type="text"
+                      className={styles.cloudInlineInput}
+                      placeholder="Google OAuth Client ID (optional)"
+                      value={googleClientId}
+                      onChange={(e) => setGoogleClientId(e.target.value)}
+                    />
+                    <input
+                      type="password"
+                      className={styles.cloudInlineInput}
+                      placeholder="Or paste OAuth Access Token"
+                      value={googleTokenInput}
+                      onChange={(e) => setGoogleTokenInput(e.target.value)}
+                    />
+                  </div>
+                )}
+
+                {chosenCloudProvider === 'folder' && isDesktopElectron && (
+                  <div className={styles.cloudInlineFolders}>
+                    <div className={styles.cloudChipList}>
+                      {detectedFolders.map((d) => (
+                        <button
+                          key={d.id}
+                          type="button"
+                          className={`${styles.cloudFolderChip} ${chosenFolderPath === d.path ? styles.cloudFolderChipActive : ''}`}
+                          onClick={() => setChosenFolderPath(d.path)}
+                        >
+                          <FolderSync size={13} />
+                          <span data-no-translate>{d.label}</span>
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        className={styles.cloudFolderChip}
+                        onClick={async () => {
+                          const picked = await window.electronAPI?.chooseFolder?.('Choose MaliPDF Sync Folder');
+                          if (picked) setChosenFolderPath(picked);
+                        }}
+                      >
+                        <Plus size={13} />
+                        <span>Choose Folder…</span>
+                      </button>
+                    </div>
+                    {chosenFolderPath && (
+                      <div className={styles.cloudChosenPath} data-no-translate>{chosenFolderPath}</div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* CollaNote-style Safety Info Callouts */}
+              <div className={styles.cloudInfoCard}>
+                <Cloud size={20} className={styles.cloudInfoIcon} />
+                <div>
+                  <div className={styles.cloudInfoTitle}>Make sure you have enough cloud space</div>
+                  <div className={styles.cloudInfoDesc}>
+                    Only files created in Cloud mode or moved to Cloud are synced automatically — your local device files remain untouched on this device.
+                  </div>
+                </div>
+              </div>
+
+              <div className={styles.cloudInfoCard}>
+                <HardDrive size={20} className={styles.cloudInfoIcon} />
+                <div>
+                  <div className={styles.cloudInfoTitle}>Back up before turning off Cloud</div>
+                  <div className={styles.cloudInfoDesc}>
+                    Copy important documents to This Device before signing out or disconnecting cloud storage.
+                  </div>
+                </div>
+              </div>
+
+              <div className={styles.cloudModalFooter}>
+                <button
+                  type="button"
+                  className={styles.cloudStayLocalBtn}
+                  onClick={() => setModal(null)}
+                >
+                  Stay on This Device
+                </button>
+                <button
+                  type="button"
+                  className={styles.cloudUsePrimaryBtn}
+                  disabled={connectingCloud}
+                  onClick={() => void handleConfirmCloudModal()}
+                >
+                  {connectingCloud ? <RefreshCw size={16} className="animate-spin" /> : <Cloud size={16} />}
+                  <span>
+                    {chosenCloudProvider === 'icloud'
+                      ? 'Use iCloud Drive'
+                      : chosenCloudProvider === 'gdrive'
+                        ? 'Use Google Drive'
+                        : 'Use Cloud Folder'}
+                  </span>
+                </button>
+              </div>
+            </div>
+          ) : modal.kind === 'moveDocs' ? (
             <div className={styles.modalCard} role="dialog" aria-modal="true">
               <h2 className={styles.modalTitle}>Move to Folder</h2>
               <div className={styles.moveFolderList}>
@@ -1327,9 +1770,9 @@ export function TabletLibrary() {
                   }}
                 >
                   <Home size={18} />
-                  <span>Home Folder</span>
+                  <span>{homeFolderLabel}</span>
                 </button>
-                {folders.map((folder) => (
+                {scopedFolders.map((folder) => (
                   <button
                     key={folder.id}
                     type="button"

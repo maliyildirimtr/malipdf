@@ -267,6 +267,8 @@ interface UIStore {
   setPropertiesPanelOpen: (open: boolean) => void;
 
   // Dialogs
+  desktopLibraryOpen: boolean;
+  setDesktopLibraryOpen: (open: boolean) => void;
   newDocumentDialogOpen: boolean;
   setNewDocumentDialogOpen: (open: boolean) => void;
   notePageDialogOpen: boolean;
@@ -708,6 +710,8 @@ export const useUIStore = create<UIStore>()(
         propertiesPanelOpen: false,
         setPropertiesPanelOpen: (open) => set({ propertiesPanelOpen: open }),
 
+        desktopLibraryOpen: false,
+        setDesktopLibraryOpen: (desktopLibraryOpen) => set({ desktopLibraryOpen }),
         newDocumentDialogOpen: false,
         setNewDocumentDialogOpen: (open) => set({ newDocumentDialogOpen: open }),
         notePageDialogOpen: false,

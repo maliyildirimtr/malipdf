@@ -35,7 +35,7 @@ export function SyncSettingsSection() {
   const folderCount = useLibraryStore((s) => s.folders.length);
 
   const [detectedFolders, setDetectedFolders] = useState<DetectedCloudFolder[]>([]);
-  const [migrateExisting, setMigrateExisting] = useState(true);
+  const [migrateExisting, setMigrateExisting] = useState(false);
   const [googleTokenInput, setGoogleTokenInput] = useState('');
   const [showGoogleConfig, setShowGoogleConfig] = useState(false);
 

@@ -26,6 +26,7 @@ interface SyncStoreState {
   googleTokenExpiresAt: number | null;
   googleEmail: string | null;
   googleRootFolderId: string | null;
+  cloudOnboardingSeen: boolean;
 
   setProvider: (provider: SyncProviderId) => void;
   setStatus: (status: SyncStatus, error?: string | null) => void;
@@ -34,6 +35,7 @@ interface SyncStoreState {
   setGoogleClientId: (clientId: string) => void;
   setGoogleSession: (session: { accessToken: string; expiresAt: number; email?: string | null } | null) => void;
   setGoogleRootFolderId: (id: string | null) => void;
+  setCloudOnboardingSeen: (seen: boolean) => void;
   recordSyncSuccess: (stats: SyncStats) => void;
 }
 
@@ -53,6 +55,7 @@ export const useSyncStore = create<SyncStoreState>()(
       googleTokenExpiresAt: null,
       googleEmail: null,
       googleRootFolderId: null,
+      cloudOnboardingSeen: false,
 
       setProvider: (provider) => set({ provider, lastError: null }),
       setStatus: (status, error = null) => set({ status, lastError: error }),
@@ -67,6 +70,7 @@ export const useSyncStore = create<SyncStoreState>()(
           ...(session ? {} : { googleRootFolderId: null }),
         }),
       setGoogleRootFolderId: (googleRootFolderId) => set({ googleRootFolderId }),
+      setCloudOnboardingSeen: (cloudOnboardingSeen) => set({ cloudOnboardingSeen }),
       recordSyncSuccess: (stats) =>
         set({
           status: 'synced',
@@ -88,6 +92,7 @@ export const useSyncStore = create<SyncStoreState>()(
         googleTokenExpiresAt: state.googleTokenExpiresAt,
         googleEmail: state.googleEmail,
         googleRootFolderId: state.googleRootFolderId,
+        cloudOnboardingSeen: state.cloudOnboardingSeen,
       }),
     },
   ),

@@ -765,6 +765,14 @@ export function DocumentArea() {
               <Upload size={16} />
               Open PDF
             </button>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => useUIStore.getState().setDesktopLibraryOpen(true)}
+            >
+              <FileText size={16} />
+              Library & Cloud
+            </button>
           </div>
         </div>
       </div>

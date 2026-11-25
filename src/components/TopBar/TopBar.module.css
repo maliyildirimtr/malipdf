@@ -26,6 +26,30 @@
   -webkit-app-region: drag;
 }
 
+.libraryBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  align-self: center;
+  height: 26px;
+  padding: 0 10px;
+  margin-right: 6px;
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  background: var(--color-bg-hover);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  white-space: nowrap;
+  flex-shrink: 0;
+  -webkit-app-region: no-drag;
+  transition: color var(--duration-fast), background var(--duration-fast);
+}
+
+.libraryBtn:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-active);
+}
+
 .tabs::-webkit-scrollbar {
   display: none;
 }

@@ -138,18 +138,23 @@ const overlayTitleBar = (() => {
 export default function App() {
   useImmersiveFullScreen();
   const tabBar = useFullScreenTabBar();
-  const { theme, resolvedTheme, setResolvedTheme, workspaceMode, tabletMode } = useUIStore();
+  const { theme, resolvedTheme, setResolvedTheme, workspaceMode, tabletMode, desktopLibraryOpen, setDesktopLibraryOpen } = useUIStore();
   const { documents, activeDocId } = useDocumentStore();
   const { docAnnotations } = useAnnotationStore();
   const tabletActiveView = useLibraryStore((state) => state.activeView);
   const setTabletActiveView = useLibraryStore((state) => state.setActiveView);
   const isTabletUI = isIpadApp() || tabletMode || isIpadPreviewUrl();
-  const showTabletLibrary = isTabletUI && (tabletActiveView === 'library' || !activeDocId);
+  const showTabletLibrary = isTabletUI
+    ? (tabletActiveView === 'library' || !activeDocId)
+    : desktopLibraryOpen;
 
   const prevActiveDocIdRef = useRef<string | null>(activeDocId);
   useEffect(() => {
     const prev = prevActiveDocIdRef.current;
     prevActiveDocIdRef.current = activeDocId;
+    if (activeDocId && activeDocId !== prev) {
+      setDesktopLibraryOpen(false);
+    }
     if (!isTabletUI) return;
     // Opening a document switches straight to the workspace; closing the last one returns home.
     if (activeDocId && activeDocId !== prev) {
@@ -157,7 +162,7 @@ export default function App() {
     } else if (!activeDocId) {
       setTabletActiveView('library');
     }
-  }, [activeDocId, isTabletUI, setTabletActiveView]);
+  }, [activeDocId, isTabletUI, setTabletActiveView, setDesktopLibraryOpen]);
 
   // Ensure iPad "Open in MaliPDF" files arriving while on the Home Library open immediately.
   useEffect(() => {
@@ -345,7 +350,10 @@ export default function App() {
       data-tablet-ui={isTabletUI ? 'true' : undefined}
     >
       {showTabletLibrary ? (
-        <TabletLibrary />
+        <>
+          {overlayTitleBar && !isTabletUI && <WindowTitleBar />}
+          <TabletLibrary />
+        </>
       ) : (
         <>
           <div className="app-top-chrome">

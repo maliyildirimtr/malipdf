@@ -1327,3 +1327,407 @@
     width: 180px;
   }
 }
+
+/* ── Desktop macOS Window Traffic Lights & Drag Area ──────────────────────── */
+
+.shellMacDesktop .topBar {
+  -webkit-app-region: drag;
+}
+
+.shellMacDesktop .topBar button,
+.shellMacDesktop .topBar input,
+.shellMacDesktop .segmentedPill {
+  -webkit-app-region: no-drag;
+}
+
+.shellMacDesktop .brandArea {
+  padding-left: 72px;
+}
+
+/* ── CollaNote-style Device <-> Cloud Bottom-Left Switcher Pill ───────────── */
+
+.scopeSwitchPill {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  margin-bottom: 6px;
+  border-radius: 14px;
+  background: var(--lib-pill-bg);
+  border: 1px solid var(--lib-border);
+}
+
+.scopeSwitchBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  border-radius: 10px;
+  border: none;
+  background: transparent;
+  color: var(--lib-text-secondary);
+  cursor: pointer;
+  transition: background 150ms ease, color 150ms ease, box-shadow 150ms ease;
+}
+
+.scopeSwitchBtn:hover {
+  color: var(--lib-text-primary);
+}
+
+.scopeSwitchBtnActive {
+  background: var(--lib-pill-active);
+  color: var(--lib-accent);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.14);
+}
+
+.scopeSwitchBtnCloudActive {
+  background: var(--lib-pill-active);
+  color: #0284c7;
+  box-shadow: 0 2px 8px rgba(2, 132, 199, 0.18);
+}
+
+:global([data-theme="dark"]) .scopeSwitchBtnCloudActive {
+  color: #38bdf8;
+}
+
+.cloudProviderBadgeBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 11px;
+  border-radius: 999px;
+  border: 1px solid var(--lib-border);
+  background: var(--lib-accent-soft);
+  color: var(--lib-accent);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter 120ms ease;
+}
+
+.cloudProviderBadgeBtn:hover {
+  filter: brightness(1.08);
+}
+
+.cloudDocPlaceholderIcon {
+  color: #38bdf8;
+  filter: drop-shadow(0 6px 14px rgba(56, 189, 248, 0.35));
+}
+
+/* ── Cloud Onboarding & Provider Modal (CollaNote-inspired) ───────────────── */
+
+.cloudModalCard {
+  width: min(460px, 100%);
+  padding: 20px 22px 22px;
+  border-radius: 24px;
+  background: rgba(44, 50, 62, 0.94);
+  color: #f8fafc;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  box-shadow: 0 28px 64px rgba(0, 0, 0, 0.52);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cloudModalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cloudModalHeaderTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #60a5fa;
+}
+
+.cloudModalHeaderIcon {
+  color: #38bdf8;
+}
+
+.cloudModalClose {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  border: none;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.72);
+  cursor: pointer;
+}
+
+.cloudModalClose:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+}
+
+.cloudHero {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.cloudHeroGraphic {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 4px 6px;
+}
+
+.cloudBarGroup {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.cloudBarLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.cloudBarTrack {
+  display: flex;
+  height: 11px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.cloudBarSeg1 {
+  width: 38%;
+  background: #facc15;
+}
+
+.cloudBarSeg2 {
+  width: 24%;
+  background: #c084fc;
+}
+
+.cloudBarSeg3 {
+  width: 38%;
+  background: #38bdf8;
+}
+
+.cloudBarLegend {
+  display: flex;
+  gap: 10px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.cloudBarLegend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.cloudBarLegend i {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+}
+
+.cloudGlyphBox {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 60px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(56, 189, 248, 0.24), rgba(37, 99, 235, 0.18));
+  color: #bae6fd;
+}
+
+.cloudProviderRow {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.cloudProviderTab {
+  flex: 1;
+  min-width: 112px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cloudProviderTabActive {
+  background: rgba(14, 165, 233, 0.25);
+  border-color: #38bdf8;
+  color: #ffffff;
+}
+
+.cloudInlineInputs {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.cloudInlineInput {
+  height: 36px;
+  padding: 0 11px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(15, 23, 42, 0.55);
+  color: #ffffff;
+  font-size: 12.5px;
+  outline: none;
+}
+
+.cloudInlineFolders {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cloudChipList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cloudFolderChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.07);
+  color: #e2e8f0;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.cloudFolderChipActive {
+  background: rgba(56, 189, 248, 0.24);
+  border-color: #38bdf8;
+  color: #ffffff;
+}
+
+.cloudChosenPath {
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: rgba(255, 255, 255, 0.62);
+  word-break: break-all;
+}
+
+.cloudInfoCard {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.cloudInfoIcon {
+  color: #38bdf8;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.cloudInfoTitle {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #ffffff;
+  margin-bottom: 3px;
+}
+
+.cloudInfoDesc {
+  font-size: 12px;
+  line-height: 1.42;
+  color: rgba(255, 255, 255, 0.68);
+}
+
+.cloudModalFooter {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.cloudStayLocalBtn {
+  height: 40px;
+  padding: 0 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.10);
+  color: #f1f5f9;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cloudStayLocalBtn:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.cloudUsePrimaryBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 40px;
+  padding: 0 20px;
+  border-radius: 999px;
+  border: none;
+  background: #0a84ff;
+  color: #ffffff;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(10, 132, 255, 0.42);
+}
+
+.cloudUsePrimaryBtn:hover:not(:disabled) {
+  background: #0077ed;
+}
+
+.cloudUsePrimaryBtn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+@media (max-width: 640px) {
+  .cloudModalFooter {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+
+  .cloudUsePrimaryBtn,
+  .cloudStayLocalBtn {
+    justify-content: center;
+    width: 100%;
+  }
+}

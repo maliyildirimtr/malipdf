@@ -1,18 +1,25 @@
 /**
- * Sync Manager — coordinates bidirectional sync and seamless cloud migration
- * across iCloud Drive, Google Drive, and Desktop Cloud Folders (Mac / Windows / iPad / iPhone).
+ * MaliPDF Selective Cross-Platform Cloud Sync Coordinator.
+ *
+ * Strictly syncs ONLY `scope === 'cloud'` folders and documents with the active
+ * `SyncAdapter` (iCloud Drive, Google Drive, or Desktop Cloud Folder), leaving
+ * all `scope === 'local'` ("This Device" / "Cihazım") files strictly on the
+ * device unless the user explicitly moves/copies/saves a file into Cloud mode.
  */
 
-import { useLibraryStore } from '../store/libraryStore';
-import { useSyncStore } from '../store/syncStore';
 import {
-  DOCUMENTS_PREFIX,
-  PREVIEW_PREFIX,
+  getScope,
+  renderPdfCoverThumbnail,
   saveLibraryMeta,
   writeLibraryPdfBytes,
   type LibraryDocument,
+  type LibraryFolder,
 } from '../platform/ipadLibrary';
-import { isIpadApp } from '../platform/native';
+import { prefixForScope, useLibraryStore } from '../store/libraryStore';
+import { useSyncStore } from '../store/syncStore';
+import { FolderSyncAdapter } from './adapters/folderSyncAdapter';
+import { GoogleDriveSyncAdapter } from './adapters/googleDriveSyncAdapter';
+import { ICloudSyncAdapter } from './adapters/icloudSyncAdapter';
 import { buildSyncPlan } from './syncMerge';
 import {
   fingerprintPdfBytes,
@@ -22,14 +29,11 @@ import {
   type SyncManifest,
   type SyncProviderId,
 } from './syncTypes';
-import { FolderSyncAdapter } from './adapters/folderSyncAdapter';
-import { ICloudSyncAdapter } from './adapters/icloudSyncAdapter';
-import { GoogleDriveSyncAdapter } from './adapters/googleDriveSyncAdapter';
 
 const adapters: Record<Exclude<SyncProviderId, 'local'>, SyncAdapter> = {
-  folder: new FolderSyncAdapter(),
   icloud: new ICloudSyncAdapter(),
   gdrive: new GoogleDriveSyncAdapter(),
+  folder: new FolderSyncAdapter(),
 };
 
 let activeSyncPromise: Promise<boolean> | null = null;
@@ -40,36 +44,47 @@ export function getSyncAdapter(provider: SyncProviderId): SyncAdapter | null {
 }
 
 /**
- * Runs a full conflict-safe bidirectional sync against the currently active
- * cloud provider (iCloud Drive, Google Drive, or Desktop Cloud Folder).
+ * Executes a full bidirectional conflict-safe sync ONLY for Cloud-scoped
+ * (`scope === 'cloud'`) folders & documents, keeping local device items untouched.
  */
 export async function syncNow(): Promise<boolean> {
   if (activeSyncPromise) return activeSyncPromise;
+
   const syncStore = useSyncStore.getState();
   const adapter = getSyncAdapter(syncStore.provider);
-  if (!adapter) return true;
+  if (!adapter) return false;
 
   activeSyncPromise = (async () => {
     try {
-      if (!(await adapter.isConnected())) {
-        syncStore.setStatus('idle', null);
-        return false;
-      }
-
       syncStore.setStatus('syncing', null);
+
+      if (!(await adapter.isConnected())) {
+        const ok = await adapter.connect();
+        if (!ok) {
+          syncStore.setStatus('error', 'Cloud account is not connected.');
+          return false;
+        }
+      }
 
       const lib = useLibraryStore.getState();
       if (!lib.initialized) await lib.initialize();
       const freshLib = useLibraryStore.getState();
 
-      // Build local sync records with live content fingerprints
-      const localItems: SyncItemRecord[] = [];
+      // Strictly separate Local ("This Device") vs Cloud ("Bulut") entries!
+      const preservedLocalFolders = freshLib.folders.filter((f) => getScope(f) === 'local');
+      const cloudFolders = freshLib.folders.filter((f) => getScope(f) === 'cloud');
+
+      const preservedLocalItems = freshLib.items.filter((i) => getScope(i) === 'local');
+      const cloudItemsSource = freshLib.items.filter((i) => getScope(i) === 'cloud');
+
+      // Build cloud sync records with live content fingerprints
+      const localCloudRecords: SyncItemRecord[] = [];
       const localBytesById = new Map<string, Uint8Array>();
 
-      for (const item of freshLib.items) {
+      for (const item of cloudItemsSource) {
         const bytes = item.trashedAt ? null : await freshLib.readDocumentBytes(item.id).catch(() => null);
         if (bytes) localBytesById.set(item.id, bytes);
-        localItems.push({
+        localCloudRecords.push({
           id: item.id,
           title: item.title,
           remoteName: remoteNameForDocument(item),
@@ -93,8 +108,8 @@ export async function syncNow(): Promise<boolean> {
       ]);
 
       const plan = buildSyncPlan({
-        localFolders: freshLib.folders,
-        localItems,
+        localFolders: cloudFolders,
+        localItems: localCloudRecords,
         remoteManifest,
         remoteFiles,
         lastSyncedAt: syncStore.lastSyncedAt,
@@ -103,19 +118,24 @@ export async function syncNow(): Promise<boolean> {
       let uploaded = 0;
       let downloaded = 0;
       const conflicts = plan.conflictCopies.length;
+      const cloudPrefix = prefixForScope('cloud');
+      const downloadedThumbs = new Map<string, { thumbnail?: string; pageCount?: number }>();
 
       // 1. Preserve remote conflict copies locally before uploading local winners
-      const prefix = isIpadApp() ? DOCUMENTS_PREFIX : PREVIEW_PREFIX;
       for (const { sourceRemoteName, conflictItem } of plan.conflictCopies) {
         const remoteBytes = await adapter.readPdf(sourceRemoteName);
         if (remoteBytes) {
-          await writeLibraryPdfBytes(prefix + conflictItem.remoteName, remoteBytes);
+          await writeLibraryPdfBytes(cloudPrefix + conflictItem.remoteName, remoteBytes);
           await adapter.writePdf(conflictItem.remoteName, remoteBytes);
+          const rendered = await renderPdfCoverThumbnail(remoteBytes).catch(() => null);
+          if (rendered) {
+            downloadedThumbs.set(conflictItem.id, { thumbnail: rendered.dataUrl, pageCount: rendered.pageCount });
+          }
           downloaded++;
         }
       }
 
-      // 2. Upload new / updated local PDFs
+      // 2. Upload new / updated local cloud-scoped PDFs
       for (const item of plan.toUpload) {
         const bytes = localBytesById.get(item.id);
         if (!bytes) continue;
@@ -123,14 +143,18 @@ export async function syncNow(): Promise<boolean> {
         uploaded++;
       }
 
-      // 3. Download new / updated remote PDFs
+      // 3. Download new / updated remote PDFs into Cloud cache
       for (const item of plan.toDownload) {
         const bytes = await adapter.readPdf(item.remoteName);
         if (!bytes) continue;
-        const targetPath = prefix + item.remoteName;
+        const targetPath = cloudPrefix + item.remoteName;
         await writeLibraryPdfBytes(targetPath, bytes);
         item.sizeBytes = bytes.byteLength;
         item.contentHash = fingerprintPdfBytes(bytes);
+        const rendered = await renderPdfCoverThumbnail(bytes).catch(() => null);
+        if (rendered) {
+          downloadedThumbs.set(item.id, { thumbnail: rendered.dataUrl, pageCount: rendered.pageCount });
+        }
         downloaded++;
       }
 
@@ -139,20 +163,26 @@ export async function syncNow(): Promise<boolean> {
         await adapter.deletePdf(remoteName).catch(() => undefined);
       }
 
-      // 5. Commit merged folders & items into local Library store
-      const existingById = new Map(freshLib.items.map((i) => [i.id, i]));
-      const mergedDocs: LibraryDocument[] = plan.mergedItems.map((rec) => {
-        const prev = existingById.get(rec.id);
+      // 5. Merge Cloud items/folders back alongside untouched Local items/folders
+      const existingCloudById = new Map(cloudItemsSource.map((i) => [i.id, i]));
+      const mergedCloudFolders: LibraryFolder[] = plan.mergedFolders.map((f) => ({
+        ...f,
+        scope: 'cloud',
+      }));
+      const mergedCloudDocs: LibraryDocument[] = plan.mergedItems.map((rec) => {
+        const prev = existingCloudById.get(rec.id);
+        const freshThumb = downloadedThumbs.get(rec.id);
         return {
           id: rec.id,
           title: rec.title,
-          filePath: prev?.filePath || prefix + rec.remoteName,
+          filePath: prev?.filePath || cloudPrefix + rec.remoteName,
+          scope: 'cloud',
           kind: rec.kind,
           folderId: rec.folderId,
           coverTheme: rec.coverTheme,
-          thumbnail: prev?.thumbnail,
+          thumbnail: freshThumb?.thumbnail ?? prev?.thumbnail,
           favorite: rec.favorite,
-          pageCount: rec.pageCount,
+          pageCount: freshThumb?.pageCount ?? rec.pageCount,
           sizeBytes: rec.sizeBytes,
           createdAt: rec.createdAt,
           updatedAt: rec.updatedAt,
@@ -161,15 +191,18 @@ export async function syncNow(): Promise<boolean> {
         };
       });
 
-      useLibraryStore.setState({ folders: plan.mergedFolders, items: mergedDocs });
-      await saveLibraryMeta({ version: 1, folders: plan.mergedFolders, items: mergedDocs });
+      const nextFolders = [...mergedCloudFolders, ...preservedLocalFolders];
+      const nextItems = [...mergedCloudDocs, ...preservedLocalItems];
+
+      useLibraryStore.setState({ folders: nextFolders, items: nextItems });
+      await saveLibraryMeta({ version: 1, folders: nextFolders, items: nextItems });
 
       // 6. Write updated shared manifest to the cloud provider
       const nextManifest: SyncManifest = {
         version: 1,
         updatedAt: Date.now(),
         deviceId: syncStore.deviceId,
-        folders: plan.mergedFolders,
+        folders: mergedCloudFolders,
         items: plan.mergedItems,
       };
       await adapter.writeManifest(nextManifest);
@@ -189,9 +222,9 @@ export async function syncNow(): Promise<boolean> {
 }
 
 /**
- * Switches the active sync provider (e.g. Local -> iCloud Drive -> Google Drive
- * -> Desktop Folder) and optionally migrates all existing MaliPDF documents and
- * folders directly into the new cloud destination in one step.
+ * Connects or switches the active cloud provider (iCloud Drive, Google Drive,
+ * or Desktop Cloud Folder). By default (`migrateExisting = false`), local
+ * "This Device" files remain strictly on the device and only Cloud-mode files sync.
  */
 export async function switchSyncProvider(
   nextProvider: SyncProviderId,
@@ -207,6 +240,7 @@ export async function switchSyncProvider(
   if (nextProvider === 'local') {
     store.setProvider('local');
     store.setStatus('idle', null);
+    useLibraryStore.getState().setStorageScope('local');
     return true;
   }
 
@@ -222,8 +256,17 @@ export async function switchSyncProvider(
     }
 
     store.setProvider(nextProvider);
-    // Reset lastSyncedAt when migrating to a fresh provider so all local docs upload cleanly
+    // Only copy local docs to Cloud if explicitly requested by the user in Settings
     if (options?.migrateExisting) {
+      const lib = useLibraryStore.getState();
+      if (!lib.initialized) await lib.initialize();
+      const localIds = useLibraryStore
+        .getState()
+        .items.filter((i) => !i.trashedAt && getScope(i) === 'local')
+        .map((i) => i.id);
+      if (localIds.length > 0) {
+        await useLibraryStore.getState().transferDocumentsScope(localIds, 'cloud', 'copy');
+      }
       useSyncStore.setState({ lastSyncedAt: null });
     }
     return await syncNow();

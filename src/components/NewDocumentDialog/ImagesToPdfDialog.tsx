@@ -118,11 +118,14 @@ export function ImagesToPdfDialog() {
       const bytes = await imagesToPdf(items.map((i) => i.image), size, margin);
       const rawName = items.length === 1 ? items[0].name.replace(/\.[^.]+$/, '') : 'Images';
       const fileName = ensurePdfExtension(sanitizeFileName(rawName));
-      if (isTabletMode()) {
-        const saved = await useLibraryStore.getState().upsertDocument({
+      const saveInLibrary = isTabletMode() || useUIStore.getState().desktopLibraryOpen;
+      if (saveInLibrary) {
+        const lib = useLibraryStore.getState();
+        const saved = await lib.upsertDocument({
           title: fileName,
           bytes,
           kind: 'pdf',
+          scope: lib.storageScope,
           pageCount: items.length,
         });
         await openDocumentBytes(
@@ -131,7 +134,8 @@ export function ImagesToPdfDialog() {
           bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
           { restoreEditable: false },
         );
-        useLibraryStore.getState().setActiveView('workspace');
+        useUIStore.getState().setDesktopLibraryOpen(false);
+        lib.setActiveView('workspace');
       } else {
         await openDocumentBytes(fileName, null, bytes.buffer as ArrayBuffer, { markDirty: true });
       }

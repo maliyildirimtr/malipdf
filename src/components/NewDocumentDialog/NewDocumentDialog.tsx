@@ -311,11 +311,14 @@ export function NewDocumentDialog() {
 
       const totalPages = pageCount + (selectedCover || customCoverUrl ? 1 : 0);
 
-      if (isTabletMode()) {
-        const saved = await useLibraryStore.getState().upsertDocument({
+      const saveInLibrary = isTabletMode() || useUIStore.getState().desktopLibraryOpen;
+      if (saveInLibrary) {
+        const lib = useLibraryStore.getState();
+        const saved = await lib.upsertDocument({
           title: name,
           bytes: pdfBytes,
           kind: 'notebook',
+          scope: lib.storageScope,
           pageCount: totalPages,
         });
         await openDocumentBytes(
@@ -324,7 +327,8 @@ export function NewDocumentDialog() {
           pdfBytes.buffer.slice(pdfBytes.byteOffset, pdfBytes.byteOffset + pdfBytes.byteLength) as ArrayBuffer,
           { restoreEditable: false },
         );
-        useLibraryStore.getState().setActiveView('workspace');
+        useUIStore.getState().setDesktopLibraryOpen(false);
+        lib.setActiveView('workspace');
       } else {
         await openDocumentBytes(name, null, pdfBytes.buffer as ArrayBuffer);
       }

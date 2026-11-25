@@ -150,22 +150,30 @@ export interface SaveDestinationChoice {
   target: 'files' | 'library';
   fileName: string;
   folderId: string | null;
+  scope: 'local' | 'cloud';
   newFolderName?: string;
 }
 
 /**
- * Interactive iPad Save / Save As destination picker: lets the user edit the
- * file name and choose between iPadOS Files / iCloud Drive (via native Files
- * share sheet), MaliPDF Home Library, any existing Library folder, or a brand
- * new folder created on the spot.
+ * Interactive Save / Save As destination picker: lets the user edit the
+ * file name and choose between system Files / Share, This Device ("Cihazım"),
+ * Cloud ("Bulut — iCloud Drive / Google Drive"), any folder, or a brand-new folder.
  */
 export async function askSaveDestination(
   defaultName: string,
-  folders: ReadonlyArray<{ id: string; name: string }>,
+  folders: ReadonlyArray<{ id: string; name: string; scope?: 'local' | 'cloud' }>,
   currentFolderId: string | null,
   isSaveAs: boolean,
+  cloudOptions?: {
+    currentScope?: 'local' | 'cloud';
+    cloudEnabled?: boolean;
+    cloudLabel?: string;
+  },
 ): Promise<SaveDestinationChoice | null> {
   const isTr = useUIStore.getState().language === 'tr';
+  const currentScope = cloudOptions?.currentScope ?? 'local';
+  const cloudEnabled = Boolean(cloudOptions?.cloudEnabled);
+  const cloudLabel = cloudOptions?.cloudLabel || 'iCloud Drive';
   return new Promise((resolve) => {
     const backdrop = document.createElement('div');
     backdrop.className = 'ipad-dialog-backdrop';
@@ -203,8 +211,20 @@ export async function askSaveDestination(
     locLabel.textContent = isTr ? 'Kayıt Konumu' : 'Destination';
     box.appendChild(locLabel);
 
-    type SelectionKey = 'files' | 'root' | 'new-folder' | `folder:${string}`;
-    let selected: SelectionKey = currentFolderId ? `folder:${currentFolderId}` : 'root';
+    type SelectionKey =
+      | 'files'
+      | 'local-root'
+      | 'cloud-root'
+      | 'new-local-folder'
+      | 'new-cloud-folder'
+      | `folder:${'local' | 'cloud'}:${string}`;
+
+    const initialFolder = currentFolderId ? folders.find((f) => f.id === currentFolderId) : undefined;
+    let selected: SelectionKey = initialFolder
+      ? `folder:${initialFolder.scope === 'cloud' ? 'cloud' : 'local'}:${initialFolder.id}`
+      : currentScope === 'cloud' && cloudEnabled
+        ? 'cloud-root'
+        : 'local-root';
 
     const list = document.createElement('div');
     list.className = 'ipad-dialog__list';
@@ -220,8 +240,9 @@ export async function askSaveDestination(
       for (const item of optionButtons) {
         item.el.classList.toggle('ipad-dialog__option--active', item.key === selected);
       }
-      newFolderInput.style.display = selected === 'new-folder' ? 'block' : 'none';
-      if (selected === 'new-folder') setTimeout(() => newFolderInput.focus(), 0);
+      const isNew = selected === 'new-local-folder' || selected === 'new-cloud-folder';
+      newFolderInput.style.display = isNew ? 'block' : 'none';
+      if (isNew) setTimeout(() => newFolderInput.focus(), 0);
     };
 
     const addOption = (key: SelectionKey, iconText: string, label: string, sub: string) => {
@@ -239,31 +260,58 @@ export async function askSaveDestination(
       optionButtons.push({ key, el: btn });
     };
 
+    // 1. Local Device options ("Cihazım")
     addOption(
-      'files',
-      '☁️',
-      isTr ? 'Dosyalar / iCloud / iPad\'im…' : 'Files / iCloud Drive / On My iPad…',
-      isTr ? 'Sistem konum menüsünü aç (iCloud, İndirilenler, klasörler)' : 'Open system location picker (iCloud, Downloads, folders)',
+      'local-root',
+      '📱',
+      isTr ? 'Cihazım — Ana Klasör' : 'This Device — Home Folder',
+      isTr ? 'Yalnızca bu cihazda kalır (buluta yüklenmez)' : 'Stays on this device only (never auto-uploaded)',
     );
-    addOption(
-      'root',
-      '📚',
-      isTr ? 'MaliPDF Kütüphanesi (Ana Klasör)' : 'MaliPDF Library (Home Folder)',
-      isTr ? 'iPad\'imde › MaliPDF' : 'On My iPad › MaliPDF',
-    );
-    for (const folder of folders) {
+    for (const folder of folders.filter((f) => (f.scope ?? 'local') === 'local')) {
       addOption(
-        `folder:${folder.id}`,
+        `folder:local:${folder.id}`,
         '📁',
         folder.name,
-        isTr ? 'MaliPDF Klasörü' : 'MaliPDF Folder',
+        isTr ? 'Cihazım Klasörü' : 'This Device Folder',
       );
     }
+
+    // 2. Cloud options ("Bulut — iCloud Drive / Google Drive") when connected
+    if (cloudEnabled) {
+      addOption(
+        'cloud-root',
+        '☁️',
+        isTr ? `Ana Klasör (${cloudLabel})` : `Home Folder (${cloudLabel})`,
+        isTr ? 'Otomatik bulut senkronizasyonu açık' : 'Automatically synced across your devices',
+      );
+      for (const folder of folders.filter((f) => f.scope === 'cloud')) {
+        addOption(
+          `folder:cloud:${folder.id}`,
+          '☁️',
+          folder.name,
+          isTr ? `${cloudLabel} Klasörü` : `${cloudLabel} Folder`,
+        );
+      }
+      addOption(
+        'new-cloud-folder',
+        '➕',
+        isTr ? `Yeni Bulut Klasörü (${cloudLabel})…` : `New Cloud Folder (${cloudLabel})…`,
+        isTr ? 'Bulutta yeni klasör açıp oraya kaydet' : 'Create a new synced cloud folder and save there',
+      );
+    }
+
     addOption(
-      'new-folder',
+      'new-local-folder',
       '➕',
-      isTr ? 'Yeni Klasör Oluştur…' : 'Create New Folder…',
-      isTr ? 'MaliPDF içinde yeni klasör açıp oraya kaydet' : 'Create a new folder inside MaliPDF and save there',
+      isTr ? 'Yeni Cihaz Klasörü Oluştur…' : 'New Folder on This Device…',
+      isTr ? 'Cihazımda yeni klasör açıp oraya kaydet' : 'Create a local folder on this device and save there',
+    );
+
+    addOption(
+      'files',
+      '📤',
+      isTr ? 'Dosyalar Uygulamasına Dışa Aktar…' : 'Export to System Files…',
+      isTr ? 'Sistem konum menüsünü aç (İndirilenler, başka uygulamalar)' : 'Open system location picker (Downloads, other apps)',
     );
 
     box.appendChild(list);
@@ -278,20 +326,38 @@ export async function askSaveDestination(
     const confirmSave = () => {
       const fileName = nameInput.value.trim() || defaultName;
       if (selected === 'files') {
-        finish({ target: 'files', fileName, folderId: null });
+        finish({ target: 'files', fileName, folderId: null, scope: currentScope });
         return;
       }
-      if (selected === 'new-folder') {
+      if (selected === 'new-local-folder' || selected === 'new-cloud-folder') {
         const folderName = newFolderInput.value.trim();
         if (!folderName) {
           newFolderInput.focus();
           return;
         }
-        finish({ target: 'library', fileName, folderId: null, newFolderName: folderName });
+        finish({
+          target: 'library',
+          fileName,
+          folderId: null,
+          scope: selected === 'new-cloud-folder' ? 'cloud' : 'local',
+          newFolderName: folderName,
+        });
         return;
       }
-      const folderId = selected.startsWith('folder:') ? selected.slice('folder:'.length) : null;
-      finish({ target: 'library', fileName, folderId });
+      if (selected === 'cloud-root') {
+        finish({ target: 'library', fileName, folderId: null, scope: 'cloud' });
+        return;
+      }
+      if (selected === 'local-root') {
+        finish({ target: 'library', fileName, folderId: null, scope: 'local' });
+        return;
+      }
+      if (selected.startsWith('folder:cloud:')) {
+        finish({ target: 'library', fileName, folderId: selected.slice('folder:cloud:'.length), scope: 'cloud' });
+        return;
+      }
+      const folderId = selected.startsWith('folder:local:') ? selected.slice('folder:local:'.length) : null;
+      finish({ target: 'library', fileName, folderId, scope: 'local' });
     };
 
     const row = document.createElement('div');

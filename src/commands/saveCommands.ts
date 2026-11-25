@@ -5,8 +5,9 @@ import { buildAnnotationsMap, exportAnnotatedPdf, loadDefaultExportFonts } from 
 import { useAssetStore } from '../store/assetStore';
 import { useFormStore } from '../store/formStore';
 import { removeRecoverySnapshot } from '../document/autoSave';
-import { useLibraryStore } from '../store/libraryStore';
-import { DOCUMENTS_PREFIX, PREVIEW_PREFIX, ensurePdfExtension, sanitizeFileName } from '../platform/ipadLibrary';
+import { prefixForScope, useLibraryStore } from '../store/libraryStore';
+import { useSyncStore } from '../store/syncStore';
+import { CLOUD_CACHE_PREFIX, DOCUMENTS_PREFIX, PREVIEW_PREFIX, ensurePdfExtension, getScope, sanitizeFileName } from '../platform/ipadLibrary';
 import { isTabletMode } from '../platform/touchMode';
 import { isIpadApp } from '../platform/native';
 import { askSaveDestination } from '../platform/ipadDialogs';
@@ -36,23 +37,36 @@ async function performSave(docId: string, saveAs: boolean, options?: { silent?: 
     const exportResult = await exportAnnotatedPdf(doc.sourceData, annotations, { assets, fonts, editable: true, bookmarks: doc.bookmarks, formValues: useFormStore.getState().getValues(docId) });
 
     let filePath = doc.filePath;
-    const isBrowserTabletSave = !window.electronAPI?.writeFile && (isTabletMode() || filePath?.startsWith(PREVIEW_PREFIX));
+    const isDesktopVirtualLibraryDoc = Boolean(
+      !isIpadApp()
+        && filePath
+        && (filePath.startsWith(PREVIEW_PREFIX) || filePath.startsWith(CLOUD_CACHE_PREFIX)),
+    );
+    const isBrowserTabletSave = !window.electronAPI?.writeFile && (isTabletMode() || Boolean(isDesktopVirtualLibraryDoc));
 
     // On iPad (or Tablet UI), manual Save / Save As opens the destination picker
-    // so the user can choose Files/iCloud Drive, MaliPDF Home, any folder, or a new folder.
-    if (!options?.silent && (isIpadApp() || isBrowserTabletSave)) {
+    // so the user can choose This Device ("Cihazım"), Cloud ("Bulut"), folders, or Files.
+    if (!options?.silent && (isIpadApp() || (!window.electronAPI?.writeFile && isTabletMode()))) {
       const lib = useLibraryStore.getState();
       if (!lib.initialized) await lib.initialize();
       const freshLib = useLibraryStore.getState();
+      const syncProvider = useSyncStore.getState().provider;
       const existingItem = filePath
         ? freshLib.items.find((i) => !i.trashedAt && i.filePath === filePath)
         : undefined;
+      const currentScope = existingItem ? getScope(existingItem) : freshLib.storageScope;
+      const cloudLabel = syncProvider === 'gdrive' ? 'Google Drive' : syncProvider === 'folder' ? 'Cloud' : 'iCloud Drive';
       const defaultFileName = ensurePdfExtension(sanitizeFileName(doc.title || 'Untitled.pdf'));
       const choice = await askSaveDestination(
         defaultFileName,
-        freshLib.folders.map((f) => ({ id: f.id, name: f.name })),
+        freshLib.folders.map((f) => ({ id: f.id, name: f.name, scope: getScope(f) })),
         existingItem?.folderId ?? null,
         saveAs,
+        {
+          currentScope,
+          cloudEnabled: syncProvider !== 'local',
+          cloudLabel,
+        },
       );
       if (!choice) {
         updateDocument(docId, { saveStatus: 'idle' });
@@ -62,7 +76,6 @@ async function performSave(docId: string, saveAs: boolean, options?: { silent?: 
       const finalName = ensurePdfExtension(sanitizeFileName(choice.fileName));
 
       if (choice.target === 'files') {
-        // Keep app copy up to date if it already lives in Library, then open native iPadOS Files/Share sheet
         if (filePath && window.electronAPI?.writeFile) {
           await window.electronAPI.writeFile(filePath, exportResult.data.buffer as ArrayBuffer);
           void useLibraryStore.getState().recordDocumentSaved(filePath, finalName, exportResult.data, doc.pageCount);
@@ -70,7 +83,6 @@ async function performSave(docId: string, saveAs: boolean, options?: { silent?: 
         if (window.electronAPI?.sharePdf) {
           await window.electronAPI.sharePdf(finalName, exportResult.data);
         } else {
-          // Browser fallback download
           const blob = new Blob([exportResult.data as BlobPart], { type: 'application/pdf' });
           const url = URL.createObjectURL(blob);
           const a = document.createElement('a');
@@ -87,25 +99,25 @@ async function performSave(docId: string, saveAs: boolean, options?: { silent?: 
         return true;
       }
 
-      // Target = MaliPDF Library (Home or chosen/new folder)
+      // Target = MaliPDF Library (This Device or Cloud)
       let targetFolderId = choice.folderId;
-      let folderLabel = 'Ana Klasör';
+      let folderLabel = choice.scope === 'cloud' ? `Ana Klasör (${cloudLabel})` : 'Ana Klasör';
       if (choice.newFolderName) {
-        const created = await useLibraryStore.getState().createFolder(choice.newFolderName);
+        const created = await useLibraryStore.getState().createFolder(choice.newFolderName, 'blue', null, choice.scope);
         targetFolderId = created.id;
         folderLabel = created.name;
       } else if (targetFolderId) {
         folderLabel = useLibraryStore.getState().folders.find((f) => f.id === targetFolderId)?.name ?? 'Klasör';
       }
 
-      const prefix = isIpadApp() ? DOCUMENTS_PREFIX : PREVIEW_PREFIX;
-      const targetPath = prefix + finalName;
+      const targetPath = prefixForScope(choice.scope) + finalName;
 
-      if (isBrowserTabletSave) {
+      if (isBrowserTabletSave || choice.scope === 'cloud') {
         const saved = await useLibraryStore.getState().upsertDocument({
           title: finalName,
           filePath: targetPath,
           folderId: targetFolderId,
+          scope: choice.scope,
           bytes: exportResult.data,
           pageCount: doc.pageCount,
           writeBytes: true,
@@ -119,9 +131,10 @@ async function performSave(docId: string, saveAs: boolean, options?: { silent?: 
           title: finalName,
           filePath: targetPath,
           folderId: targetFolderId,
+          scope: 'local',
           bytes: exportResult.data,
           pageCount: doc.pageCount,
-          writeBytes: false, // already written via writeFile above
+          writeBytes: false,
         });
       }
 
@@ -136,11 +149,14 @@ async function performSave(docId: string, saveAs: boolean, options?: { silent?: 
         await removeRecoverySnapshot(docId);
       }
       notifyUser('success', `${folderLabel} › ${finalName}`);
-      scheduleAutoSync();
+      if (choice.scope === 'cloud') {
+        scheduleAutoSync();
+      }
       return true;
     }
 
-    if (isBrowserTabletSave) {
+    // Desktop or silent save for virtual Library / Cloud documents
+    if ((isBrowserTabletSave || (isDesktopVirtualLibraryDoc && !saveAs))) {
       const saved = await useLibraryStore.getState().upsertDocument({
         title: doc.title,
         filePath: saveAs ? undefined : filePath,
@@ -151,7 +167,7 @@ async function performSave(docId: string, saveAs: boolean, options?: { silent?: 
       filePath = saved.filePath;
     } else {
       if (saveAs || !filePath) {
-        const selectedPath = await window.electronAPI.saveFile(filePath || doc.title);
+        const selectedPath = await window.electronAPI.saveFile(doc.title);
         if (!selectedPath) {
           updateDocument(docId, { saveStatus: 'idle' });
           return false;
@@ -159,19 +175,27 @@ async function performSave(docId: string, saveAs: boolean, options?: { silent?: 
         filePath = selectedPath;
       }
 
-      const ok = await window.electronAPI.writeFile(filePath, exportResult.data.buffer as ArrayBuffer);
-      if (!ok) throw new Error('Failed to write PDF to disk.');
+      if (isIpadApp() && filePath.startsWith(`${DOCUMENTS_PREFIX}${CLOUD_CACHE_PREFIX}`)) {
+        await useLibraryStore.getState().upsertDocument({
+          title: filePath.split(/[\\/]/).pop() || doc.title,
+          filePath,
+          scope: 'cloud',
+          bytes: exportResult.data,
+          pageCount: doc.pageCount,
+          writeBytes: true,
+        });
+      } else {
+        const ok = await window.electronAPI.writeFile(filePath, exportResult.data.buffer as ArrayBuffer);
+        if (!ok) throw new Error('Failed to write PDF to disk.');
 
-      void useLibraryStore.getState().recordDocumentSaved(
-        filePath,
-        filePath.split(/[\\/]/).pop() || doc.title,
-        exportResult.data,
-        doc.pageCount,
-      );
+        void useLibraryStore.getState().recordDocumentSaved(
+          filePath,
+          filePath.split(/[\\/]/).pop() || doc.title,
+          exportResult.data,
+          doc.pageCount,
+        );
+      }
     }
-
-    // We do NOT update sourceData here to avoid double-flattening.
-    // The runtime source data remains the original PDF, with live annotations layered on top.
 
     updateDocument(docId, {
       filePath,
@@ -179,13 +203,15 @@ async function performSave(docId: string, saveAs: boolean, options?: { silent?: 
       saveStatus: 'idle',
       title: filePath.split(/[\\/]/).pop() || doc.title,
     });
-    // Saved state no longer needs a crash-recovery copy (unless edited meanwhile).
     const latest = useDocumentStore.getState().documents.get(docId);
     if (latest && latest.currentStateId === latest.savedStateId) {
       await removeRecoverySnapshot(docId);
     }
 
-    scheduleAutoSync();
+    const savedLibraryItem = useLibraryStore.getState().items.find((i) => i.filePath === filePath);
+    if (savedLibraryItem && getScope(savedLibraryItem) === 'cloud') {
+      scheduleAutoSync();
+    }
     return true;
   } catch (error) {
     console.error('Save failed:', error);

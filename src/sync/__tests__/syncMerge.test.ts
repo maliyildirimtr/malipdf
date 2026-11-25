@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { buildSyncPlan } from '../syncMerge';
 import { fingerprintPdfBytes, type SyncItemRecord, type SyncManifest } from '../syncTypes';
-import type { LibraryFolder } from '../../platform/ipadLibrary';
+import { getScope, type LibraryFolder } from '../../platform/ipadLibrary';
+import { prefixForScope, useLibraryStore } from '../../store/libraryStore';
 
 function makeItem(overrides: Partial<SyncItemRecord> & { id: string; remoteName: string }): SyncItemRecord {
   return {
@@ -112,5 +113,25 @@ describe('syncMerge', () => {
     const b = new Uint8Array([1, 2, 3, 4, 5, 7]);
     expect(fingerprintPdfBytes(a)).toBe(fingerprintPdfBytes(new Uint8Array([1, 2, 3, 4, 5, 6])));
     expect(fingerprintPdfBytes(a)).not.toBe(fingerprintPdfBytes(b));
+  });
+
+  it('keeps legacy and local items strictly in local scope unless created or moved to cloud', async () => {
+    expect(getScope({})).toBe('local');
+    expect(getScope({ scope: 'local' })).toBe('local');
+    expect(getScope({ scope: 'cloud' })).toBe('cloud');
+    expect(prefixForScope('local')).toBe('Library/');
+    expect(prefixForScope('cloud')).toBe('Cloud/');
+
+    useLibraryStore.setState({ storageScope: 'local', folders: [], items: [], initialized: true });
+    const localFolder = await useLibraryStore.getState().createFolder('Cihazda Kalan');
+    expect(getScope(localFolder)).toBe('local');
+
+    useLibraryStore.getState().setStorageScope('cloud');
+    const cloudFolder = await useLibraryStore.getState().createFolder('Bulut Klasörü');
+    expect(getScope(cloudFolder)).toBe('cloud');
+
+    const allFolders = useLibraryStore.getState().folders;
+    expect(allFolders.filter((f) => getScope(f) === 'local').map((f) => f.name)).toEqual(['Cihazda Kalan']);
+    expect(allFolders.filter((f) => getScope(f) === 'cloud').map((f) => f.name)).toEqual(['Bulut Klasörü']);
   });
 });

@@ -13,8 +13,9 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { Check, FileText, MoreHorizontal, X } from 'lucide-react';
+import { Check, FileText, Home, MoreHorizontal, X } from 'lucide-react';
 import { useDocumentStore } from '../../store/documentStore';
+import { useUIStore } from '../../store/uiStore';
 import { closeDocumentById } from '../../commands';
 import styles from './TopBar.module.css';
 import { isIpadApp } from '../../platform/native';
@@ -72,6 +73,7 @@ function titleDoubleClick(event: React.MouseEvent<HTMLDivElement>) {
 
 export function TopBar() {
   const { documents, activeDocId, tabOrder, setActiveDocument } = useDocumentStore();
+  const setDesktopLibraryOpen = useUIStore((s) => s.setDesktopLibraryOpen);
 
   const topBarRef = useRef<HTMLDivElement>(null);
   const tabsRef = useRef<HTMLDivElement>(null);
@@ -228,7 +230,20 @@ export function TopBar() {
 
   return (
     <div className={styles.topBar} ref={topBarRef} onPointerDown={startWindowDrag} onDoubleClick={titleDoubleClick}>
-      {isIpadApp() && <IpadMenu />}
+      {isIpadApp() ? (
+        <IpadMenu />
+      ) : (
+        <button
+          type="button"
+          className={styles.libraryBtn}
+          onClick={() => setDesktopLibraryOpen(true)}
+          title="Library & Cloud"
+          aria-label="Library & Cloud"
+        >
+          <Home size={14} aria-hidden="true" />
+          <span>Library</span>
+        </button>
+      )}
       <div className={styles.tabs} ref={tabsRef} role="tablist" aria-label="Open documents">
         {tabOrder.map((docId) => {
           const doc = documents.get(docId);

@@ -21,6 +21,13 @@ const IDB_STORE = 'files';
 
 export const DOCUMENTS_PREFIX = 'Documents/';
 export const PREVIEW_PREFIX = 'Library/';
+export const CLOUD_CACHE_PREFIX = 'Cloud/';
+
+export type LibraryStorageScope = 'local' | 'cloud';
+
+export function getScope(entry: { scope?: LibraryStorageScope }): LibraryStorageScope {
+  return entry.scope === 'cloud' ? 'cloud' : 'local';
+}
 
 export type FolderColorId =
   | 'coral'
@@ -56,6 +63,7 @@ export interface LibraryFolder {
   name: string;
   color: FolderColorId;
   parentId: string | null;
+  scope?: LibraryStorageScope;
   favorite: boolean;
   createdAt: number;
   updatedAt: number;
@@ -67,6 +75,7 @@ export interface LibraryDocument {
   /** Storage path: "Documents/Name.pdf" on iPad, "Library/<id>.pdf" in browser preview. */
   filePath: string;
   folderId: string | null;
+  scope?: LibraryStorageScope;
   kind: 'pdf' | 'notebook';
   coverTheme?: CoverThemeId;
   favorite: boolean;
