@@ -104,6 +104,13 @@ jobs:
           sips -s format jpeg -z 1024 1024 build/icon.png --out "$RUNNER_TEMP/icon.jpg"
           sips -s format png "$RUNNER_TEMP/icon.jpg" --out "$icon"
 
+      - name: Clean orphaned CI Development certificates
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: node scripts/cleanCiDevCerts.mjs
+
       - name: Archive
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
@@ -148,6 +155,14 @@ jobs:
             -exportPath "$RUNNER_TEMP/export" \
             -allowProvisioningUpdates \
             -authenticationKeyPath "$RUNNER_TEMP/AuthKey.p8" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+
+      - name: Clean up ephemeral CI Development certificate
+        if: always()
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: node scripts/cleanCiDevCerts.mjs || true
 
       - name: Remove the key
         if: always()
