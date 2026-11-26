@@ -11,6 +11,9 @@ name: Build iPad App (TestFlight)
 #   APPLE_TEAM_ID   (already set for the Mac builds)
 
 on:
+  push:
+    tags:
+      - "ios-v*"
   workflow_dispatch:
     inputs:
       version:
@@ -117,8 +120,17 @@ jobs:
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          VERSION: ${{ inputs.version }}
+          INPUT_VERSION: ${{ inputs.version }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
+          if [[ -n "${INPUT_VERSION:-}" ]]; then
+            VERSION="$INPUT_VERSION"
+          elif [[ "${REF_NAME:-}" == ios-v* ]]; then
+            VERSION="${REF_NAME#ios-v}"
+          else
+            VERSION="1.5"
+          fi
+          echo "Archiving MARKETING_VERSION=$VERSION BUILD=${{ github.run_number }}"
           key="$RUNNER_TEMP/AuthKey.p8"
           printf '%s' "$ASC_KEY_P8" > "$key"
           if [[ -d ios/App/App.xcworkspace ]]; then target=(-workspace ios/App/App.xcworkspace); else target=(-project ios/App/App.xcodeproj); fi
