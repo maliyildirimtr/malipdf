@@ -1137,6 +1137,13 @@ export const TR: Readonly<Record<string, string>> = {
     'Belgeleri kaydederken veya MaliPDF’e geri dönerken otomatik senkronize et',
   'iCloud Drive is turned off on this iPad. Enable iCloud Drive in Settings › Apple Account › iCloud.':
     'Bu iPad’de iCloud Drive kapalı. Ayarlar › Apple Hesabı › iCloud bölümünden iCloud Drive’ı açın.',
+  'iCloud Drive is turned off on this iPhone. Enable iCloud Drive in Settings › Apple Account › iCloud.':
+    'Bu iPhone’da iCloud Drive kapalı. Ayarlar › Apple Hesabı › iCloud bölümünden iCloud Drive’ı açın.',
+  'iCloud Drive sync needs the latest MaliPDF app on this iPad. Please update the app.':
+    'iCloud Drive senkronizasyonu bu iPad’de en güncel MaliPDF sürümünü gerektirir. Lütfen uygulamayı güncelleyin.',
+  'iCloud Drive sync needs the latest MaliPDF app on this iPhone. Please update the app.':
+    'iCloud Drive senkronizasyonu bu iPhone’da en güncel MaliPDF sürümünü gerektirir. Lütfen uygulamayı güncelleyin.',
+  'Choose your iCloud Drive › MaliPDF folder': 'iCloud Drive › MaliPDF klasörünüzü seçin',
   Library: 'Kütüphane',
   'Library & Cloud': 'Kütüphane ve Bulut',
   'PDF Workspace': 'PDF Çalışma Alanı',
@@ -1242,6 +1249,7 @@ export const TR_PATTERNS: readonly Pattern[] = [
   [/^Copy existing library \((\d+) docs, (\d+) folders\) when switching cloud providers$/, (d, f) =>
     `Bulut sağlayıcısı değiştirilirken mevcut kütüphaneyi (${d} belge, ${f} klasör) kopyala`],
   [/^Home Folder \((.+)\)$/, (p) => `Ana Klasör (${p === 'Cloud' ? 'Bulut' : p})`],
+  [/^iCloud is still downloading "?(.+?)"?\. Try again in a moment\.$/, (n) => `iCloud "${n}" dosyasını hâlâ indiriyor. Birazdan tekrar deneyin.`],
 ];
 
 /**

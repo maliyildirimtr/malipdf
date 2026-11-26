@@ -25,7 +25,7 @@ export function DownloadPage() {
     switch (detectedOs) {
       case 'ios':
         return {
-          osName: 'iPadOS',
+          osName: 'iPadOS & iOS (Universal)',
           version: 'v1.2',
           meta: ipadAppStore.meta,
           label: ipadAppStore.fullLabel,
@@ -236,21 +236,21 @@ export function DownloadPage() {
                   <div>
                     <div className="dl-os-card__title-row">
                       <h3>iPadOS &amp; iOS</h3>
-                      <span className="dl-version-tag">iPad v1.2</span>
+                      <span className="dl-version-tag">Universal v1.2</span>
                     </div>
-                    <p className="dl-os-card__req">iPadOS 16.0 or later · Designed for Apple Pencil &amp; Pencil Pro</p>
+                    <p className="dl-os-card__req">iPadOS &amp; iOS 16.0 or later · iPhone, iPad &amp; Apple Pencil Pro</p>
                   </div>
                 </div>
 
                 <p className="dl-os-card__desc">
-                  Tactile notebook &amp; PDF studio with curvature-smoothed ink, Apple Pencil Double-Tap &amp; Squeeze palette, built-in Image Studio, and instant Device ⇄ Cloud switching.
+                  Universal app for iPad and iPhone — tactile notebook &amp; PDF studio with Apple Pencil Double-Tap &amp; Squeeze on iPad, responsive pocket annotation on iPhone, and instant Device ⇄ iCloud Drive sync.
                 </p>
 
                 <div className="dl-channels">
                   <div className="dl-channel">
                     <div className="dl-channel__info">
-                      <strong>App Store for iPad</strong>
-                      <span>Official App Store release · Automatic updates</span>
+                      <strong>App Store for iPad &amp; iPhone</strong>
+                      <span>Universal App Store build · One download across iPhone &amp; iPad</span>
                     </div>
                     <a
                       href={ipadAppStore.url}
@@ -261,18 +261,10 @@ export function DownloadPage() {
                       Open App Store →
                     </a>
                   </div>
-
-                  <div className="dl-channel dl-channel--upcoming">
-                    <div className="dl-channel__info">
-                      <strong>iPhone Edition (iOS)</strong>
-                      <span>Pocket companion for reviewing &amp; annotating synced notes on the go</span>
-                    </div>
-                    <span className="dl-soon-pill">Coming Soon</span>
-                  </div>
                 </div>
 
                 <div className="dl-os-card__footer">
-                  <span>Sync support: Native iCloud Drive · Google Drive</span>
+                  <span>Sync support: Native iCloud Drive (Mac · iPad · iPhone)</span>
                 </div>
               </article>
             )}
@@ -414,10 +406,10 @@ export function DownloadPage() {
                   </tr>
                   <tr>
                     <td><strong>iOS (iPhone)</strong></td>
-                    <td><code>—</code></td>
-                    <td>Apple App Store</td>
-                    <td>iOS 16+</td>
-                    <td><span className="dl-status dl-status--soon">In Development</span></td>
+                    <td><code>v1.2</code></td>
+                    <td>Apple App Store (Universal)</td>
+                    <td>iOS 16+ · All modern iPhones</td>
+                    <td><span className="dl-status dl-status--live">Available</span></td>
                   </tr>
                   <tr>
                     <td><strong>Android</strong></td>

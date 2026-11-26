@@ -572,16 +572,23 @@ handleTrusted('dialog:saveFile', isDev, async (_event, defaultName: unknown, raw
   return result.filePath;
 });
 
-// Split PDF: choose a folder, then write the parts into it.
+// Split PDF / Cloud Sync: choose a folder, then write into it.
+const folderBookmarks = new Map<string, string>();
+
 handleTrusted('dialog:chooseFolder', isDev, async (_event, rawTitle: unknown) => {
   if (!mainWindow) return null;
   const result = await showOpenDialog(mainWindow, {
     title: typeof rawTitle === 'string' ? rawTitle.slice(0, 200) : 'Choose a Folder',
     properties: ['openDirectory', 'createDirectory'],
+    securityScopedBookmarks: true,
   });
   if (result.canceled || result.filePaths.length === 0) return null;
-  folderGrants.grant(result.filePaths[0]);
-  return result.filePaths[0];
+  const picked = path.resolve(result.filePaths[0]);
+  folderGrants.grant(picked);
+  if (Array.isArray(result.bookmarks) && typeof result.bookmarks[0] === 'string' && result.bookmarks[0]) {
+    folderBookmarks.set(picked, result.bookmarks[0]);
+  }
+  return picked;
 });
 
 handleTrusted('fs:writeFilesToFolder', isDev, async (_event, folder: unknown, rawFiles: unknown) => {
@@ -660,9 +667,25 @@ function detectCloudSyncFolders(): Array<{ id: 'icloud' | 'gdrive' | 'onedrive' 
  */
 const rememberedSyncFolderFile = () => path.join(app.getPath('userData'), 'sync-folder.json');
 let rememberedSyncFolder: Promise<string | null> | null = null;
+let stopRememberedBookmarkAccess: (() => void) | null = null;
+
+async function resolveRememberedSyncFolderWithBookmark(): Promise<string | null> {
+  const { loadRememberedSyncGrant } = await import('./services/files/syncFolder');
+  const grant = await loadRememberedSyncGrant(rememberedSyncFolderFile());
+  if (!grant) return null;
+  if (grant.bookmark && typeof app.startAccessingSecurityScopedResource === 'function') {
+    try {
+      stopRememberedBookmarkAccess?.();
+      stopRememberedBookmarkAccess = app.startAccessingSecurityScopedResource(grant.bookmark) as unknown as () => void;
+    } catch {
+      // Bookmark may be from a non-sandboxed DMG build; safe to ignore
+    }
+  }
+  return grant.folder;
+}
 
 async function authorizedSyncFolders(): Promise<string[]> {
-  rememberedSyncFolder ??= loadRememberedSyncFolder(rememberedSyncFolderFile());
+  rememberedSyncFolder ??= resolveRememberedSyncFolderWithBookmark();
   const remembered = await rememberedSyncFolder;
   return [
     ...folderGrants.list(),
@@ -683,7 +706,7 @@ handleTrusted('sync:activateFolder', isDev, async (_event, rawFolder: unknown) =
   // Keep a folder the user picked usable after a restart (folderGrants is per session).
   if (folderGrants.has(dir) && (await rememberedSyncFolder) !== dir) {
     rememberedSyncFolder = Promise.resolve(dir);
-    await rememberSyncFolder(rememberedSyncFolderFile(), dir).catch(() => {});
+    await rememberSyncFolder(rememberedSyncFolderFile(), dir, folderBookmarks.get(dir)).catch(() => {});
   }
   return dir;
 });

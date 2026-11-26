@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { fingerNavigates, PALM_AFTER_PENCIL_MS, StylusScrollGuard } from '../pencilInput';
-import { base64ToBytes, bytesToBase64, isIpadApp } from '../native';
+import { base64ToBytes, bytesToBase64, isIpadApp, isIphoneDevice } from '../native';
+import { fingerScrollsNow } from '../touchMode';
 import { displayDocName, ensurePdfExtension, sanitizeFileName } from '../ipadLibrary';
 
 const pencil = { touchType: 'stylus' } as unknown as Touch;
@@ -42,6 +43,26 @@ describe('iPad bridge helpers', () => {
 
   it('is off outside the iPad app', () => {
     expect(isIpadApp()).toBe(false);
+    expect(isIphoneDevice()).toBe(false);
+  });
+
+  it('disables pencil-only finger scrolling on iPhone so a finger can draw directly', () => {
+    const fakeTabletState = { tabletMode: true, pencilOnly: true } as any;
+    expect(fingerScrollsNow(fakeTabletState)).toBe(true);
+
+    try {
+      vi.stubGlobal('window', {
+        location: { search: '' },
+        Capacitor: { isNativePlatform: () => true, getPlatform: () => 'ios' },
+      });
+      vi.stubGlobal('navigator', {
+        userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)',
+      });
+      expect(isIphoneDevice()).toBe(true);
+      expect(fingerScrollsNow(fakeTabletState)).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 

@@ -22,9 +22,22 @@ function capacitor(): CapacitorGlobal | null {
   return cap?.isNativePlatform?.() ? cap : null;
 }
 
-/** Running inside the iPad (iOS) app. */
+/** Running inside the native iOS / iPadOS Capacitor app (iPad or iPhone). */
 export function isIpadApp(): boolean {
   return capacitor()?.getPlatform?.() === 'ios';
+}
+
+/** Running on an iPhone / iPod touch (or previewed with ?iphone=1). */
+export function isIphoneDevice(): boolean {
+  if (typeof window !== 'undefined') {
+    try {
+      if (new URLSearchParams(window.location.search).get('iphone') === '1') return true;
+    } catch {
+      // Ignore malformed URLs
+    }
+  }
+  if (!isIpadApp() || typeof navigator === 'undefined') return false;
+  return /iPhone|iPod/i.test(navigator.userAgent || '');
 }
 
 const NATIVE_TIMEOUT_MS = 10_000;

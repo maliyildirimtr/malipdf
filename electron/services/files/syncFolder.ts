@@ -8,6 +8,7 @@
  * are compared after resolving symlinks, so another spelling of the same
  * folder works but a renderer cannot widen access to an arbitrary path.
  */
+import { execFile } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { saveFile } from '../saveFile';
@@ -81,9 +82,51 @@ async function refuseSymlink(target: string): Promise<boolean> {
   }
 }
 
-export async function readSyncFile(folder: string, name: unknown): Promise<Uint8Array | null> {
+function icloudPlaceholderPath(folder: string, name: string): string {
+  return path.join(folder, `.${name}.icloud`);
+}
+
+function triggerMacICloudDownload(target: string): void {
+  if (process.platform !== 'darwin') return;
+  try {
+    execFile('/usr/bin/brctl', ['download', target], () => {});
+  } catch {
+    // Ignore if brctl is unavailable
+  }
+}
+
+export interface ReadSyncFileOptions {
+  platform?: NodeJS.Platform;
+  pollMs?: number;
+  maxPolls?: number;
+}
+
+export async function readSyncFile(
+  folder: string,
+  name: unknown,
+  options: ReadSyncFileOptions = {},
+): Promise<Uint8Array | null> {
   const target = syncTarget(folder, name);
-  if (!(await refuseSymlink(target))) return null;
+  const cleanName = name as string;
+  const platform = options.platform ?? process.platform;
+  const pollMs = options.pollMs ?? 200;
+  const maxPolls = options.maxPolls ?? 40;
+  if (!(await refuseSymlink(target))) {
+    // On macOS iCloud Drive, an evicted file appears only as `.<name>.icloud`.
+    // Treating it as missing would overwrite a newer remote manifest or PDF!
+    const placeholder = icloudPlaceholderPath(folder, cleanName);
+    if (platform === 'darwin' && await refuseSymlink(placeholder)) {
+      triggerMacICloudDownload(target);
+      for (let i = 0; i < maxPolls; i++) {
+        await new Promise((r) => setTimeout(r, pollMs));
+        if (await refuseSymlink(target)) {
+          return await fs.promises.readFile(target);
+        }
+      }
+      throw new Error(`iCloud is still downloading "${cleanName}". Try again in a moment.`);
+    }
+    return null;
+  }
   try {
     return await fs.promises.readFile(target);
   } catch (error) {
@@ -104,27 +147,55 @@ export async function writeSyncFile(folder: string, name: unknown, bytes: Uint8A
   await saveFile(target, bytes);
 }
 
-export async function deleteSyncFile(folder: string, name: unknown): Promise<void> {
+export async function deleteSyncFile(
+  folder: string,
+  name: unknown,
+  platform: NodeJS.Platform = process.platform,
+): Promise<void> {
   const target = syncTarget(folder, name);
-  if (!(await refuseSymlink(target))) return;
-  await fs.promises.rm(target, { force: true });
+  if (await refuseSymlink(target)) {
+    await fs.promises.rm(target, { force: true });
+  }
+  if (platform === 'darwin') {
+    const placeholder = icloudPlaceholderPath(folder, name as string);
+    if (await refuseSymlink(placeholder)) {
+      await fs.promises.rm(placeholder, { force: true });
+    }
+  }
 }
 
-export async function listSyncFolder(folder: string): Promise<Array<{ name: string; size: number; updatedAt: number }>> {
+export async function listSyncFolder(
+  folder: string,
+  platform: NodeJS.Platform = process.platform,
+): Promise<Array<{ name: string; size: number; updatedAt: number }>> {
   await fs.promises.mkdir(folder, { recursive: true });
   const entries = await fs.promises.readdir(folder, { withFileTypes: true });
+  // Materialized files must always win over `.<name>.icloud` placeholders.
+  entries.sort((a, b) => Number(a.name.startsWith('.')) - Number(b.name.startsWith('.')));
   const out: Array<{ name: string; size: number; updatedAt: number }> = [];
+  const seen = new Set<string>();
   for (const e of entries) {
     // withFileTypes does not follow symlinks: a link is not a file here.
-    if (!e.isFile() || !isValidSyncFileName(e.name)) continue;
+    if (!e.isFile()) continue;
+    let logicalName = e.name;
+    if (platform === 'darwin' && logicalName.startsWith('.') && logicalName.endsWith('.icloud')) {
+      logicalName = logicalName.slice(1, -'.icloud'.length);
+    }
+    if (!isValidSyncFileName(logicalName) || seen.has(logicalName)) continue;
     try {
       const st = await fs.promises.lstat(path.join(folder, e.name));
-      out.push({ name: e.name, size: st.size, updatedAt: Math.round(st.mtimeMs) });
+      seen.add(logicalName);
+      out.push({ name: logicalName, size: st.size, updatedAt: Math.round(st.mtimeMs) });
     } catch {
       // Skip transient cloud placeholder
     }
   }
   return out;
+}
+
+export interface RememberedSyncGrant {
+  folder: string;
+  bookmark?: string;
 }
 
 /**
@@ -133,15 +204,24 @@ export async function listSyncFolder(folder: string): Promise<Array<{ name: stri
  * renderer still cannot authorize a path on its own.
  */
 export async function loadRememberedSyncFolder(file: string): Promise<string | null> {
+  const grant = await loadRememberedSyncGrant(file);
+  return grant?.folder ?? null;
+}
+
+export async function loadRememberedSyncGrant(file: string): Promise<RememberedSyncGrant | null> {
   try {
-    const parsed = JSON.parse(await fs.promises.readFile(file, 'utf8')) as { folder?: unknown };
-    return typeof parsed.folder === 'string' && path.isAbsolute(parsed.folder) ? parsed.folder : null;
+    const parsed = JSON.parse(await fs.promises.readFile(file, 'utf8')) as { folder?: unknown; bookmark?: unknown };
+    if (typeof parsed.folder !== 'string' || !path.isAbsolute(parsed.folder)) return null;
+    return {
+      folder: parsed.folder,
+      bookmark: typeof parsed.bookmark === 'string' && parsed.bookmark.length > 0 ? parsed.bookmark : undefined,
+    };
   } catch {
     return null;
   }
 }
 
-export async function rememberSyncFolder(file: string, folder: string): Promise<void> {
+export async function rememberSyncFolder(file: string, folder: string, bookmark?: string): Promise<void> {
   await fs.promises.mkdir(path.dirname(file), { recursive: true });
-  await saveFile(file, new TextEncoder().encode(JSON.stringify({ folder })));
+  await saveFile(file, new TextEncoder().encode(JSON.stringify({ folder, ...(bookmark ? { bookmark } : {}) })));
 }

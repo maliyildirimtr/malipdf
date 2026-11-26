@@ -7,7 +7,10 @@ import {
   deleteSyncFile,
   isValidSyncFileName,
   listSyncFolder,
+  loadRememberedSyncFolder,
+  loadRememberedSyncGrant,
   readSyncFile,
+  rememberSyncFolder,
   writeSyncFile,
 } from '../services/files/syncFolder';
 
@@ -84,5 +87,36 @@ describe('sync file io', () => {
   it('rejects invalid names in io calls', async () => {
     await expect(writeSyncFile(granted, 'CON.pdf', new Uint8Array([1]))).rejects.toThrow(/Invalid sync file name/);
     await expect(readSyncFile(granted, '../outside/secret.pdf')).rejects.toThrow(/Invalid sync file name/);
+  });
+
+  it('unwraps macOS .icloud evicted placeholders and never returns null while downloading', async () => {
+    const placeholder = path.join(granted, '.Lecture.pdf.icloud');
+    await fs.promises.writeFile(placeholder, 'bplist00-placeholder');
+
+    const listed = await listSyncFolder(granted, 'darwin');
+    expect(listed.map((f) => f.name)).toEqual(['Lecture.pdf']);
+
+    await expect(
+      readSyncFile(granted, 'Lecture.pdf', { platform: 'darwin', pollMs: 5, maxPolls: 2 }),
+    ).rejects.toThrow(/still downloading/);
+
+    // Materialized file wins over leftover placeholder in listing
+    await fs.promises.writeFile(path.join(granted, 'Lecture.pdf'), 'real-pdf-bytes');
+    const listedBoth = await listSyncFolder(granted, 'darwin');
+    expect(listedBoth).toHaveLength(1);
+    expect(listedBoth[0].size).toBe('real-pdf-bytes'.length);
+
+    await deleteSyncFile(granted, 'Lecture.pdf', 'darwin');
+    expect(await listSyncFolder(granted, 'darwin')).toEqual([]);
+  });
+
+  it('persists and loads security-scoped bookmarks alongside remembered sync folders', async () => {
+    const stateFile = path.join(root, 'sync-folder.json');
+    await rememberSyncFolder(stateFile, granted, 'bookmark-base64-token');
+    expect(await loadRememberedSyncFolder(stateFile)).toBe(granted);
+    expect(await loadRememberedSyncGrant(stateFile)).toEqual({
+      folder: granted,
+      bookmark: 'bookmark-base64-token',
+    });
   });
 });

@@ -70,13 +70,13 @@ export const macAppStore = {
   meta: 'macOS 12 or later · Apple Silicon',
 };
 
-/** iPad: App Store (universal App Store ID with Mac). */
+/** iPad & iPhone: App Store (universal App Store ID with Mac). */
 export const ipadAppStore = {
-  label: 'App Store · iPad',
-  fullLabel: 'Download on the App Store for iPad',
+  label: 'App Store · iPad & iPhone',
+  fullLabel: 'Download on the App Store',
   url: 'https://apps.apple.com/app/id6818672314',
   appId: '6818672314',
-  meta: 'iPadOS 16 or later · Apple Pencil & Pencil Pro',
+  meta: 'iPadOS & iOS 16 or later · iPhone, iPad & Apple Pencil Pro',
 };
 
 /** Windows: Microsoft Store (updates come from the Store). */

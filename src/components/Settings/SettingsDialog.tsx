@@ -7,6 +7,7 @@ import { useUIStore, type PageTheme } from '../../store/uiStore';
 import { APP_COMMANDS, TOOL_SHORTCUTS } from '../../commands/commandRegistry';
 import { MEASURE_UNITS } from '../../pdf/measure';
 import { LANGUAGES, type Language } from '../../../electron/i18n';
+import { isIphoneDevice } from '../../platform/native';
 import type { MeasureUnit, PenOptions, Theme } from '../../types/annotations';
 import { SyncSettingsSection } from './SyncSettingsSection';
 import styles from './SettingsDialog.module.css';
@@ -119,7 +120,7 @@ export function SettingsDialog() {
                 <Segmented<'on' | 'off'> label="Tablet mode" value={ui.tabletMode ? 'on' : 'off'} onChange={(v) => ui.setTabletMode(v === 'on')}
                   options={[{ value: 'off', label: 'Off' }, { value: 'on', label: 'On' }]} />
               </Row>
-              {ui.tabletMode && (
+              {ui.tabletMode && !isIphoneDevice() && (
                 <Row label="Draw with the pen only" hint="A finger scrolls and zooms; only the pen (and the mouse) draws.">
                   <Segmented<'on' | 'off'> label="Draw with the pen only" value={ui.pencilOnly ? 'on' : 'off'} onChange={(v) => ui.setPencilOnly(v === 'on')}
                     options={[{ value: 'off', label: 'Off' }, { value: 'on', label: 'On' }]} />

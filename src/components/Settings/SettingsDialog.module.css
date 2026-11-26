@@ -270,3 +270,53 @@ kbd {
 .close:hover {
   background: var(--bg-hover, #eeeeee);
 }
+
+@media (max-width: 640px) {
+  .dialog {
+    flex-direction: column;
+    width: calc(100vw - 16px);
+    max-width: calc(100vw - 16px);
+    height: min(88dvh, 680px);
+    max-height: calc(100dvh - 24px);
+    border-radius: 16px;
+  }
+
+  .nav {
+    flex-direction: row;
+    align-items: center;
+    width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding: 10px 42px 10px 10px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border-color, #e3e3e6);
+    gap: 4px;
+  }
+
+  .nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .nav h2 {
+    display: none;
+  }
+
+  .nav button {
+    white-space: nowrap;
+    flex-shrink: 0;
+    padding: 6px 10px;
+  }
+
+  .body {
+    padding: 14px 16px 22px;
+  }
+
+  .row {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .num input {
+    width: 120px;
+  }
+}

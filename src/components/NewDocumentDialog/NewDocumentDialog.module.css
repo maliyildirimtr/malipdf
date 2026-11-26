@@ -786,3 +786,41 @@
 :global([data-theme="dark"]) .coverItemSelected .coverItemLabel {
   color: #4c93e6;
 }
+
+@media (max-width: 560px) {
+  .dialog {
+    width: calc(100vw - 16px);
+    max-width: calc(100vw - 16px);
+    max-height: min(90dvh, calc(100dvh - 20px));
+    border-radius: 16px;
+  }
+
+  .content {
+    padding: 12px;
+    max-height: calc(90dvh - 114px);
+  }
+
+  .dualPreviewRow {
+    gap: 16px;
+  }
+
+  .previewCardFrame {
+    width: 92px;
+    height: 122px;
+  }
+
+  .coverGrid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+
+  .formRow {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .formRow label:first-child {
+    width: auto;
+    min-width: 74px;
+  }
+}

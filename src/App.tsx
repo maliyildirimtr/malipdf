@@ -164,22 +164,26 @@ export default function App() {
     }
   }, [activeDocId, isTabletUI, setTabletActiveView, setDesktopLibraryOpen]);
 
-  // Ensure iPad "Open in MaliPDF" files arriving while on the Home Library open immediately.
+  // Ensure "Open in MaliPDF" files arriving while on the Home Library open immediately.
   useEffect(() => {
     if (!showTabletLibrary) return;
     const stopOpenFiles = window.electronAPI?.onOpenFiles?.((files) => {
       void (async () => {
         const { openDocumentBytes } = await import('./document/openDocumentBytes');
         for (const file of files) {
-          const bytes = new Uint8Array(file.data);
-          const saved = await useLibraryStore.getState().upsertDocument({
-            title: file.name,
-            filePath: file.filePath || undefined,
-            bytes,
-            kind: 'pdf',
-            writeBytes: true,
-          });
-          await openDocumentBytes(saved.title, saved.filePath, file.data);
+          if (isIpadApp()) {
+            const bytes = new Uint8Array(file.data);
+            const saved = await useLibraryStore.getState().upsertDocument({
+              title: file.name,
+              filePath: file.filePath || undefined,
+              bytes,
+              kind: 'pdf',
+              writeBytes: true,
+            });
+            await openDocumentBytes(saved.title, saved.filePath, file.data);
+          } else {
+            await openDocumentBytes(file.name, file.filePath, file.data);
+          }
         }
       })();
     });

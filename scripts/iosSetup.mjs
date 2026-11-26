@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
- * Prepares the Xcode project made by `npx cap add ios` for MaliPDF on iPad.
+ * Prepares the Xcode project made by `npx cap add ios` for MaliPDF on iPad & iPhone.
  * Safe to run again: settings already present are left alone.
  *
- * - The MaliPDF folder appears in the Files app ("On My iPad › MaliPDF").
+ * - The MaliPDF folder appears in the Files app ("On My iPad / On My iPhone › MaliPDF").
  * - MaliPDF is offered for PDFs ("Open in MaliPDF").
- * - iPad only (no iPhone build for now).
+ * - Universal iPhone + iPad build (`TARGETED_DEVICE_FAMILY = "1,2"`).
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -66,11 +66,11 @@ fs.writeFileSync(plistPath, plist);
 
 let project = fs.readFileSync(projectPath, 'utf8');
 let projectChanged = false;
-const ipadOnly = project.replace(/TARGETED_DEVICE_FAMILY = "1,2";/g, 'TARGETED_DEVICE_FAMILY = 2;');
-if (ipadOnly !== project) {
-  project = ipadOnly;
+const universalDevices = project.replace(/TARGETED_DEVICE_FAMILY = 2;/g, 'TARGETED_DEVICE_FAMILY = "1,2";');
+if (universalDevices !== project) {
+  project = universalDevices;
   projectChanged = true;
-  added.push('iPad only');
+  added.push('Universal iPhone + iPad');
 }
 
 // iCloud Drive entitlement for container iCloud.com.maliyildirimtr.malipdf
@@ -164,6 +164,12 @@ if (fs.existsSync(appDelegatePath)) {
       swift = swift.replace('import UIKit', 'import UIKit\nimport WebKit');
     }
     const attachCall = '\n        MaliPDFPencilHandler.shared.attach(to: window)\n        MaliPDFiCloudBridge.shared.attach(to: window)\n';
+    if (swift.includes('func application(_ application: UIApplication, didFinishLaunchingWithOptions')) {
+      swift = swift.replace(
+        /(\bfunc application\(_ application: UIApplication, didFinishLaunchingWithOptions[\s\S]*?)(return true)/,
+        `$1DispatchQueue.main.async {\n            MaliPDFPencilHandler.shared.attach(to: self.window)\n            MaliPDFiCloudBridge.shared.attach(to: self.window)\n        }\n        $2`,
+      );
+    }
     if (swift.includes('func applicationDidBecomeActive(_ application: UIApplication) {')) {
       swift = swift.replace(
         'func applicationDidBecomeActive(_ application: UIApplication) {',

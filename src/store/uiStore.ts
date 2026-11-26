@@ -710,7 +710,7 @@ export const useUIStore = create<UIStore>()(
         propertiesPanelOpen: false,
         setPropertiesPanelOpen: (open) => set({ propertiesPanelOpen: open }),
 
-        desktopLibraryOpen: false,
+        desktopLibraryOpen: typeof window !== 'undefined' && window.electronAPI?.platform === 'darwin',
         setDesktopLibraryOpen: (desktopLibraryOpen) => set({ desktopLibraryOpen }),
         newDocumentDialogOpen: false,
         setNewDocumentDialogOpen: (open) => set({ newDocumentDialogOpen: open }),

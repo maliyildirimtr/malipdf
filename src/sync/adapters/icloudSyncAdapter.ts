@@ -10,12 +10,19 @@
  *   docs would overwrite/delete local ones while the UI says "synced".
  */
 
-import { base64ToBytes, bytesToBase64, isIpadApp } from '../../platform/native';
+import { base64ToBytes, bytesToBase64, isIpadApp, isIphoneDevice } from '../../platform/native';
 import { useSyncStore } from '../../store/syncStore';
 import { parseSyncManifest, type RemoteFileEntry, type SyncAdapter, type SyncManifest } from '../syncTypes';
 
 const MANIFEST_NAME = 'library-sync.json';
-const NO_BRIDGE_MESSAGE = 'iCloud Drive sync needs the latest MaliPDF app on this iPad. Please update the app.';
+const noBridgeMessage = () =>
+  isIphoneDevice()
+    ? 'iCloud Drive sync needs the latest MaliPDF app on this iPhone. Please update the app.'
+    : 'iCloud Drive sync needs the latest MaliPDF app on this iPad. Please update the app.';
+const icloudOffMessage = () =>
+  isIphoneDevice()
+    ? 'iCloud Drive is turned off on this iPhone. Enable iCloud Drive in Settings › Apple Account › iCloud.'
+    : 'iCloud Drive is turned off on this iPad. Enable iCloud Drive in Settings › Apple Account › iCloud.';
 
 interface NativeICloudReply {
   id: string;
@@ -47,7 +54,7 @@ function callNativeICloud(op: string, extra?: Record<string, unknown>): Promise<
   const win = window as WebKitWindow;
   const handler = win.webkit?.messageHandlers?.malipdfICloud;
   if (!handler) {
-    return Promise.reject(new Error(NO_BRIDGE_MESSAGE));
+    return Promise.reject(new Error(noBridgeMessage()));
   }
   if (!win.__malipdfICloudResolve) {
     win.__malipdfICloudResolve = (reply: NativeICloudReply) => {
@@ -81,8 +88,16 @@ export class ICloudSyncAdapter implements SyncAdapter {
   }
 
   private async desktopFolder(): Promise<string> {
-    const folder = useSyncStore.getState().folderPath ?? (await this.resolveDesktopICloudPath());
+    // Always check live detected iCloud path first when available so macOS
+    // automatically upgrades from a fallback CloudDocs path to the real
+    // iCloud~com~maliyildirimtr~malipdf/Documents container shared with iPad & iPhone.
+    const liveDetected = await this.resolveDesktopICloudPath();
+    const saved = useSyncStore.getState().folderPath;
+    const folder = liveDetected ?? saved;
     if (!folder || !window.electronAPI?.syncReadFile) throw new Error('iCloud Drive folder not found.');
+    if (liveDetected && liveDetected !== saved) {
+      useSyncStore.getState().setFolderPath(liveDetected);
+    }
     return folder;
   }
 
@@ -96,25 +111,32 @@ export class ICloudSyncAdapter implements SyncAdapter {
         return false;
       }
     }
-    return Boolean(await this.resolveDesktopICloudPath());
+    if (await this.resolveDesktopICloudPath()) return true;
+    // In the Mac App Store sandbox, ~/Library/Mobile Documents requires a one-time user folder selection.
+    return Boolean(useSyncStore.getState().folderPath || window.electronAPI?.platform === 'darwin');
   }
 
   async isConnected(): Promise<boolean> {
     if (isIpadApp()) return this.isAvailable();
-    const path = useSyncStore.getState().folderPath ?? (await this.resolveDesktopICloudPath());
+    const path = (await this.resolveDesktopICloudPath()) ?? useSyncStore.getState().folderPath;
     return Boolean(path);
   }
 
   async connect(): Promise<boolean> {
     if (isIpadApp()) {
-      if (!hasNativeICloudBridge()) throw new Error(NO_BRIDGE_MESSAGE);
+      if (!hasNativeICloudBridge()) throw new Error(noBridgeMessage());
       const res = await callNativeICloud('status');
       if (!res.available) {
-        throw new Error('iCloud Drive is turned off on this iPad. Enable iCloud Drive in Settings › Apple Account › iCloud.');
+        throw new Error(icloudOffMessage());
       }
       return true;
     }
-    const icloudPath = await this.resolveDesktopICloudPath();
+    let icloudPath = await this.resolveDesktopICloudPath();
+    if (!icloudPath && window.electronAPI?.platform === 'darwin') {
+      icloudPath = useSyncStore.getState().folderPath
+        ?? (await window.electronAPI.chooseFolder?.('Choose your iCloud Drive › MaliPDF folder'))
+        ?? null;
+    }
     if (!icloudPath || !window.electronAPI?.syncActivateFolder) return false;
     const activated = await window.electronAPI.syncActivateFolder(icloudPath);
     useSyncStore.getState().setFolderPath(activated);
@@ -154,13 +176,8 @@ export class ICloudSyncAdapter implements SyncAdapter {
 
   async readPdf(remoteName: string): Promise<Uint8Array | null> {
     if (isIpadApp()) {
-      if (!hasNativeICloudBridge()) throw new Error(NO_BRIDGE_MESSAGE);
-      try {
-        const res = await callNativeICloud('read', { name: remoteName });
-        return res.data ? base64ToBytes(res.data) : null;
-      } catch {
-        return null;
-      }
+      const res = await callNativeICloud('read', { name: remoteName });
+      return res.data ? base64ToBytes(res.data) : null;
     }
     const folder = await this.desktopFolder();
     const buf = await window.electronAPI.syncReadFile!(folder, remoteName);
@@ -179,7 +196,7 @@ export class ICloudSyncAdapter implements SyncAdapter {
 
   async deletePdf(remoteName: string): Promise<void> {
     if (isIpadApp()) {
-      if (!hasNativeICloudBridge()) throw new Error(NO_BRIDGE_MESSAGE);
+      if (!hasNativeICloudBridge()) throw new Error(noBridgeMessage());
       await callNativeICloud('delete', { name: remoteName }).catch(() => undefined);
       return;
     }

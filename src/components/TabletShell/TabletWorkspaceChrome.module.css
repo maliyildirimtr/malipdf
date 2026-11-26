@@ -7,6 +7,7 @@
   flex-direction: column;
   flex-shrink: 0;
   z-index: 40;
+  padding-top: env(safe-area-inset-top, 0px);
   background: var(--tw-bar-bg);
   border-bottom: 1px solid var(--tw-border);
   backdrop-filter: blur(22px);
@@ -1125,4 +1126,86 @@
   line-height: 1.3;
   font-weight: 400;
   color: var(--tw-text-muted);
+}
+
+/* ── Compact iPhone / Narrow Portrait Layout ─────────────────────────────── */
+
+@media (max-width: 680px) {
+  .navBar {
+    flex-wrap: wrap;
+    height: auto;
+    padding: 6px 8px;
+    gap: 5px;
+  }
+
+  .navLeft,
+  .navRight {
+    gap: 2px;
+  }
+
+  .navCenter {
+    order: 3;
+    flex: 0 0 100%;
+    width: 100%;
+    padding-top: 5px;
+    border-top: 1px solid var(--tw-border);
+    justify-content: flex-start;
+  }
+
+  .toolDock {
+    width: 100%;
+    justify-content: space-between;
+    gap: 2px;
+  }
+
+  .toolBtn {
+    min-width: 36px;
+    height: 36px;
+    padding: 0 6px;
+  }
+
+  .iconBtn {
+    width: 35px;
+    height: 35px;
+  }
+
+  .popover {
+    left: 8px !important;
+    right: 8px !important;
+    width: auto !important;
+    max-width: calc(100vw - 16px);
+    max-height: min(72dvh, calc(100dvh - 116px));
+    overflow-y: auto;
+  }
+
+  .toolSheet {
+    left: 8px !important;
+    right: 8px !important;
+    width: auto !important;
+    max-width: calc(100vw - 16px);
+    max-height: min(74dvh, calc(100dvh - 116px));
+  }
+
+  .favoritesRail {
+    top: calc(env(safe-area-inset-top, 0px) + 108px);
+    right: calc(env(safe-area-inset-right, 0px) + 8px);
+    gap: 8px;
+  }
+
+  .favShortcutBtn {
+    width: 40px;
+    height: 40px;
+  }
+
+  .bottomPill {
+    bottom: max(10px, env(safe-area-inset-bottom, 0px));
+    height: 38px;
+    padding: 0 6px;
+    max-width: calc(100vw - 16px);
+  }
+
+  .pillPageText {
+    font-size: 12px;
+    padding: 0 4px;
+  }
 }

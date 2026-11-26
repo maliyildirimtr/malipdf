@@ -32,6 +32,7 @@ import {
   FilePlus,
   FileText,
   Files,
+  Hand,
   Hexagon,
   Highlighter,
   Image as ImageIcon,
@@ -496,6 +497,16 @@ export function TabletWorkspaceTopChrome({ onCommand, canExecute }: TabletWorksp
                 onClick={() => { setPopover(null); onCommand('tool.select'); }}
               >
                 <MousePointer2 size={20} />
+              </button>
+
+              <button
+                type="button"
+                className={`${styles.toolBtn} ${activeTool === 'hand' ? styles.toolBtnActive : ''}`}
+                aria-label="Hand"
+                title="Hand / Pan"
+                onClick={() => { setPopover(null); onCommand('tool.hand'); }}
+              >
+                <Hand size={19} />
               </button>
 
               <button
