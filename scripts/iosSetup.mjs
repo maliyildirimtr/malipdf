@@ -25,6 +25,8 @@ const ENTRIES = {
   LSSupportsOpeningDocumentsInPlace: '<false/>',
   ITSAppUsesNonExemptEncryption: '<false/>',
   UIRequiresFullScreen: '<false/>',
+  UIStatusBarHidden: '<true/>',
+  UIViewControllerBasedStatusBarAppearance: '<true/>',
   NSUbiquitousContainers: `<dict>
 		<key>iCloud.com.maliyildirimtr.malipdf</key>
 		<dict>
@@ -153,6 +155,24 @@ if (!fs.existsSync(privacyPath)) {
   added.push('PrivacyInfo.xcprivacy');
 }
 
+// Hide the iOS/iPadOS system status bar (clock, Wi-Fi, battery) so the top toolbar
+// uses the full screen height cleanly via MaliPDFBridgeViewController.
+const storyboardPath = path.join(root, 'ios/App/App/Base.lproj/Main.storyboard');
+if (fs.existsSync(storyboardPath)) {
+  const sb = fs.readFileSync(storyboardPath, 'utf8');
+  const updatedSb = sb.replace(
+    /customClass="CAPBridgeViewController"[^>]*>/g,
+    (match) => {
+      const suffix = match.endsWith('/>') ? '/>' : '>';
+      return `customClass="MaliPDFBridgeViewController" customModule="App" customModuleProvider="target"${suffix}`;
+    },
+  );
+  if (updatedSb !== sb) {
+    fs.writeFileSync(storyboardPath, updatedSb);
+    added.push('MaliPDFBridgeViewController (Full-screen status bar hidden)');
+  }
+}
+
 // Native Apple Pencil 2nd Gen / Pro support (UIPencilInteraction):
 // - Double-tap on the Pencil barrel toggles Pen <-> Eraser
 // - Apple Pencil Pro Squeeze (iOS 17.5+) opens the floating Quick Tool Palette
@@ -178,22 +198,113 @@ if (fs.existsSync(appDelegatePath)) {
     }
     const pencilExtension = `
 
+// MARK: - MaliPDF Full-Screen Bridge View Controller (Status Bar Hidden)
+
+@objc(MaliPDFBridgeViewController)
+class MaliPDFBridgeViewController: CAPBridgeViewController {
+    override var prefersStatusBarHidden: Bool {
+        return true
+    }
+
+    override var preferredStatusBarUpdateAnimation: UIStatusBarAnimation {
+        return .fade
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        setNeedsStatusBarAppearanceUpdate()
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        setNeedsStatusBarAppearanceUpdate()
+    }
+}
+
 // MARK: - MaliPDF Apple Pencil Double-Tap & Pro Squeeze Bridge
 
 final class MaliPDFPencilHandler: NSObject, UIPencilInteractionDelegate {
     static let shared = MaliPDFPencilHandler()
     private weak var webView: WKWebView?
+    private weak var hostWindow: UIWindow?
+    private var observingOrientation = false
+    private var offsetObservation: NSKeyValueObservation?
 
     func attach(to window: UIWindow?) {
         guard let bridgeVC = window?.rootViewController as? CAPBridgeViewController,
               let hostView = bridgeVC.view,
               let wv = bridgeVC.webView else { return }
         self.webView = wv
+        self.hostWindow = window
+
+        // Prevent UIKit text-selection / rotation from scrolling the outer WKWebView
+        // up under the iOS status bar / Dynamic Island, without replacing WKWebView's
+        // internal UIScrollViewDelegate.
+        wv.scrollView.bounces = false
+        wv.scrollView.alwaysBounceVertical = false
+        wv.scrollView.alwaysBounceHorizontal = false
+        wv.scrollView.contentInsetAdjustmentBehavior = .never
+        if wv.scrollView.contentOffset != .zero {
+            wv.scrollView.contentOffset = .zero
+        }
+        offsetObservation = wv.scrollView.observe(\.contentOffset, options: [.new]) { scrollView, _ in
+            if scrollView.contentOffset.x != 0 || scrollView.contentOffset.y != 0 {
+                scrollView.contentOffset = .zero
+            }
+        }
+
+        syncSafeAreaInsets()
+        if !observingOrientation {
+            observingOrientation = true
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(handleLayoutOrOrientationChange),
+                name: UIDevice.orientationDidChangeNotification,
+                object: nil
+            )
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(handleLayoutOrOrientationChange),
+                name: UIApplication.didBecomeActiveNotification,
+                object: nil
+            )
+        }
+
         let alreadyAttached = hostView.interactions.contains { $0 is UIPencilInteraction }
         guard !alreadyAttached else { return }
         let interaction = UIPencilInteraction()
         interaction.delegate = self
         hostView.addInteraction(interaction)
+    }
+
+    @objc private func handleLayoutOrOrientationChange() {
+        syncSafeAreaInsets()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
+            self?.syncSafeAreaInsets()
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.32) { [weak self] in
+            self?.syncSafeAreaInsets()
+        }
+    }
+
+    func syncSafeAreaInsets() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self,
+                  let win = self.hostWindow,
+                  let wv = self.webView else { return }
+            if wv.scrollView.contentOffset.x != 0 || wv.scrollView.contentOffset.y != 0 {
+                wv.scrollView.contentOffset = .zero
+            }
+            let insets = win.safeAreaInsets
+            let js = """
+            document.documentElement.style.setProperty('--ios-safe-top', '\\(Int(insets.top.rounded()))px');
+            document.documentElement.style.setProperty('--ios-safe-right', '\\(Int(insets.right.rounded()))px');
+            document.documentElement.style.setProperty('--ios-safe-bottom', '\\(Int(insets.bottom.rounded()))px');
+            document.documentElement.style.setProperty('--ios-safe-left', '\\(Int(insets.left.rounded()))px');
+            if (window.scrollX !== 0 || window.scrollY !== 0) window.scrollTo(0, 0);
+            """
+            wv.evaluateJavaScript(js, completionHandler: nil)
+        }
     }
 
     private func dispatchDoubleTap() {

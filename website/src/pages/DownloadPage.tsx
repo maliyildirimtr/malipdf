@@ -26,7 +26,7 @@ export function DownloadPage() {
       case 'ios':
         return {
           osName: 'iPadOS & iOS (Universal)',
-          version: 'v1.4',
+          version: 'v1.5',
           meta: ipadAppStore.meta,
           label: ipadAppStore.fullLabel,
           url: ipadAppStore.url,
@@ -236,7 +236,7 @@ export function DownloadPage() {
                   <div>
                     <div className="dl-os-card__title-row">
                       <h3>iPadOS &amp; iOS</h3>
-                      <span className="dl-version-tag">Universal v1.4</span>
+                      <span className="dl-version-tag">Universal v1.5</span>
                     </div>
                     <p className="dl-os-card__req">iPadOS &amp; iOS 16.0 or later · iPhone, iPad &amp; Apple Pencil Pro</p>
                   </div>
@@ -392,7 +392,7 @@ export function DownloadPage() {
                   </tr>
                   <tr>
                     <td><strong>iPadOS</strong></td>
-                    <td><code>v1.4</code></td>
+                    <td><code>v1.5</code></td>
                     <td>Apple App Store</td>
                     <td>iPadOS 16+ · Apple Pencil / Pro</td>
                     <td><span className="dl-status dl-status--live">Available</span></td>
@@ -406,7 +406,7 @@ export function DownloadPage() {
                   </tr>
                   <tr>
                     <td><strong>iOS (iPhone)</strong></td>
-                    <td><code>v1.4</code></td>
+                    <td><code>v1.5</code></td>
                     <td>Apple App Store (Universal)</td>
                     <td>iOS 16+ · All modern iPhones</td>
                     <td><span className="dl-status dl-status--live">Available</span></td>

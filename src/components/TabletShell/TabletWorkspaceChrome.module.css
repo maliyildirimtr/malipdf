@@ -7,7 +7,9 @@
   flex-direction: column;
   flex-shrink: 0;
   z-index: 40;
-  padding-top: env(safe-area-inset-top, 0px);
+  padding-top: var(--safe-top, env(safe-area-inset-top, 0px));
+  padding-left: var(--safe-left, env(safe-area-inset-left, 0px));
+  padding-right: var(--safe-right, env(safe-area-inset-right, 0px));
   background: var(--tw-bar-bg);
   border-bottom: 1px solid var(--tw-border);
   backdrop-filter: blur(22px);
@@ -860,8 +862,8 @@
 
 .favoritesRail {
   position: fixed;
-  top: calc(env(safe-area-inset-top, 0px) + 68px);
-  right: calc(env(safe-area-inset-right, 0px) + 16px);
+  top: calc(var(--safe-top, env(safe-area-inset-top, 0px)) + 68px);
+  right: calc(var(--safe-right, env(safe-area-inset-right, 0px)) + 16px);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -872,7 +874,7 @@
 }
 
 .favoritesRailFocus {
-  top: calc(env(safe-area-inset-top, 0px) + 18px);
+  top: calc(var(--safe-top, env(safe-area-inset-top, 0px)) + 18px);
 }
 
 .favShortcutWrap {
@@ -963,7 +965,7 @@
 .bottomPill {
   position: fixed;
   left: 50%;
-  bottom: max(14px, env(safe-area-inset-bottom));
+  bottom: max(14px, var(--safe-bottom, env(safe-area-inset-bottom, 0px)));
   transform: translateX(-50%);
   display: inline-flex;
   align-items: center;
@@ -1128,45 +1130,60 @@
   color: var(--tw-text-muted);
 }
 
-/* ── Compact iPhone / Narrow Portrait Layout ─────────────────────────────── */
+/* ── Compact iPhone Portrait Layout (Status Bar Hidden · Dynamic Island Ears) ─ */
 
-@media (max-width: 680px) {
+@media (max-width: 680px) and (orientation: portrait) {
+  .topChrome {
+    /* Status bar (clock & battery) is hidden natively; Row 1 sits cleanly in the
+       left & right ears flanking the physical Dynamic Island pill, and Row 2
+       sits immediately underneath the Dynamic Island with zero wasted space! */
+    padding-top: min(10px, var(--safe-top, env(safe-area-inset-top, 0px)));
+  }
+
   .navBar {
     flex-wrap: wrap;
     height: auto;
-    padding: 6px 8px;
-    gap: 5px;
+    padding: 2px 6px 5px;
+    row-gap: 6px;
+    column-gap: 4px;
   }
 
-  .navLeft,
+  .navLeft {
+    gap: 0;
+  }
+
   .navRight {
-    gap: 2px;
+    gap: 1px;
+  }
+
+  .iconBtn {
+    width: 28px;
+    height: 34px;
+    border-radius: 9px;
   }
 
   .navCenter {
     order: 3;
     flex: 0 0 100%;
     width: 100%;
-    padding-top: 5px;
+    padding-top: 4px;
     border-top: 1px solid var(--tw-border);
-    justify-content: flex-start;
+    justify-content: center;
   }
 
   .toolDock {
     width: 100%;
     justify-content: space-between;
-    gap: 2px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    gap: 1px;
+    padding: 1px 0;
   }
 
   .toolBtn {
-    min-width: 36px;
-    height: 36px;
-    padding: 0 6px;
-  }
-
-  .iconBtn {
-    width: 35px;
-    height: 35px;
+    min-width: 34px;
+    height: 34px;
+    padding: 0 5px;
   }
 
   .popover {
@@ -1174,7 +1191,7 @@
     right: 8px !important;
     width: auto !important;
     max-width: calc(100vw - 16px);
-    max-height: min(72dvh, calc(100dvh - 116px));
+    max-height: min(72dvh, calc(100dvh - 104px));
     overflow-y: auto;
   }
 
@@ -1183,12 +1200,12 @@
     right: 8px !important;
     width: auto !important;
     max-width: calc(100vw - 16px);
-    max-height: min(74dvh, calc(100dvh - 116px));
+    max-height: min(74dvh, calc(100dvh - 104px));
   }
 
   .favoritesRail {
-    top: calc(env(safe-area-inset-top, 0px) + 108px);
-    right: calc(env(safe-area-inset-right, 0px) + 8px);
+    top: 96px;
+    right: calc(var(--safe-right, env(safe-area-inset-right, 0px)) + 8px);
     gap: 8px;
   }
 
@@ -1198,7 +1215,7 @@
   }
 
   .bottomPill {
-    bottom: max(10px, env(safe-area-inset-bottom, 0px));
+    bottom: max(10px, var(--safe-bottom, env(safe-area-inset-bottom, 0px)));
     height: 38px;
     padding: 0 6px;
     max-width: calc(100vw - 16px);
