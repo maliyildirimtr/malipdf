@@ -8,7 +8,7 @@
 // ============================================================
 
 const REPO_URL = 'https://github.com/maliyildirimtr/malipdf';
-const RELEASE_TAG = 'v1.0.6';
+const RELEASE_TAG = 'v1.4.0';
 const RELEASE_DOWNLOAD_BASE = `${REPO_URL}/releases/download/${RELEASE_TAG}`;
 
 const assetUrl = (fileName: string) => `${RELEASE_DOWNLOAD_BASE}/${fileName}`;
@@ -41,7 +41,7 @@ export interface DownloadConfig {
 }
 
 export const downloads: DownloadConfig = {
-  version: '1.0.6',
+  version: '1.4.0',
   tag: RELEASE_TAG,
   releaseNotesUrl: `${REPO_URL}/releases/tag/${RELEASE_TAG}`,
 

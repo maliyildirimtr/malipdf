@@ -121,7 +121,7 @@ jobs:
           done
           printf '%s' "$MAS_PROVISIONING_PROFILE" | base64 --decode > build/embedded.provisionprofile
           sed -i '' "s/TEAM_ID\./${APPLE_TEAM_ID}./" build/entitlements.mas.plist
-          node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("package.json","utf8"));p.build.mas.extendInfo.ElectronTeamID=process.env.APPLE_TEAM_ID;fs.writeFileSync("package.json",JSON.stringify(p,null,2));'
+          node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("package.json","utf8"));p.build.buildVersion=String(process.env.GITHUB_RUN_NUMBER||"1");p.build.mas.extendInfo.ElectronTeamID=process.env.APPLE_TEAM_ID;fs.writeFileSync("package.json",JSON.stringify(p,null,2));'
           npx --yes "$ELECTRON_BUILDER" --mac mas --arm64 --publish never
 
       - name: Collect Mac App Store package
@@ -136,6 +136,24 @@ jobs:
         with:
           name: mac-app-store
           path: store/MaliPDF-MacAppStore.pkg
+
+      - name: Upload Mac App Store package to App Store Connect
+        continue-on-error: true
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          if [[ -z "$(printf '%s' "${ASC_KEY_ID:-}" | tr -d '[:space:]')" || -z "$(printf '%s' "${ASC_ISSUER_ID:-}" | tr -d '[:space:]')" || -z "$(printf '%s' "${ASC_KEY_P8:-}" | tr -d '[:space:]')" ]]; then
+            echo "ASC API key secrets not set; skipping automatic App Store Connect upload."
+            exit 0
+          fi
+          mkdir -p "$HOME/.appstoreconnect/private_keys"
+          KEY_FILE="$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+          printf '%s' "$ASC_KEY_P8" > "$KEY_FILE"
+          chmod 600 "$KEY_FILE"
+          trap 'rm -f "$KEY_FILE"' EXIT
+          xcrun altool --upload-app --type macos --file store/MaliPDF-MacAppStore.pkg --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
 
   build-macos-dmg:
     needs: prepare-tag

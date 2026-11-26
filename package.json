@@ -1,7 +1,7 @@
 {
   "name": "malipedefe",
   "productName": "MaliPDF",
-  "version": "1.0.0",
+  "version": "1.4.0",
   "description": "Professional PDF Annotation and Document Workspace",
   "main": "dist-electron/main.js",
   "scripts": {
