@@ -67,6 +67,8 @@ export interface LibraryFolder {
   favorite: boolean;
   createdAt: number;
   updatedAt: number;
+  /** Tombstone timestamp when a synced Cloud folder is deleted. */
+  deletedAt?: number | null;
 }
 
 export interface LibraryDocument {

@@ -61,15 +61,39 @@ function readInitialScope(): LibraryStorageScope {
 }
 
 /**
+ * Monotonic Lamport-style timestamp: guarantees a mutation/deletion on Device B
+ * ALWAYS has `updatedAt > item.updatedAt` even if Device B's system clock is
+ * a few seconds behind Device A's clock!
+ */
+function monotonicTimestamp(prevUpdatedAt?: number | null): number {
+  return Math.max(Date.now(), (prevUpdatedAt ?? 0) + 1);
+}
+
+/**
  * Remembers permanently deleted cloud documents so the next sync deletes the
  * remote copy (and tells other devices) instead of downloading it again.
  */
 function recordCloudTombstones(items: readonly LibraryDocument[]): void {
-  const now = Date.now();
   const cloud = items.filter((i) => getScope(i) === 'cloud');
   if (cloud.length === 0) return;
   useSyncStore.getState().addTombstones(
-    cloud.map((i) => ({ id: i.id, remoteName: remoteNameForDocument(i), deletedAt: now })),
+    cloud.map((i) => ({
+      id: i.id,
+      remoteName: remoteNameForDocument(i),
+      deletedAt: monotonicTimestamp(i.updatedAt),
+    })),
+  );
+}
+
+function recordCloudFolderTombstones(folders: readonly LibraryFolder[]): void {
+  const cloud = folders.filter((f) => getScope(f) === 'cloud');
+  if (cloud.length === 0) return;
+  useSyncStore.getState().addFolderTombstones(
+    cloud.map((f) => ({
+      id: f.id,
+      name: f.name,
+      deletedAt: monotonicTimestamp(f.updatedAt),
+    })),
   );
 }
 
@@ -327,7 +351,7 @@ export const useLibraryStore = create<LibraryStore>()((set, get) => ({
     const target = get().folders.find((f) => f.id === folderId);
     set((state) => ({
       folders: state.folders.map((f) =>
-        f.id === folderId ? { ...f, name: trimmed, updatedAt: Date.now() } : f,
+        f.id === folderId ? { ...f, name: trimmed, updatedAt: monotonicTimestamp(f.updatedAt) } : f,
       ),
     }));
     await persistCurrent(get);
@@ -338,7 +362,7 @@ export const useLibraryStore = create<LibraryStore>()((set, get) => ({
     const target = get().folders.find((f) => f.id === folderId);
     set((state) => ({
       folders: state.folders.map((f) =>
-        f.id === folderId ? { ...f, color, updatedAt: Date.now() } : f,
+        f.id === folderId ? { ...f, color, updatedAt: monotonicTimestamp(f.updatedAt) } : f,
       ),
     }));
     await persistCurrent(get);
@@ -349,7 +373,7 @@ export const useLibraryStore = create<LibraryStore>()((set, get) => ({
     const target = get().folders.find((f) => f.id === folderId);
     set((state) => ({
       folders: state.folders.map((f) =>
-        f.id === folderId ? { ...f, favorite: !f.favorite, updatedAt: Date.now() } : f,
+        f.id === folderId ? { ...f, favorite: !f.favorite, updatedAt: monotonicTimestamp(f.updatedAt) } : f,
       ),
     }));
     await persistCurrent(get);
@@ -357,17 +381,22 @@ export const useLibraryStore = create<LibraryStore>()((set, get) => ({
   },
 
   deleteFolder: async (folderId) => {
-    const target = get().folders.find((f) => f.id === folderId);
+    const removedFolders = get().folders.filter((f) => f.id === folderId || f.parentId === folderId);
+    const touchesCloud = removedFolders.some((f) => getScope(f) === 'cloud');
+    recordCloudFolderTombstones(removedFolders);
+    const removedIds = new Set(removedFolders.map((f) => f.id));
     set((state) => ({
-      folders: state.folders.filter((f) => f.id !== folderId && f.parentId !== folderId),
+      folders: state.folders.filter((f) => !removedIds.has(f.id)),
       items: state.items.map((item) =>
-        item.folderId === folderId ? { ...item, folderId: null, updatedAt: Date.now() } : item,
+        item.folderId && removedIds.has(item.folderId)
+          ? { ...item, folderId: null, updatedAt: monotonicTimestamp(item.updatedAt) }
+          : item,
       ),
-      activeSection: state.activeFolderId === folderId ? 'home' : state.activeSection,
-      activeFolderId: state.activeFolderId === folderId ? null : state.activeFolderId,
+      activeSection: state.activeFolderId && removedIds.has(state.activeFolderId) ? 'home' : state.activeSection,
+      activeFolderId: state.activeFolderId && removedIds.has(state.activeFolderId) ? null : state.activeFolderId,
     }));
     await persistCurrent(get);
-    if (target && getScope(target) === 'cloud') triggerCloudSync();
+    if (touchesCloud) triggerCloudSync(80);
   },
 
   upsertDocument: async ({
@@ -417,6 +446,7 @@ export const useLibraryStore = create<LibraryStore>()((set, get) => ({
     const resolvedTitle = ensurePdfExtension(sanitizeFileName(title));
 
     if (existingByPath) {
+      const stamp = monotonicTimestamp(existingByPath.updatedAt);
       const updated: LibraryDocument = {
         ...existingByPath,
         title: resolvedTitle,
@@ -425,8 +455,8 @@ export const useLibraryStore = create<LibraryStore>()((set, get) => ({
         sizeBytes: bytes.byteLength,
         pageCount: rendered?.pageCount ?? pageCount ?? existingByPath.pageCount,
         thumbnail: rendered?.dataUrl ?? existingByPath.thumbnail,
-        updatedAt: now,
-        lastOpenedAt: now,
+        updatedAt: stamp,
+        lastOpenedAt: stamp,
         trashedAt: null,
       };
       set((s) => ({
@@ -576,7 +606,7 @@ export const useLibraryStore = create<LibraryStore>()((set, get) => ({
 
     set((state) => ({
       items: state.items.map((i) =>
-        i.id === itemId ? { ...i, title: cleanTitle, filePath: nextPath, updatedAt: Date.now() } : i,
+        i.id === itemId ? { ...i, title: cleanTitle, filePath: nextPath, updatedAt: monotonicTimestamp(i.updatedAt) } : i,
       ),
     }));
     await persistCurrent(get);
@@ -587,7 +617,7 @@ export const useLibraryStore = create<LibraryStore>()((set, get) => ({
     const item = get().items.find((i) => i.id === itemId);
     set((state) => ({
       items: state.items.map((i) =>
-        i.id === itemId ? { ...i, folderId, updatedAt: Date.now() } : i,
+        i.id === itemId ? { ...i, folderId, updatedAt: monotonicTimestamp(i.updatedAt) } : i,
       ),
     }));
     await persistCurrent(get);
@@ -599,7 +629,7 @@ export const useLibraryStore = create<LibraryStore>()((set, get) => ({
     const touchesCloud = get().items.some((i) => ids.has(i.id) && getScope(i) === 'cloud');
     set((state) => ({
       items: state.items.map((i) =>
-        ids.has(i.id) ? { ...i, folderId, updatedAt: Date.now() } : i,
+        ids.has(i.id) ? { ...i, folderId, updatedAt: monotonicTimestamp(i.updatedAt) } : i,
       ),
     }));
     await persistCurrent(get);
@@ -702,7 +732,7 @@ export const useLibraryStore = create<LibraryStore>()((set, get) => ({
     const item = get().items.find((i) => i.id === itemId);
     set((state) => ({
       items: state.items.map((i) =>
-        i.id === itemId ? { ...i, favorite: !i.favorite, updatedAt: Date.now() } : i,
+        i.id === itemId ? { ...i, favorite: !i.favorite, updatedAt: monotonicTimestamp(i.updatedAt) } : i,
       ),
     }));
     await persistCurrent(get);
@@ -712,36 +742,39 @@ export const useLibraryStore = create<LibraryStore>()((set, get) => ({
   trashDocument: async (itemId) => {
     const item = get().items.find((i) => i.id === itemId);
     set((state) => ({
-      items: state.items.map((i) =>
-        i.id === itemId ? { ...i, trashedAt: Date.now(), updatedAt: Date.now(), favorite: false } : i,
-      ),
+      items: state.items.map((i) => {
+        if (i.id !== itemId) return i;
+        const stamp = monotonicTimestamp(i.updatedAt);
+        return { ...i, trashedAt: stamp, updatedAt: stamp, favorite: false };
+      }),
     }));
     await persistCurrent(get);
-    if (item && getScope(item) === 'cloud') triggerCloudSync();
+    if (item && getScope(item) === 'cloud') triggerCloudSync(80);
   },
 
   trashDocuments: async (itemIds) => {
     const ids = new Set(itemIds);
     const touchesCloud = get().items.some((i) => ids.has(i.id) && getScope(i) === 'cloud');
-    const now = Date.now();
     set((state) => ({
-      items: state.items.map((i) =>
-        ids.has(i.id) ? { ...i, trashedAt: now, updatedAt: now, favorite: false } : i,
-      ),
+      items: state.items.map((i) => {
+        if (!ids.has(i.id)) return i;
+        const stamp = monotonicTimestamp(i.updatedAt);
+        return { ...i, trashedAt: stamp, updatedAt: stamp, favorite: false };
+      }),
     }));
     await persistCurrent(get);
-    if (touchesCloud) triggerCloudSync();
+    if (touchesCloud) triggerCloudSync(80);
   },
 
   restoreDocument: async (itemId) => {
     const item = get().items.find((i) => i.id === itemId);
     set((state) => ({
       items: state.items.map((i) =>
-        i.id === itemId ? { ...i, trashedAt: null, updatedAt: Date.now() } : i,
+        i.id === itemId ? { ...i, trashedAt: null, updatedAt: monotonicTimestamp(i.updatedAt) } : i,
       ),
     }));
     await persistCurrent(get);
-    if (item && getScope(item) === 'cloud') triggerCloudSync();
+    if (item && getScope(item) === 'cloud') triggerCloudSync(80);
   },
 
   permanentlyDeleteDocument: async (itemId) => {
@@ -755,7 +788,7 @@ export const useLibraryStore = create<LibraryStore>()((set, get) => ({
       items: state.items.filter((i) => i.id !== itemId),
     }));
     await persistCurrent(get);
-    if (wasCloud) triggerCloudSync();
+    if (wasCloud) triggerCloudSync(80);
   },
 
   emptyTrash: async () => {
@@ -770,7 +803,7 @@ export const useLibraryStore = create<LibraryStore>()((set, get) => ({
       items: state.items.filter((i) => !trashedIds.has(i.id)),
     }));
     await persistCurrent(get);
-    if (currentScope === 'cloud' && trashed.length > 0) triggerCloudSync();
+    if (currentScope === 'cloud' && trashed.length > 0) triggerCloudSync(80);
   },
 
   readDocumentBytes: async (itemId) => {

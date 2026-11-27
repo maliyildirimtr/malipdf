@@ -1171,6 +1171,11 @@ export const TR: Readonly<Record<string, string>> = {
   'Copied to Cloud': 'Buluta kopyalandı',
   'Moved to This Device': 'Cihazıma taşındı',
   'Copied to This Device': 'Cihazıma kopyalandı',
+  'PDF editing tools': 'PDF düzenleme araçları',
+  'When off, documents open in clean reading and preview mode.':
+    'Kapalıyken belgeler sade okuma ve önizleme modunda açılır.',
+  'Edit PDF': 'Düzenle',
+  'Preview Mode': 'Önizleme Modu',
 };
 
 type Pattern = readonly [RegExp, (...groups: string[]) => string];

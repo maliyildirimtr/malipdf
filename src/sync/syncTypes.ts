@@ -48,6 +48,13 @@ export interface SyncTombstone {
   deletedAt: number;
 }
 
+/** A cloud folder deleted on this device that the remote manifest has not recorded yet. */
+export interface SyncFolderTombstone {
+  id: string;
+  name: string;
+  deletedAt: number;
+}
+
 export interface SyncManifest {
   version: 1;
   updatedAt: number;

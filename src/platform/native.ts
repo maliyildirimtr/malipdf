@@ -36,8 +36,15 @@ export function isIphoneDevice(): boolean {
       // Ignore malformed URLs
     }
   }
-  if (!isIpadApp() || typeof navigator === 'undefined') return false;
-  return /iPhone|iPod/i.test(navigator.userAgent || '');
+  if (!isIpadApp()) return false;
+  if (typeof navigator !== 'undefined' && /iPhone|iPod/i.test(navigator.userAgent || '')) {
+    return true;
+  }
+  if (typeof window !== 'undefined' && window.screen) {
+    const shortSide = Math.min(window.screen.width || 0, window.screen.height || 0);
+    if (shortSide > 0 && shortSide < 600) return true;
+  }
+  return false;
 }
 
 const NATIVE_TIMEOUT_MS = 10_000;

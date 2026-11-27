@@ -62,7 +62,7 @@ import {
 import type { SidebarPanel } from '../../types/annotations';
 import type { AppCommandId } from '../../commands';
 import { useRulerStore } from '../../store/rulerStore';
-import { isIpadApp } from '../../platform/native';
+import { isIpadApp, isIphoneDevice } from '../../platform/native';
 import { isIpadPreviewUrl } from '../../platform/touchMode';
 import styles from './PageSidebar.module.css';
 
@@ -151,16 +151,18 @@ export function PageSidebar({ onCommand }: { onCommand?: (commandId: AppCommandI
               >
                 <Hand size={18} />
               </button>
-              <button
-                type="button"
-                className={`${styles.panelTab} ${pencilOnly ? styles.panelTabActive : ''}`}
-                onClick={() => setPencilOnly(!pencilOnly)}
-                title={pencilOnly ? 'Apple Pencil only (finger scrolls)' : 'Finger & Pencil draw'}
-                aria-label="Draw with Apple Pencil only"
-                aria-pressed={pencilOnly}
-              >
-                <PenLine size={18} />
-              </button>
+              {!isIphoneDevice() && (
+                <button
+                  type="button"
+                  className={`${styles.panelTab} ${pencilOnly ? styles.panelTabActive : ''}`}
+                  onClick={() => setPencilOnly(!pencilOnly)}
+                  title={pencilOnly ? 'Apple Pencil only (finger scrolls)' : 'Finger & Pencil draw'}
+                  aria-label="Draw with Apple Pencil only"
+                  aria-pressed={pencilOnly}
+                >
+                  <PenLine size={18} />
+                </button>
+              )}
               <button
                 type="button"
                 className={`${styles.panelTab} ${rulerVisible ? styles.panelTabActive : ''}`}

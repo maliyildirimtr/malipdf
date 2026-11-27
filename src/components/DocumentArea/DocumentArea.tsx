@@ -200,7 +200,9 @@ export function DocumentArea() {
     const stopOpenFiles = window.electronAPI?.onOpenFiles?.((files) => {
       void (async () => {
         for (const file of files) {
-          if (isIpadApp()) {
+          if (isIpadApp() && file.ephemeral) {
+            await openDocumentBytes(file.name, null, file.data, { ephemeralImport: true });
+          } else if (isIpadApp()) {
             const { useLibraryStore } = await import('../../store/libraryStore');
             const saved = await useLibraryStore.getState().upsertDocument({
               title: file.name,
@@ -630,8 +632,8 @@ export function DocumentArea() {
       return;
     }
     if (interactionTool !== 'hand' || (event.button !== 0 && event.button !== 1)) return;
-    // iPad with "Apple Pencil only": a finger already scrolls natively.
-    if (event.pointerType === 'touch' && isIpadApp() && useUIStore.getState().pencilOnly) return;
+    // iOS / iPadOS when native finger scroll is active (or Hand tool): WebKit scrolls natively with momentum.
+    if (event.pointerType === 'touch' && isIpadApp() && (fingerScrollsNow() || interactionTool === 'hand')) return;
     event.preventDefault();
     isPanningRef.current = true;
     panPointerIdRef.current = event.pointerId;

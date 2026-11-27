@@ -32,7 +32,7 @@ import { TabletBottomPagePill, TabletFavoritesRail, TabletWorkspaceTopChrome } f
 import { useUIStore } from './store/uiStore';
 import { useDocumentStore } from './store/documentStore';
 import { useLibraryStore } from './store/libraryStore';
-import { isIpadApp, onNative } from './platform/native';
+import { isIpadApp, isIphoneDevice, onNative } from './platform/native';
 import { isIpadPreviewUrl } from './platform/touchMode';
 import { autoSaveDirtyTabletDocuments } from './commands/saveCommands';
 import { useAnnotationStore } from './store/annotationStore';
@@ -138,12 +138,23 @@ const overlayTitleBar = (() => {
 export default function App() {
   useImmersiveFullScreen();
   const tabBar = useFullScreenTabBar();
-  const { theme, resolvedTheme, setResolvedTheme, workspaceMode, tabletMode, desktopLibraryOpen, setDesktopLibraryOpen } = useUIStore();
+  const {
+    theme,
+    resolvedTheme,
+    setResolvedTheme,
+    workspaceMode,
+    tabletMode,
+    iphoneEditMode,
+    sidebarOpen,
+    desktopLibraryOpen,
+    setDesktopLibraryOpen,
+  } = useUIStore();
   const { documents, activeDocId } = useDocumentStore();
   const { docAnnotations } = useAnnotationStore();
   const tabletActiveView = useLibraryStore((state) => state.activeView);
   const setTabletActiveView = useLibraryStore((state) => state.setActiveView);
   const isTabletUI = isIpadApp() || tabletMode || isIpadPreviewUrl();
+  const iphonePreviewOnly = isTabletUI && isIphoneDevice() && !iphoneEditMode;
   const showTabletLibrary = isTabletUI
     ? (tabletActiveView === 'library' || !activeDocId)
     : desktopLibraryOpen;
@@ -171,7 +182,9 @@ export default function App() {
       void (async () => {
         const { openDocumentBytes } = await import('./document/openDocumentBytes');
         for (const file of files) {
-          if (isIpadApp()) {
+          if (isIpadApp() && file.ephemeral) {
+            await openDocumentBytes(file.name, null, file.data, { ephemeralImport: true });
+          } else if (isIpadApp()) {
             const bytes = new Uint8Array(file.data);
             const saved = await useLibraryStore.getState().upsertDocument({
               title: file.name,
@@ -380,15 +393,17 @@ export default function App() {
             aria-labelledby={activeDocId ? `document-tab-${activeDocId}` : undefined}
             aria-label={activeDocId ? undefined : 'MaliPDF document workspace'}
           >
-            <div className="app-sidebar-chrome">
-              <PageSidebar onCommand={executeCommand} />
-            </div>
+            {(!iphonePreviewOnly || sidebarOpen) && (
+              <div className="app-sidebar-chrome">
+                <PageSidebar onCommand={executeCommand} />
+              </div>
+            )}
             <DocumentArea />
             <SplitView />
           </div>
           {isTabletUI ? (
             <>
-              <TabletFavoritesRail />
+              {!iphonePreviewOnly && <TabletFavoritesRail />}
               {workspaceMode !== 'focus' && <TabletBottomPagePill onCommand={executeCommand} />}
             </>
           ) : (
@@ -396,7 +411,7 @@ export default function App() {
               <StatusBar onCommand={executeCommand} canExecute={canExecute} />
             </div>
           )}
-          <FocusToolbar onCommand={executeCommand} canExecute={canExecute} />
+          {!iphonePreviewOnly && <FocusToolbar onCommand={executeCommand} canExecute={canExecute} />}
         </>
       )}
       

@@ -7,6 +7,7 @@ import { useHistoryStore } from '../store/historyStore';
 import { useSelectionStore } from '../store/selectionStore';
 import { useAssetStore } from '../store/assetStore';
 import { removeRecoverySnapshot } from '../document/autoSave';
+import { askKeepExternalPdf } from '../platform/ipadDialogs';
 
 /**
  * Phase 0 centralizes the existing close behavior without adding dirty-state
@@ -17,7 +18,17 @@ export async function closeDocumentById(docId: string): Promise<boolean> {
   const doc = documents.documents.get(docId);
   if (!doc) return false;
 
-  if (doc.currentStateId !== doc.savedStateId) {
+  const isDirty = doc.currentStateId !== doc.savedStateId;
+
+  if (doc.ephemeralImport) {
+    const choice = await askKeepExternalPdf(doc.title, isDirty);
+    if (choice === 'cancel') return false;
+    if (choice === 'save') {
+      const { saveDocument } = await import('./saveCommands');
+      const saved = await saveDocument(docId);
+      if (!saved) return false;
+    }
+  } else if (isDirty) {
     const choice = await window.electronAPI.askCloseConfirm(doc.title);
     
     if (choice === 'cancel') {
@@ -70,15 +81,17 @@ export async function closeAllDocuments(): Promise<number> {
   
   const dirtyDocs = allDocIds
     .map(id => documentsState.documents.get(id))
-    .filter(doc => doc && doc.currentStateId !== doc.savedStateId)
+    .filter(doc => doc && (doc.currentStateId !== doc.savedStateId || doc.ephemeralImport))
     .map(doc => doc!);
 
   if (dirtyDocs.length > 0) {
     let choice: 'save' | 'discard' | 'cancel' = 'save';
     
     if (dirtyDocs.length === 1) {
-      // If there's only one dirty document, use the single-document semantic dialog.
-      choice = await window.electronAPI.askCloseConfirm(dirtyDocs[0].title);
+      const single = dirtyDocs[0];
+      choice = single.ephemeralImport
+        ? await askKeepExternalPdf(single.title, single.currentStateId !== single.savedStateId)
+        : await window.electronAPI.askCloseConfirm(single.title);
       
       if (choice === 'cancel') return 0;
       

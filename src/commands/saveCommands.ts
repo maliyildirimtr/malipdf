@@ -141,6 +141,7 @@ async function performSave(docId: string, saveAs: boolean, options?: { silent?: 
       updateDocument(docId, {
         filePath,
         savedStateId: targetStateId,
+        ephemeralImport: false,
         saveStatus: 'idle',
         title: finalName,
       });
@@ -200,6 +201,7 @@ async function performSave(docId: string, saveAs: boolean, options?: { silent?: 
     updateDocument(docId, {
       filePath,
       savedStateId: targetStateId,
+      ephemeralImport: false,
       saveStatus: 'idle',
       title: filePath.split(/[\\/]/).pop() || doc.title,
     });
@@ -251,7 +253,7 @@ export async function saveAllDocuments() {
 export async function autoSaveDirtyTabletDocuments(): Promise<void> {
   const { documents } = useDocumentStore.getState();
   for (const doc of documents.values()) {
-    if (doc.currentStateId !== doc.savedStateId && doc.filePath && doc.saveStatus !== 'saving') {
+    if (doc.currentStateId !== doc.savedStateId && doc.filePath && !doc.ephemeralImport && doc.saveStatus !== 'saving') {
       await performSave(doc.id, false, { silent: true });
     }
   }

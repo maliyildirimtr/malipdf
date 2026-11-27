@@ -122,6 +122,7 @@ import { NotePopup } from './NotePopup';
 import { TextSelectionOverlay } from './TextSelectionOverlay';
 import { useTextSelectionStore } from '../../store/textSelectionStore';
 import { isIpadApp } from '../../platform/native';
+import { fingerScrollsNow, isIphonePreviewOnly } from '../../platform/touchMode';
 import { fingerNavigates, useStylusScrollGuard } from '../../platform/pencilInput';
 import type { TextEditAnnotation } from '../../types/annotations';
 import type { EditableLine } from '../../commands/textEditCommands';
@@ -430,13 +431,14 @@ const AnnotationCanvas = React.memo<AnnotationCanvasProps>(function AnnotationCa
   useEffect(() => {
     if (activeTool !== 'crop') setCropPending(null);
   }, [activeTool]);
-  const interactionTool = temporaryTool ?? activeTool;
+  const iphonePreviewOnly = useUIStore(state => isIphonePreviewOnly(state));
+  const interactionTool: ToolType = iphonePreviewOnly ? 'hand' : (temporaryTool ?? activeTool);
   const selectedTool = interactionTool; // before per-gesture pen-button overrides
-  // Tablet mode / iPad, "draw with the pen only": a finger scrolls and zooms,
-  // EXCEPT when touching a selected object / resize handle (or an image in Select
-  // tool), so the user can move and resize photos with their finger effortlessly.
-  const pencilOnly = useUIStore(state => state.pencilOnly && (state.tabletMode || isIpadApp()));
-  const nativeFingerScroll = pencilOnly && isIpadApp();
+  // Tablet mode / iPad "draw with the pen only" (or iPhone Preview mode): a finger scrolls
+  // and zooms natively, whereas on iPhone with PDF Editing ON (`pencilOnly === false`),
+  // 1 finger draws directly with Pen / Highlighter / Eraser / Shapes / Lasso!
+  const pencilOnly = useUIStore(state => fingerScrollsNow(state));
+  const nativeFingerScroll = isIpadApp() && (pencilOnly || selectedTool === 'hand');
   const addAnnotation = useAnnotationStore(state => state.addAnnotation);
   const replaceAnnotation = useAnnotationStore(state => state.replaceAnnotation);
   const getPageAnnotations = useAnnotationStore(state => state.getPageAnnotations);

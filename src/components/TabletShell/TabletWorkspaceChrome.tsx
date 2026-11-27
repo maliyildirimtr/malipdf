@@ -27,6 +27,7 @@ import {
   ClipboardPaste,
   Crop,
   Eraser,
+  Eye,
   FileInput,
   FileOutput,
   FilePlus,
@@ -51,6 +52,7 @@ import {
   Redo2,
   Save,
   Scissors,
+  Search,
   Share,
   Sigma,
   Square,
@@ -80,7 +82,7 @@ import {
   type TabletFavoriteToolKind,
 } from '../../store/uiStore';
 import { useLibraryStore } from '../../store/libraryStore';
-import { isIpadApp } from '../../platform/native';
+import { isIpadApp, isIphoneDevice } from '../../platform/native';
 import { displayDocName } from '../../platform/ipadLibrary';
 import { PEN_STYLES } from '../../pdf/penStyles';
 import type { PenStyle, TextAlign, ToolType } from '../../types/annotations';
@@ -245,7 +247,11 @@ export function TabletWorkspaceTopChrome({ onCommand, canExecute }: TabletWorksp
     lassoOptions,
     writingSoundEnabled,
     soundEffectsEnabled,
+    iphoneEditMode,
+    setIphoneEditMode,
     sidebarOpen,
+    setSidebarOpen,
+    setActiveSidebarPanel,
     tabletRailHidden,
     setTabletRailHidden,
     lastShapeTool,
@@ -322,14 +328,20 @@ export function TabletWorkspaceTopChrome({ onCommand, canExecute }: TabletWorksp
     };
   }, [togglePenAndEraser]);
 
-  const returnToLibrary = () => {
-    setPopover(null);
-    void autoSaveDirtyTabletDocuments();
-    setActiveView('library');
-  };
-
   const activeDoc = activeDocId ? documents.get(activeDocId) ?? null : null;
   const isDirty = activeDoc ? activeDoc.currentStateId !== activeDoc.savedStateId : false;
+  const isIphone = isIphoneDevice();
+  const iphonePreviewOnly = isIphone && !iphoneEditMode;
+
+  const returnToLibrary = async () => {
+    setPopover(null);
+    if (activeDoc?.ephemeralImport) {
+      const closed = await closeDocumentById(activeDoc.id);
+      if (!closed) return;
+    }
+    await autoSaveDirtyTabletDocuments();
+    setActiveView('library');
+  };
 
   useEffect(() => {
     if (!popover) return;
@@ -436,7 +448,93 @@ export function TabletWorkspaceTopChrome({ onCommand, canExecute }: TabletWorksp
   return (
     <>
       {/* ── Single Unified Ultra-Clean Top Bar (52px) ── */}
-      <header className={styles.topChrome}>
+      <header className={`${styles.topChrome} ${iphonePreviewOnly ? styles.topChromePreview : ''}`}>
+        {iphonePreviewOnly ? (
+          <div className={`${styles.navBar} ${styles.navBarPreview}`}>
+            <div className={styles.navLeft}>
+              <button
+                type="button"
+                className={`${styles.iconBtn} ${styles.accentIconBtn}`}
+                aria-label="Back to Library"
+                title="Back to Library"
+                onClick={() => void returnToLibrary()}
+              >
+                <ChevronLeft size={23} strokeWidth={2.2} />
+              </button>
+
+              <button
+                type="button"
+                className={`${styles.iconBtn} ${styles.accentIconBtn} ${sidebarOpen ? styles.iconBtnActive : ''}`}
+                aria-label="Pages & Sidebar"
+                title="Pages & Sidebar"
+                onClick={() => {
+                  setActiveSidebarPanel('pages');
+                  setSidebarOpen(!sidebarOpen);
+                }}
+              >
+                <Menu size={20} strokeWidth={2} />
+              </button>
+
+              <button
+                type="button"
+                className={`${styles.iconBtn} ${styles.accentIconBtn}`}
+                aria-label="Search"
+                title="Search"
+                onClick={() => {
+                  setActiveSidebarPanel('search');
+                  setSidebarOpen(true);
+                }}
+              >
+                <Search size={19} strokeWidth={2} />
+              </button>
+
+              {tabOrder.length > 1 && (
+                <button
+                  type="button"
+                  className={`${styles.iconBtn} ${styles.accentIconBtn} ${popover?.kind === 'tabs' ? styles.iconBtnActive : ''}`}
+                  aria-label="Open documents"
+                  title="Open documents"
+                  data-tw-popover="true"
+                  onClick={(e) => togglePopover('tabs', e)}
+                >
+                  <Files size={19} strokeWidth={1.9} />
+                </button>
+              )}
+            </div>
+
+            <div className={styles.previewTitleCenter} data-no-translate>
+              {activeDoc ? displayDocName(activeDoc.title) : ''}
+            </div>
+
+            <div className={styles.navRight}>
+              <button
+                type="button"
+                className={`${styles.iconBtn} ${styles.accentIconBtn} ${isDirty ? styles.saveDirtyDot : ''} ${popover?.kind === 'share' ? styles.iconBtnActive : ''}`}
+                aria-label="Save or Share"
+                title="Save or Share"
+                disabled={!activeDoc}
+                data-tw-popover="true"
+                onClick={(e) => togglePopover('share', e)}
+              >
+                <Share size={19} strokeWidth={1.9} />
+              </button>
+
+              <button
+                type="button"
+                className={styles.iphoneEditPillBtn}
+                aria-label="Edit PDF"
+                title="Edit PDF"
+                onClick={() => {
+                  setPopover(null);
+                  setIphoneEditMode(true);
+                }}
+              >
+                <PenLine size={15} strokeWidth={2.2} />
+                <span>Edit PDF</span>
+              </button>
+            </div>
+          </div>
+        ) : (
         <div className={styles.navBar}>
           {/* Left: < (Library), ≡ (Sidebar), Undo, Redo */}
           <div className={styles.navLeft}>
@@ -445,7 +543,7 @@ export function TabletWorkspaceTopChrome({ onCommand, canExecute }: TabletWorksp
               className={`${styles.iconBtn} ${styles.accentIconBtn}`}
               aria-label="Back to Library"
               title="Back to Library"
-              onClick={returnToLibrary}
+              onClick={() => void returnToLibrary()}
             >
               <ChevronLeft size={23} strokeWidth={2.2} />
             </button>
@@ -718,8 +816,24 @@ export function TabletWorkspaceTopChrome({ onCommand, canExecute }: TabletWorksp
             >
               <Files size={20} strokeWidth={1.9} />
             </button>
+
+            {isIphone && (
+              <button
+                type="button"
+                className={`${styles.iconBtn} ${styles.accentIconBtn}`}
+                aria-label="Preview Mode"
+                title="Preview Mode"
+                onClick={() => {
+                  setPopover(null);
+                  setIphoneEditMode(false);
+                }}
+              >
+                <Eye size={19} strokeWidth={2} />
+              </button>
+            )}
           </div>
         </div>
+        )}
       </header>
 
       {/* ── Right-Side Action Popovers (+ Insert / Share & Save / Open Tabs) ── */}

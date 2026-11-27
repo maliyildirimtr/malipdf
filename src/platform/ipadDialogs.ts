@@ -117,6 +117,36 @@ export async function askSaveChanges(names: string[]): Promise<'save' | 'discard
   return value;
 }
 
+/** Save / Don't Save / Cancel when exiting an external "Open in MaliPDF" PDF. */
+export async function askKeepExternalPdf(name: string, hasEdits: boolean): Promise<'save' | 'discard' | 'cancel'> {
+  const isTr = useUIStore.getState().language === 'tr';
+  const message = hasEdits
+    ? (isTr
+      ? `"${name}" ve yaptığınız düzenlemeler kaydedilsin mi?`
+      : `Save "${name}" and your annotations to your library?`)
+    : (isTr
+      ? `"${name}" kütüphanenize kaydedilsin mi?`
+      : `Save "${name}" to your library?`);
+  const detail = hasEdits
+    ? (isTr
+      ? 'Kaydetmezseniz bu PDF ve üzerindeki notlar silinecektir.'
+      : "Your changes will be lost if you don't save them.")
+    : (isTr
+      ? 'Bu PDF dışarıdan açıldı. Kaydetmezseniz cihazınızda yer kaplamaz.'
+      : "This PDF was opened from another app. Choose Don't Save to close without using storage.");
+  const { value } = await openDialog<'save' | 'discard' | 'cancel'>(
+    message,
+    detail,
+    [
+      { label: t('Cancel'), value: 'cancel' },
+      { label: t("Don't Save"), value: 'discard', destructive: true },
+      { label: t('Save'), value: 'save', primary: true },
+    ],
+    'cancel',
+  );
+  return value;
+}
+
 /** Asks for a file name; null when cancelled. */
 export async function askFileName(title: string, defaultName: string): Promise<string | null> {
   const { value, text } = await openDialog<boolean>(

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fingerNavigates, PALM_AFTER_PENCIL_MS, StylusScrollGuard } from '../pencilInput';
 import { base64ToBytes, bytesToBase64, isIpadApp, isIphoneDevice } from '../native';
-import { fingerScrollsNow } from '../touchMode';
+import { fingerScrollsNow, isIphonePreviewOnly } from '../touchMode';
 import { displayDocName, ensurePdfExtension, sanitizeFileName } from '../ipadLibrary';
 
 const pencil = { touchType: 'stylus' } as unknown as Touch;
@@ -46,20 +46,25 @@ describe('iPad bridge helpers', () => {
     expect(isIphoneDevice()).toBe(false);
   });
 
-  it('disables pencil-only finger scrolling on iPhone so a finger can draw directly', () => {
-    const fakeTabletState = { tabletMode: true, pencilOnly: true } as any;
-    expect(fingerScrollsNow(fakeTabletState)).toBe(true);
+  it('scrolls with 1 finger in iPhone Preview mode and draws with 1 finger when iPhone PDF Editing is ON', () => {
+    const previewState = { tabletMode: true, pencilOnly: true, iphoneEditMode: false } as any;
+    const editState = { tabletMode: true, pencilOnly: true, iphoneEditMode: true } as any;
+    expect(fingerScrollsNow(previewState)).toBe(true);
 
     try {
       vi.stubGlobal('window', {
         location: { search: '' },
+        screen: { width: 402, height: 874 },
         Capacitor: { isNativePlatform: () => true, getPlatform: () => 'ios' },
       });
       vi.stubGlobal('navigator', {
         userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)',
       });
       expect(isIphoneDevice()).toBe(true);
-      expect(fingerScrollsNow(fakeTabletState)).toBe(false);
+      expect(isIphonePreviewOnly(previewState)).toBe(true);
+      expect(fingerScrollsNow(previewState)).toBe(true);
+      expect(isIphonePreviewOnly(editState)).toBe(false);
+      expect(fingerScrollsNow(editState)).toBe(false);
     } finally {
       vi.unstubAllGlobals();
     }

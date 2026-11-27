@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { nanoid } from '../utils/nanoid';
-import type { SyncProviderId, SyncStatus, SyncTombstone } from '../sync/syncTypes';
+import type { SyncFolderTombstone, SyncProviderId, SyncStatus, SyncTombstone } from '../sync/syncTypes';
 
 export interface SyncStats {
   uploaded: number;
@@ -33,6 +33,8 @@ interface SyncStoreState {
    * the document back from the remote copy.
    */
   tombstones: SyncTombstone[];
+  /** Cloud folders deleted on this device that have not yet been published to the remote manifest. */
+  folderTombstones: SyncFolderTombstone[];
 
   setProvider: (provider: SyncProviderId) => void;
   setStatus: (status: SyncStatus, error?: string | null) => void;
@@ -45,6 +47,8 @@ interface SyncStoreState {
   addTombstones: (tombstones: SyncTombstone[]) => void;
   /** Drops tombstones that are now recorded in the remote manifest. */
   clearTombstones: (ids: string[]) => void;
+  addFolderTombstones: (tombstones: SyncFolderTombstone[]) => void;
+  clearFolderTombstones: (ids: string[]) => void;
   /**
    * `startedAt` is when the sync began: anything changed while it ran has a
    * later `updatedAt` and is therefore still seen as "changed since last sync".
@@ -70,6 +74,7 @@ export const useSyncStore = create<SyncStoreState>()(
       googleRootFolderId: null,
       cloudOnboardingSeen: false,
       tombstones: [],
+      folderTombstones: [],
 
       setProvider: (provider) => set({ provider, lastError: null }),
       setStatus: (status, error = null) => set({ status, lastError: error }),
@@ -96,6 +101,17 @@ export const useSyncStore = create<SyncStoreState>()(
           const drop = new Set(ids);
           return { tombstones: s.tombstones.filter((t) => !drop.has(t.id)) };
         }),
+      addFolderTombstones: (tombstones) =>
+        set((s) => {
+          const byId = new Map(s.folderTombstones.map((t) => [t.id, t]));
+          for (const t of tombstones) byId.set(t.id, t);
+          return { folderTombstones: Array.from(byId.values()) };
+        }),
+      clearFolderTombstones: (ids) =>
+        set((s) => {
+          const drop = new Set(ids);
+          return { folderTombstones: s.folderTombstones.filter((t) => !drop.has(t.id)) };
+        }),
       recordSyncSuccess: (stats, startedAt) =>
         set({
           status: 'synced',
@@ -119,6 +135,7 @@ export const useSyncStore = create<SyncStoreState>()(
         googleRootFolderId: state.googleRootFolderId,
         cloudOnboardingSeen: state.cloudOnboardingSeen,
         tombstones: state.tombstones,
+        folderTombstones: state.folderTombstones,
       }),
     },
   ),

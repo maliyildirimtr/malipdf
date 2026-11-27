@@ -23,9 +23,18 @@ export function isTabletMode(state = useUIStore.getState()): boolean {
   return isIpadApp() || state.tabletMode || isIpadPreviewUrl();
 }
 
-/** A finger scrolls and zooms; only the pen (or mouse) draws. Disabled on iPhone (no Apple Pencil). */
+/** True when running on iPhone with PDF Editing turned OFF (clean PDF Preview mode). */
+export function isIphonePreviewOnly(state = useUIStore.getState()): boolean {
+  return isIphoneDevice() && !state.iphoneEditMode;
+}
+
+/**
+ * Whether a single finger scrolls & pans instead of drawing:
+ * - On iPhone: scrolls in Preview mode (`!iphoneEditMode`), draws with 1 finger when Editing is ON (`iphoneEditMode`).
+ * - On iPad / Tablet PC: follows `pencilOnly`.
+ */
 export function fingerScrollsNow(state = useUIStore.getState()): boolean {
-  if (isIphoneDevice()) return false;
+  if (isIphoneDevice()) return !state.iphoneEditMode;
   return isTabletMode(state) && state.pencilOnly;
 }
 

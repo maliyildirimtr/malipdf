@@ -210,6 +210,28 @@ describe('syncManager data-safety', () => {
     expect(useLibraryStore.getState().items).toEqual([]);
   });
 
+  it('queues a follow-up sync and writes tombstone when a doc is deleted mid-sync', async () => {
+    const bytes = enc('mid-sync-delete');
+    h.localFiles.set('Cloud/Temp.pdf', bytes);
+    useLibraryStore.setState({ items: [cloudDoc('temp', 'Temp.pdf', 100)] });
+    expect(await syncNow()).toBe(true);
+    expect(h.remote.files.has('Temp.pdf')).toBe(true);
+
+    let deletedOnce = false;
+    h.remote.onList = async () => {
+      if (deletedOnce) return;
+      deletedOnce = true;
+      await useLibraryStore.getState().permanentlyDeleteDocument('temp');
+      void syncNow(); // called while first syncNow() is still running!
+    };
+
+    expect(await syncNow()).toBe(true);
+    expect(useLibraryStore.getState().items).toEqual([]);
+    expect(h.remote.files.has('Temp.pdf')).toBe(false);
+    const rec = (h.remote.manifest as SyncManifest).items.find((i) => i.id === 'temp')!;
+    expect(rec.deletedAt).toBeTypeOf('number');
+  });
+
   it('refuses Google Drive (not supported in the packaged app)', async () => {
     // A Drive API that would "work" — the manager must still never reach it.
     const fetchSpy = vi.fn(async () => new Response(JSON.stringify({ files: [{ id: 'root' }], email: 'a@b.c' }), { status: 200 }));

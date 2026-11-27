@@ -1130,6 +1130,42 @@
   color: var(--tw-text-muted);
 }
 
+.previewTitleCenter {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--tw-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 8px;
+}
+
+.iphoneEditPillBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 32px;
+  padding: 0 11px;
+  border-radius: 999px;
+  border: none;
+  background: var(--tw-accent);
+  color: #ffffff;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  flex-shrink: 0;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(29, 93, 159, 0.28);
+}
+
+.iphoneEditPillBtn:hover {
+  filter: brightness(1.07);
+}
+
 /* ── Compact iPhone Portrait Layout (Status Bar Hidden · Dynamic Island Ears) ─ */
 
 @media (max-width: 680px) and (orientation: portrait) {
@@ -1138,6 +1174,24 @@
        left & right ears flanking the physical Dynamic Island pill, and Row 2
        sits immediately underneath the Dynamic Island with zero wasted space! */
     padding-top: min(10px, var(--safe-top, env(safe-area-inset-top, 0px)));
+  }
+
+  .navBarPreview {
+    flex-wrap: nowrap !important;
+    height: 40px !important;
+    padding: 0 6px !important;
+  }
+
+  .previewTitleCenter {
+    /* Keep the physical Dynamic Island center zone unobstructed in portrait */
+    visibility: hidden;
+    padding: 0;
+  }
+
+  .iphoneEditPillBtn {
+    height: 30px;
+    padding: 0 9px;
+    font-size: 12px;
   }
 
   .navBar {

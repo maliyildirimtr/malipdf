@@ -16,6 +16,11 @@ export interface OpenDocumentOptions {
    * (default true). Recovery snapshots and new documents skip this.
    */
   restoreEditable?: boolean;
+  /**
+   * Opened externally ("Open in MaliPDF") without writing to the Library yet:
+   * stays purely in memory and asks whether to save on close / return to Library.
+   */
+  ephemeralImport?: boolean;
 }
 
 export async function openDocumentBytes(
@@ -44,7 +49,8 @@ export async function openDocumentBytes(
     title: name,
     filePath,
     currentStateId: initialStateId,
-    savedStateId: filePath && !options.markDirty ? initialStateId : null,
+    savedStateId: (filePath || options.ephemeralImport) && !options.markDirty ? initialStateId : null,
+    ephemeralImport: Boolean(options.ephemeralImport),
     saveStatus: 'idle',
     lastSaveError: null,
     sourceData: bytes,

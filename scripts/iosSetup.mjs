@@ -481,9 +481,14 @@ final class MaliPDFiCloudBridge: NSObject, WKScriptMessageHandler {
                     self.reply(id: id, payload: ["ok": false, "error": "Invalid file name."])
                     return
                 }
+                let fm = FileManager.default
                 var coordError: NSError?
                 NSFileCoordinator().coordinate(writingItemAt: fileURL, options: .forDeleting, error: &coordError) { url in
-                    try? FileManager.default.removeItem(at: url)
+                    try? fm.removeItem(at: url)
+                }
+                let placeholder = docs.appendingPathComponent("." + name + ".icloud")
+                if fm.fileExists(atPath: placeholder.path) {
+                    try? fm.removeItem(at: placeholder)
                 }
                 self.reply(id: id, payload: ["ok": true])
 

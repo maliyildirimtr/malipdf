@@ -179,6 +179,13 @@ interface UIStore {
   pencilOnly: boolean;
   setPencilOnly: (on: boolean) => void;
   /**
+   * iPhone PDF Editing Mode: when false (default), iPhone opens PDFs in a clean
+   * distraction-free preview/reader mode where 1 finger scrolls; when true, shows
+   * editing tools, Focus Mode, and lets 1 finger draw with Pen/Highlighter/Eraser/Shapes.
+   */
+  iphoneEditMode: boolean;
+  setIphoneEditMode: (on: boolean) => void;
+  /**
    * Tablet mode (touch-screen Windows PCs; always on for iPad): bigger
    * buttons, the pen draws and a finger scrolls and pinch-zooms.
    */
@@ -442,6 +449,13 @@ export const useUIStore = create<UIStore>()(
         setFocusToolbarSide: (side) => set({ focusToolbarSide: side }),
         pencilOnly: true,
         setPencilOnly: (on) => set({ pencilOnly: on }),
+        iphoneEditMode: false,
+        setIphoneEditMode: (on) => set((state) => ({
+          iphoneEditMode: on,
+          workspaceMode: !on && state.workspaceMode === 'focus' ? 'normal' : state.workspaceMode,
+          sidebarOpen: !on ? false : state.sidebarOpen,
+          activeTool: on && (state.activeTool === 'hand' || state.activeTool === 'select') ? 'pen' : state.activeTool,
+        })),
         tabletMode: false,
         setTabletMode: (on) => set({ tabletMode: on }),
         focusToolbarCollapsed: false,

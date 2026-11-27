@@ -17,7 +17,7 @@ import { base64ToBytes, bytesToBase64, callNative, onNative, toArrayBuffer } fro
 
 type ElectronAPI = Window['electronAPI'];
 type CommandListener = (commandId: unknown, payload?: unknown) => void;
-type OpenedFile = { filePath: string; name: string; data: ArrayBuffer };
+type OpenedFile = { filePath: string; name: string; data: ArrayBuffer; ephemeral?: boolean };
 
 const DOCUMENTS = 'DOCUMENTS';
 const LIBRARY = 'LIBRARY';
@@ -263,8 +263,13 @@ async function readOpenedUrl(url: string): Promise<OpenedFile | null> {
   const name = decodeURIComponent(baseName(url.split('?')[0]));
   if (!isPdfName(name)) return null;
   const bytes = await Filesystem.readBytes(url);
+  // Clean up iOS temporary Documents/Inbox copy immediately so viewing external
+  // PDFs never accumulates hidden storage bloat in the app sandbox.
+  if (/\/Inbox\//i.test(url)) {
+    void callNative('Filesystem', 'deleteFile', { path: url }).catch(() => undefined);
+  }
   const data = toArrayBuffer(bytes);
-  return { filePath: await savePathForPicked(name, data.byteLength), name, data };
+  return { filePath: '', name, data, ephemeral: true };
 }
 
 // ── The API ─────────────────────────────────────────────────────────────────

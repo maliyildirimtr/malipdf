@@ -1536,6 +1536,24 @@ export function TabletLibrary() {
                 <Trash2 size={16} />
                 <span>Move to Trash</span>
               </button>
+              <button
+                type="button"
+                className={`${styles.menuItem} ${styles.menuItemDanger}`}
+                onClick={() => {
+                  const target = menu.item;
+                  setMenu(null);
+                  void import('../../platform/ipadDialogs').then(async ({ askConfirm }) => {
+                    const ok = await askConfirm(
+                      `"${displayDocName(target.title)}" kalıcı olarak silinsin mi?`,
+                      'Delete Permanently',
+                    );
+                    if (ok) await permanentlyDeleteDocument(target.id);
+                  });
+                }}
+              >
+                <Trash2 size={16} />
+                <span>Delete Permanently</span>
+              </button>
             </>
           )}
 

@@ -430,6 +430,12 @@ export interface DocumentState {
 
   /** User bookmarks, sorted by page. Undefined = none. */
   bookmarks?: Bookmark[];
+  /**
+   * True when opened from another app ("Open in MaliPDF") without copying into
+   * the Library yet: prompts Save / Don't Save / Cancel on exit so quick viewing
+   * never bloats storage.
+   */
+  ephemeralImport?: boolean;
 }
 
 // ─── History (undo/redo) ──────────────────────────────────────────────────────
@@ -560,7 +566,7 @@ declare global {
         assets: { id: string; mimeType: string; width: number; height: number; data: Uint8Array }[],
       ) => Promise<boolean>;
       recoveryRemove: (docId: string) => Promise<boolean>;
-      onOpenFiles?: (callback: (files: Array<{ filePath: string; name: string; data: ArrayBuffer }>) => void) => () => void;
+      onOpenFiles?: (callback: (files: Array<{ filePath: string; name: string; data: ArrayBuffer; ephemeral?: boolean }>) => void) => () => void;
       readyForFiles?: () => void;
       checkForUpdates: () => Promise<boolean>;
       showAbout: () => Promise<boolean>;

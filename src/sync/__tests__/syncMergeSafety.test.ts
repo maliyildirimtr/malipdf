@@ -126,7 +126,7 @@ describe('syncMerge data-safety', () => {
     expect(plan.toUpload).toHaveLength(0);
     expect(plan.mergedItems.find((i) => i.id === 'gone')!.deletedAt).toBe(300);
 
-    const edited = makeItem({ id: 'gone', remoteName: 'Old.pdf', updatedAt: 400 });
+    const edited = makeItem({ id: 'gone', remoteName: 'Old.pdf', updatedAt: 400, contentHash: 'EDITED' });
     const plan2 = buildSyncPlan({
       localFolders: [],
       localItems: [edited],
@@ -138,6 +138,52 @@ describe('syncMerge data-safety', () => {
     expect(plan2.toDeleteLocal).toEqual([]);
     expect(plan2.toUpload.map((i) => i.id)).toEqual(['gone']);
     expect(plan2.mergedItems.find((i) => i.id === 'gone')!.deletedAt ?? null).toBeNull();
+  });
+
+  it('does NOT resurrect a deleted doc when a lingering cloud file has a slightly newer daemon mtime', () => {
+    const tomb = makeItem({ id: 'gone', remoteName: 'Deneme.pdf', updatedAt: 1000, deletedAt: 1000, trashedAt: 1000 });
+    const plan = buildSyncPlan({
+      localFolders: [],
+      localItems: [],
+      remoteManifest: manifest([tomb]),
+      // iCloud daemon materialized Deneme.pdf 4 seconds after Device A's deletedAt
+      remoteFiles: [{ name: 'Deneme.pdf', size: 1000, updatedAt: 5000 }],
+      lastSyncedAt: 900,
+      now: 6000,
+    });
+    expect(plan.toDownload).toHaveLength(0);
+    expect(plan.toDeleteRemote).toContain('Deneme.pdf');
+    expect(plan.mergedItems.filter((i) => !i.deletedAt)).toHaveLength(0);
+  });
+
+  it('does NOT re-upload an unchanged pre-sync doc when its remote PDF disappears before manifest updates', () => {
+    const local = makeItem({ id: 'doc-1', remoteName: 'Deneme.pdf', updatedAt: 1000 });
+    const remote = makeItem({ id: 'doc-1', remoteName: 'Deneme.pdf', updatedAt: 1000 });
+    const plan = buildSyncPlan({
+      localFolders: [],
+      localItems: [local],
+      remoteManifest: manifest([remote]),
+      remoteFiles: [], // Deneme.pdf unlink arrived before library-sync.json update
+      lastSyncedAt: 1200,
+      now: 1500,
+    });
+    expect(plan.toUpload).toHaveLength(0);
+  });
+
+  it('propagates cloud folder deletions via folder tombstones and detaches items', () => {
+    const folder = { id: 'f1', name: 'Dersler', color: 'blue' as const, parentId: null, scope: 'cloud' as const, favorite: false, createdAt: 100, updatedAt: 100 };
+    const doc = makeItem({ id: 'd1', remoteName: 'Circuit.pdf', folderId: 'f1', updatedAt: 100 });
+    const plan = buildSyncPlan({
+      localFolders: [],
+      localItems: [doc],
+      localFolderTombstones: [{ id: 'f1', name: 'Dersler', deletedAt: 500 }],
+      remoteManifest: { version: 1, updatedAt: 200, deviceId: 'other', folders: [folder], items: [doc] },
+      remoteFiles: [{ name: 'Circuit.pdf', size: 1000, updatedAt: 100 }],
+      lastSyncedAt: 200,
+      now: 600,
+    });
+    expect(plan.mergedFolders.find((f) => f.id === 'f1')?.deletedAt).toBe(500);
+    expect(plan.mergedItems.find((i) => i.id === 'd1')?.folderId).toBeNull();
   });
 
   it('a remote tombstone is not re-downloaded nor rediscovered as an unindexed file', () => {

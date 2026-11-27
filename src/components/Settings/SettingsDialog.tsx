@@ -116,10 +116,17 @@ export function SettingsDialog() {
                 <Segmented<PageTheme> label="Page look" value={ui.pageTheme} onChange={ui.setPageTheme}
                   options={[{ value: 'normal', label: 'Normal' }, { value: 'dark', label: 'Night' }, { value: 'sepia', label: 'Sepia' }]} />
               </Row>
-              <Row label="Tablet mode" hint="For touch screens: bigger buttons; a finger scrolls and pinch-zooms.">
-                <Segmented<'on' | 'off'> label="Tablet mode" value={ui.tabletMode ? 'on' : 'off'} onChange={(v) => ui.setTabletMode(v === 'on')}
-                  options={[{ value: 'off', label: 'Off' }, { value: 'on', label: 'On' }]} />
-              </Row>
+              {isIphoneDevice() ? (
+                <Row label="PDF editing tools" hint="When off, documents open in clean reading and preview mode.">
+                  <Segmented<'on' | 'off'> label="PDF editing tools" value={ui.iphoneEditMode ? 'on' : 'off'} onChange={(v) => ui.setIphoneEditMode(v === 'on')}
+                    options={[{ value: 'off', label: 'Off' }, { value: 'on', label: 'On' }]} />
+                </Row>
+              ) : (
+                <Row label="Tablet mode" hint="For touch screens: bigger buttons; a finger scrolls and pinch-zooms.">
+                  <Segmented<'on' | 'off'> label="Tablet mode" value={ui.tabletMode ? 'on' : 'off'} onChange={(v) => ui.setTabletMode(v === 'on')}
+                    options={[{ value: 'off', label: 'Off' }, { value: 'on', label: 'On' }]} />
+                </Row>
+              )}
               {ui.tabletMode && !isIphoneDevice() && (
                 <Row label="Draw with the pen only" hint="A finger scrolls and zooms; only the pen (and the mouse) draws.">
                   <Segmented<'on' | 'off'> label="Draw with the pen only" value={ui.pencilOnly ? 'on' : 'off'} onChange={(v) => ui.setPencilOnly(v === 'on')}
