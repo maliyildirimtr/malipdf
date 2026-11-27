@@ -418,10 +418,10 @@ final class MaliPDFiCloudBridge: NSObject, WKScriptMessageHandler {
                 }
                 let fm = FileManager.default
                 let placeholder = docs.appendingPathComponent("." + name + ".icloud")
-                // Trigger download AND wait until iCloud marks the item `.current`:
-                // when an older local copy already exists on disk (`fileExists == true`)
-                // while a newer edit from another device is in iCloud, status is `.downloaded`
-                // (stale local copy) until `bird` finishes fetching `.current`!
+                // Trigger download AND wait until iCloud marks the item .current:
+                // when an older local copy already exists on disk (fileExists == true)
+                // while a newer edit from another device is in iCloud, status is .downloaded
+                // (stale local copy) until bird finishes fetching .current!
                 let isPlaceholderPresent = fm.fileExists(atPath: placeholder.path)
                 let initialVals = try? fileURL.resourceValues(forKeys: [.isUbiquitousItemKey, .ubiquitousItemDownloadingStatusKey, .ubiquitousItemHasUnresolvedConflictsKey])
                 let needsSyncWait = isPlaceholderPresent
