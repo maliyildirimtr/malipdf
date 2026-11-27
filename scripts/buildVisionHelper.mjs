@@ -35,12 +35,21 @@ try {
   const parts = [];
   for (const arch of ['arm64', 'x86_64']) {
     const part = `${output}-${arch}`;
-    execFileSync('swiftc', ['-O', '-target', `${arch}-apple-macos11`, '-o', part, source], { stdio: 'inherit' });
-    parts.push(part);
+    try {
+      execFileSync('swiftc', ['-O', '-target', `${arch}-apple-macos13`, '-o', part, source], { stdio: 'inherit' });
+      parts.push(part);
+    } catch {
+      rmSync(part, { force: true });
+      if (arch === 'arm64') throw new Error('arm64 Vision helper build failed');
+    }
   }
-  execFileSync('lipo', ['-create', '-output', output, ...parts], { stdio: 'inherit' });
+  if (parts.length > 1) {
+    execFileSync('lipo', ['-create', '-output', output, ...parts], { stdio: 'inherit' });
+  } else {
+    execFileSync('cp', [parts[0], output]);
+  }
   for (const part of parts) rmSync(part, { force: true });
-  console.log(`vision helper: built ${output} (universal)`);
+  console.log(`vision helper: built ${output} (${parts.length > 1 ? 'universal' : 'arm64'})`);
 } catch {
   console.warn('vision helper: could not build (install Xcode Command Line Tools: xcode-select --install). Text recognition will be unavailable.');
 }
