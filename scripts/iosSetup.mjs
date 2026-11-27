@@ -155,24 +155,6 @@ if (!fs.existsSync(privacyPath)) {
   added.push('PrivacyInfo.xcprivacy');
 }
 
-// Hide the iOS/iPadOS system status bar (clock, Wi-Fi, battery) so the top toolbar
-// uses the full screen height cleanly via MaliPDFBridgeViewController.
-const storyboardPath = path.join(root, 'ios/App/App/Base.lproj/Main.storyboard');
-if (fs.existsSync(storyboardPath)) {
-  const sb = fs.readFileSync(storyboardPath, 'utf8');
-  const updatedSb = sb.replace(
-    /customClass="CAPBridgeViewController"[^>]*>/g,
-    (match) => {
-      const suffix = match.endsWith('/>') ? '/>' : '>';
-      return `customClass="MaliPDFBridgeViewController" customModule="App" customModuleProvider="target"${suffix}`;
-    },
-  );
-  if (updatedSb !== sb) {
-    fs.writeFileSync(storyboardPath, updatedSb);
-    added.push('MaliPDFBridgeViewController (Full-screen status bar hidden)');
-  }
-}
-
 // Native Apple Pencil 2nd Gen / Pro support (UIPencilInteraction):
 // - Double-tap on the Pencil barrel toggles Pen <-> Eraser
 // - Apple Pencil Pro Squeeze (iOS 17.5+) opens the floating Quick Tool Palette
@@ -198,29 +180,6 @@ if (fs.existsSync(appDelegatePath)) {
     }
     const pencilExtension = `
 
-// MARK: - MaliPDF Full-Screen Bridge View Controller (Status Bar Hidden)
-
-@objc(MaliPDFBridgeViewController)
-class MaliPDFBridgeViewController: CAPBridgeViewController {
-    override var prefersStatusBarHidden: Bool {
-        return true
-    }
-
-    override var preferredStatusBarUpdateAnimation: UIStatusBarAnimation {
-        return .fade
-    }
-
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        setNeedsStatusBarAppearanceUpdate()
-    }
-
-    override func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
-        setNeedsStatusBarAppearanceUpdate()
-    }
-}
-
 // MARK: - MaliPDF Apple Pencil Double-Tap & Pro Squeeze Bridge
 
 final class MaliPDFPencilHandler: NSObject, UIPencilInteractionDelegate {
@@ -237,8 +196,11 @@ final class MaliPDFPencilHandler: NSObject, UIPencilInteractionDelegate {
         self.webView = wv
         self.hostWindow = window
 
+        // Hide the iOS/iPadOS status bar (clock, Wi-Fi, battery) using Capacitor's built-in API.
+        bridgeVC.setStatusBarVisible(false)
+
         // Prevent UIKit text-selection / rotation from scrolling the outer WKWebView
-        // up under the iOS status bar / Dynamic Island, without replacing WKWebView's
+        // up under the top edge / Dynamic Island, without replacing WKWebView's
         // internal UIScrollViewDelegate.
         wv.scrollView.bounces = false
         wv.scrollView.alwaysBounceVertical = false
@@ -247,7 +209,7 @@ final class MaliPDFPencilHandler: NSObject, UIPencilInteractionDelegate {
         if wv.scrollView.contentOffset != .zero {
             wv.scrollView.contentOffset = .zero
         }
-        offsetObservation = wv.scrollView.observe(\.contentOffset, options: [.new]) { scrollView, _ in
+        offsetObservation = wv.scrollView.observe(\\UIScrollView.contentOffset, options: [.new]) { scrollView, _ in
             if scrollView.contentOffset.x != 0 || scrollView.contentOffset.y != 0 {
                 scrollView.contentOffset = .zero
             }
