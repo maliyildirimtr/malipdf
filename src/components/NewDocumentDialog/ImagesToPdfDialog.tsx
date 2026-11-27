@@ -118,9 +118,11 @@ export function ImagesToPdfDialog() {
       const bytes = await imagesToPdf(items.map((i) => i.image), size, margin);
       const rawName = items.length === 1 ? items[0].name.replace(/\.[^.]+$/, '') : 'Images';
       const fileName = ensurePdfExtension(sanitizeFileName(rawName));
-      const saveInLibrary = isTabletMode() || useUIStore.getState().desktopLibraryOpen;
+      const lib = useLibraryStore.getState();
+      const { useSyncStore } = await import('../../store/syncStore');
+      const cloudActive = lib.storageScope === 'cloud' && useSyncStore.getState().provider !== 'local';
+      const saveInLibrary = isTabletMode() || useUIStore.getState().desktopLibraryOpen || cloudActive;
       if (saveInLibrary) {
-        const lib = useLibraryStore.getState();
         const saved = await lib.upsertDocument({
           title: fileName,
           bytes,

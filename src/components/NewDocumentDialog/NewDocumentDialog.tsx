@@ -9,6 +9,7 @@ import { openDocumentBytes } from '../../document/openDocumentBytes';
 import { isTabletMode } from '../../platform/touchMode';
 import { ensurePdfExtension, sanitizeFileName } from '../../platform/ipadLibrary';
 import { useLibraryStore } from '../../store/libraryStore';
+import { useSyncStore } from '../../store/syncStore';
 import { NOTE_TEMPLATES, type NoteTemplateId } from '../../document/noteTemplates';
 import { COVER_CATEGORIES, NOTEBOOK_COVERS, getNotebookCover } from '../../document/notebookCovers';
 import { TemplateThumbnail } from './TemplateThumbnail';
@@ -311,9 +312,10 @@ export function NewDocumentDialog() {
 
       const totalPages = pageCount + (selectedCover || customCoverUrl ? 1 : 0);
 
-      const saveInLibrary = isTabletMode() || useUIStore.getState().desktopLibraryOpen;
+      const lib = useLibraryStore.getState();
+      const cloudActive = lib.storageScope === 'cloud' && useSyncStore.getState().provider !== 'local';
+      const saveInLibrary = isTabletMode() || useUIStore.getState().desktopLibraryOpen || cloudActive;
       if (saveInLibrary) {
-        const lib = useLibraryStore.getState();
         const saved = await lib.upsertDocument({
           title: name,
           bytes: pdfBytes,

@@ -598,6 +598,7 @@ declare global {
       syncReadFile?: (folder: string, name: string) => Promise<ArrayBuffer | null>;
       syncWriteFile?: (folder: string, name: string, data: ArrayBuffer) => Promise<boolean>;
       syncDeleteFile?: (folder: string, name: string) => Promise<boolean>;
+      onSyncFolderChanged?: (callback: () => void) => () => void;
     };
   }
 }

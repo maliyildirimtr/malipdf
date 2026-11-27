@@ -111,6 +111,7 @@ export interface ElectronAPI {
   syncReadFile: (folder: string, name: string) => Promise<ArrayBuffer | null>;
   syncWriteFile: (folder: string, name: string, data: ArrayBuffer) => Promise<boolean>;
   syncDeleteFile: (folder: string, name: string) => Promise<boolean>;
+  onSyncFolderChanged: (callback: () => void) => () => void;
 }
 
 const electronAPI: ElectronAPI = {
@@ -192,6 +193,11 @@ const electronAPI: ElectronAPI = {
   syncReadFile: (folder, name) => ipcRenderer.invoke('sync:readFile', folder, name),
   syncWriteFile: (folder, name, data) => ipcRenderer.invoke('sync:writeFile', folder, name, data),
   syncDeleteFile: (folder, name) => ipcRenderer.invoke('sync:deleteFile', folder, name),
+  onSyncFolderChanged: (callback) => {
+    const listener = () => callback();
+    ipcRenderer.on('sync:changed', listener);
+    return () => ipcRenderer.removeListener('sync:changed', listener);
+  },
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);

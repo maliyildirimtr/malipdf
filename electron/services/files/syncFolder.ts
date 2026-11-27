@@ -164,11 +164,17 @@ export async function deleteSyncFile(
   }
 }
 
+let lastFolderDownloadAt = 0;
+
 export async function listSyncFolder(
   folder: string,
   platform: NodeJS.Platform = process.platform,
 ): Promise<Array<{ name: string; size: number; updatedAt: number }>> {
   await fs.promises.mkdir(folder, { recursive: true });
+  if (platform === 'darwin' && Date.now() - lastFolderDownloadAt > 8_000) {
+    lastFolderDownloadAt = Date.now();
+    triggerMacICloudDownload(folder);
+  }
   const entries = await fs.promises.readdir(folder, { withFileTypes: true });
   // Materialized files must always win over `.<name>.icloud` placeholders.
   entries.sort((a, b) => Number(a.name.startsWith('.')) - Number(b.name.startsWith('.')));

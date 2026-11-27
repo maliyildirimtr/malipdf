@@ -575,10 +575,29 @@ handleTrusted('dialog:saveFile', isDev, async (_event, defaultName: unknown, raw
 // Split PDF / Cloud Sync: choose a folder, then write into it.
 const folderBookmarks = new Map<string, string>();
 
+/** Real user home directory on macOS even when running inside the Mac App Store sandbox container. */
+function realUserHomeDir(): string {
+  const raw = os.homedir();
+  if (process.platform === 'darwin') {
+    return raw.replace(/\/Library\/Containers\/[^/]+\/Data\/?$/, '');
+  }
+  return raw;
+}
+
 handleTrusted('dialog:chooseFolder', isDev, async (_event, rawTitle: unknown) => {
   if (!mainWindow) return null;
+  const titleStr = typeof rawTitle === 'string' ? rawTitle.slice(0, 200) : 'Choose a Folder';
+  let defaultPath: string | undefined;
+  if (process.platform === 'darwin' && /icloud/i.test(titleStr)) {
+    const mobileDocs = path.join(realUserHomeDir(), 'Library', 'Mobile Documents');
+    const appDocs = path.join(mobileDocs, 'iCloud~com~maliyildirimtr~malipdf', 'Documents');
+    const cloudDocs = path.join(mobileDocs, 'com~apple~CloudDocs');
+    if (fs.existsSync(appDocs)) defaultPath = appDocs;
+    else if (fs.existsSync(cloudDocs)) defaultPath = cloudDocs;
+  }
   const result = await showOpenDialog(mainWindow, {
-    title: typeof rawTitle === 'string' ? rawTitle.slice(0, 200) : 'Choose a Folder',
+    title: titleStr,
+    ...(defaultPath ? { defaultPath } : {}),
     properties: ['openDirectory', 'createDirectory'],
     securityScopedBookmarks: true,
   });
@@ -608,7 +627,7 @@ handleTrusted('fs:writeFilesToFolder', isDev, async (_event, folder: unknown, ra
 // ── Cross-device Sync Folder (iCloud Drive / Google Drive / OneDrive / Local) ─
 
 function detectCloudSyncFolders(): Array<{ id: 'icloud' | 'gdrive' | 'onedrive' | 'dropbox'; label: string; path: string }> {
-  const home = os.homedir();
+  const home = realUserHomeDir();
   const found: Array<{ id: 'icloud' | 'gdrive' | 'onedrive' | 'dropbox'; label: string; path: string }> = [];
   const tryBase = (id: 'icloud' | 'gdrive' | 'onedrive' | 'dropbox', label: string, baseDir: string) => {
     try {
@@ -698,11 +717,47 @@ async function requireSyncFolder(rawFolder: unknown): Promise<string> {
   return authorizeSyncFolder(rawFolder, await authorizedSyncFolders());
 }
 
+let activeSyncWatcher: fs.FSWatcher | null = null;
+let activeWatchedDir: string | null = null;
+let syncWatchDebounce: ReturnType<typeof setTimeout> | null = null;
+
+function watchSyncDirectory(dir: string): void {
+  if (activeWatchedDir === dir && activeSyncWatcher) return;
+  try {
+    activeSyncWatcher?.close();
+  } catch {
+    // ignore
+  }
+  activeSyncWatcher = null;
+  activeWatchedDir = dir;
+  try {
+    activeSyncWatcher = fs.watch(dir, (_eventType, filename) => {
+      if (filename && !/\.(pdf|json|icloud)$/i.test(filename)) return;
+      if (syncWatchDebounce) clearTimeout(syncWatchDebounce);
+      syncWatchDebounce = setTimeout(() => {
+        syncWatchDebounce = null;
+        for (const win of BrowserWindow.getAllWindows()) {
+          if (!win.isDestroyed()) {
+            win.webContents.send('sync:changed');
+          }
+        }
+      }, 450);
+    });
+    activeSyncWatcher.on('error', () => {
+      activeSyncWatcher = null;
+      activeWatchedDir = null;
+    });
+  } catch {
+    activeWatchedDir = null;
+  }
+}
+
 handleTrusted('sync:detectCloudFolders', isDev, async () => detectCloudSyncFolders());
 
 handleTrusted('sync:activateFolder', isDev, async (_event, rawFolder: unknown) => {
   const dir = await requireSyncFolder(rawFolder);
   await fs.promises.mkdir(dir, { recursive: true });
+  watchSyncDirectory(dir);
   // Keep a folder the user picked usable after a restart (folderGrants is per session).
   if (folderGrants.has(dir) && (await rememberedSyncFolder) !== dir) {
     rememberedSyncFolder = Promise.resolve(dir);
@@ -713,6 +768,7 @@ handleTrusted('sync:activateFolder', isDev, async (_event, rawFolder: unknown) =
 
 handleTrusted('sync:list', isDev, async (_event, rawFolder: unknown) => {
   const dir = await requireSyncFolder(rawFolder);
+  watchSyncDirectory(dir);
   return listSyncFolder(dir);
 });
 

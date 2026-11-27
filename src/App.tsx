@@ -320,6 +320,9 @@ export default function App() {
           if (state?.isActive === true) scheduleAutoSync(600);
         })
       : () => {};
+    const stopDesktopWatch = window.electronAPI?.onSyncFolderChanged?.(() => {
+      if (!useUIStore.getState().isDrawing) scheduleAutoSync(200);
+    }) ?? (() => {});
     const liveInterval = setInterval(() => {
       if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
       if (useUIStore.getState().isDrawing) return;
@@ -329,6 +332,7 @@ export default function App() {
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('focus', onFocus);
       stopNative();
+      stopDesktopWatch();
       clearInterval(liveInterval);
     };
   }, []);
