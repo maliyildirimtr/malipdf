@@ -190,19 +190,37 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
         run: |
-          # An empty secret must not reach electron-builder; without a
-          # certificate the DMG is built unsigned.
+          EXTRA_ARGS=()
           if [[ -z "$(printf '%s' "${CSC_LINK:-}" | tr -d '[:space:]')" ]]; then
-            unset CSC_LINK CSC_KEY_PASSWORD
+            unset CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD
             export CSC_IDENTITY_AUTO_DISCOVERY=false
-            echo "No Developer ID certificate: building an unsigned DMG."
+            # Bind Info.plist & resources cleanly with ad-hoc signature when no Developer ID cert is configured
+            EXTRA_ARGS+=(-c.mac.identity=- -c.mac.hardenedRuntime=false -c.mac.notarize=false)
+            echo "No Developer ID certificate (CSC_LINK): building clean ad-hoc signed DMG."
+          else
+            # Use App Store Connect API key for Apple Notarization automatically when APPLE_ID is not set
+            if [[ -z "$(printf '%s' "${APPLE_ID:-}" | tr -d '[:space:]')" ]]; then
+              unset APPLE_ID APPLE_APP_SPECIFIC_PASSWORD
+              if [[ -n "$(printf '%s' "${ASC_KEY_ID:-}" | tr -d '[:space:]')" && -n "$(printf '%s' "${ASC_ISSUER_ID:-}" | tr -d '[:space:]')" && -n "$(printf '%s' "${ASC_KEY_P8:-}" | tr -d '[:space:]')" ]]; then
+                KEY_PATH="$RUNNER_TEMP/AuthKey_${ASC_KEY_ID}.p8"
+                printf '%s' "$ASC_KEY_P8" > "$KEY_PATH"
+                chmod 600 "$KEY_PATH"
+                trap 'rm -f "$KEY_PATH"' EXIT
+                export APPLE_API_KEY="$KEY_PATH"
+                export APPLE_API_KEY_ID="$ASC_KEY_ID"
+                export APPLE_API_ISSUER="$ASC_ISSUER_ID"
+                echo "Notarizing Developer ID DMG via App Store Connect API key ($ASC_KEY_ID)."
+              else
+                EXTRA_ARGS+=(-c.mac.notarize=false)
+                echo "No notarization credentials: skipping notarization."
+              fi
+            fi
           fi
-          if [[ -z "$(printf '%s' "${APPLE_ID:-}" | tr -d '[:space:]')" ]]; then
-            unset APPLE_ID APPLE_APP_SPECIFIC_PASSWORD
-            echo "No notarization credentials: the DMG is not notarized."
-          fi
-          npx --yes "$ELECTRON_BUILDER" --mac dmg --arm64 --publish never
+          npx --yes "$ELECTRON_BUILDER" --mac dmg --arm64 --publish never "${EXTRA_ARGS[@]}"
 
       - name: Collect DMG
         run: |
