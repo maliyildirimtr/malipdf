@@ -51,8 +51,15 @@ const SCOPE_STORAGE_KEY = 'malipdf-library-scope-v1';
 
 function readInitialScope(): LibraryStorageScope {
   try {
-    if (typeof localStorage !== 'undefined' && localStorage.getItem(SCOPE_STORAGE_KEY) === 'cloud') {
-      return 'cloud';
+    if (typeof localStorage !== 'undefined') {
+      const saved = localStorage.getItem(SCOPE_STORAGE_KEY);
+      if (saved === 'cloud' || saved === 'local') return saved;
+      // When a cloud provider (e.g. iCloud Drive) is already connected and the user
+      // hasn't explicitly pinned a scope yet, open directly in Cloud scope!
+      const syncRaw = localStorage.getItem('malipdf-sync-v1');
+      if (syncRaw && /"provider"\s*:\s*"(icloud|folder)"/.test(syncRaw)) {
+        return 'cloud';
+      }
     }
   } catch {
     // ignore

@@ -412,28 +412,42 @@ final class MaliPDFiCloudBridge: NSObject, WKScriptMessageHandler {
 
             case "read":
                 guard let name = body["name"] as? String,
-                      let fileURL = self.safeFileURL(in: docs, name: name) else {
+                      var fileURL = self.safeFileURL(in: docs, name: name) else {
                     self.reply(id: id, payload: ["ok": false, "error": "Invalid file name."])
                     return
                 }
                 let fm = FileManager.default
-                if !fm.fileExists(atPath: fileURL.path) {
-                    let placeholder = docs.appendingPathComponent("." + name + ".icloud")
-                    if fm.fileExists(atPath: placeholder.path) {
-                        try? fm.startDownloadingUbiquitousItem(at: fileURL)
-                        for _ in 0..<40 {
-                            if fm.fileExists(atPath: fileURL.path) { break }
-                            Thread.sleep(forTimeInterval: 0.2)
-                        }
-                    }
-                } else {
+                let placeholder = docs.appendingPathComponent("." + name + ".icloud")
+                // Trigger download AND wait until iCloud marks the item `.current`:
+                // when an older local copy already exists on disk (`fileExists == true`)
+                // while a newer edit from another device is in iCloud, status is `.downloaded`
+                // (stale local copy) until `bird` finishes fetching `.current`!
+                let isPlaceholderPresent = fm.fileExists(atPath: placeholder.path)
+                let initialVals = try? fileURL.resourceValues(forKeys: [.isUbiquitousItemKey, .ubiquitousItemDownloadingStatusKey, .ubiquitousItemHasUnresolvedConflictsKey])
+                let needsSyncWait = isPlaceholderPresent
+                    || (initialVals?.ubiquitousItemDownloadingStatus != nil
+                        && initialVals?.ubiquitousItemDownloadingStatus != .current)
+                if fm.fileExists(atPath: fileURL.path) || isPlaceholderPresent {
                     try? fm.startDownloadingUbiquitousItem(at: fileURL)
                 }
+                if needsSyncWait {
+                    for _ in 0..<35 {
+                        fileURL.removeCachedResourceValue(forKey: .ubiquitousItemDownloadingStatusKey)
+                        let vals = try? fileURL.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey])
+                        if fm.fileExists(atPath: fileURL.path) && vals?.ubiquitousItemDownloadingStatus == .current {
+                            break
+                        }
+                        Thread.sleep(forTimeInterval: 0.2)
+                    }
+                }
+                // Auto-resolve any legacy NSFileVersion conflicts on JSON manifests so iCloud never stalls
+                if name.lowercased().hasSuffix(".json"),
+                   let conflicts = NSFileVersion.unresolvedConflictVersionsOfItem(at: fileURL),
+                   !conflicts.isEmpty {
+                    for c in conflicts { c.isResolved = true }
+                    try? NSFileVersion.removeOtherVersionsOfItem(at: fileURL)
+                }
                 guard fm.fileExists(atPath: fileURL.path) else {
-                    // data:null means "does not exist". A placeholder that has not
-                    // finished downloading is an ERROR: treating it as missing would
-                    // make the app overwrite the newer cloud file.
-                    let placeholder = docs.appendingPathComponent("." + name + ".icloud")
                     if fm.fileExists(atPath: placeholder.path) {
                         self.reply(id: id, payload: ["ok": false, "error": "iCloud is still downloading \\(name). Try again in a moment."])
                     } else {

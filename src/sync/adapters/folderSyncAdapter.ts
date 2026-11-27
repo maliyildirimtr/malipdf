@@ -7,9 +7,16 @@
  */
 
 import { useSyncStore } from '../../store/syncStore';
-import { parseSyncManifest, type RemoteFileEntry, type SyncAdapter, type SyncManifest } from '../syncTypes';
-
-const MANIFEST_NAME = 'library-sync.json';
+import {
+  LEGACY_MANIFEST_NAME,
+  deviceManifestFileName,
+  isManifestFileName,
+  mergeSyncManifests,
+  parseSyncManifest,
+  type RemoteFileEntry,
+  type SyncAdapter,
+  type SyncManifest,
+} from '../syncTypes';
 
 function hasDesktopSyncIPC(): boolean {
   return Boolean(
@@ -61,18 +68,33 @@ export class FolderSyncAdapter implements SyncAdapter {
     const folder = this.getFolder();
     if (!folder || !hasDesktopSyncIPC()) throw new Error('Sync folder not configured.');
     await window.electronAPI.syncActivateFolder!(folder);
-    const buf = await window.electronAPI.syncReadFile!(folder, MANIFEST_NAME);
-    if (!buf) return null;
-    return parseSyncManifest(new Uint8Array(buf));
+    const entries = await window.electronAPI.syncList!(folder);
+    const listedNames = entries.map((e) => e.name).filter(isManifestFileName);
+    const hasPerDevice = listedNames.some((n) => n.toLowerCase() !== LEGACY_MANIFEST_NAME);
+    const manifestNames = Array.from(new Set([...listedNames, LEGACY_MANIFEST_NAME]));
+
+    const manifests: SyncManifest[] = [];
+    for (const name of manifestNames) {
+      try {
+        const buf = await window.electronAPI.syncReadFile!(folder, name);
+        if (!buf) continue;
+        manifests.push(parseSyncManifest(new Uint8Array(buf)));
+      } catch (err) {
+        if (hasPerDevice && name.toLowerCase() === LEGACY_MANIFEST_NAME) continue;
+        throw err;
+      }
+    }
+    return mergeSyncManifests(manifests);
   }
 
   async writeManifest(manifest: SyncManifest): Promise<void> {
     const folder = this.getFolder();
     if (!folder || !hasDesktopSyncIPC()) throw new Error('Sync folder not configured.');
     await window.electronAPI.syncActivateFolder!(folder);
+    const targetName = deviceManifestFileName(manifest.deviceId);
     const encoded = new TextEncoder().encode(JSON.stringify(manifest, null, 2));
     const ab = encoded.buffer.slice(encoded.byteOffset, encoded.byteOffset + encoded.byteLength);
-    await window.electronAPI.syncWriteFile!(folder, MANIFEST_NAME, ab);
+    await window.electronAPI.syncWriteFile!(folder, targetName, ab);
   }
 
   async readPdf(remoteName: string): Promise<Uint8Array | null> {

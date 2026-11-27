@@ -151,6 +151,136 @@ export function parseSyncManifest(bytes: Uint8Array): SyncManifest {
   return m as SyncManifest;
 }
 
+export const LEGACY_MANIFEST_NAME = 'library-sync.json';
+export const DEVICE_MANIFEST_PREFIX = 'sync-device-';
+
+/** Each device writes ONLY its own manifest file so iCloud/Cloud folders never hit multi-writer file conflicts. */
+export function deviceManifestFileName(deviceId: string): string {
+  const safe = (deviceId || 'default').replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 64) || 'default';
+  return `${DEVICE_MANIFEST_PREFIX}${safe}.json`;
+}
+
+export function isManifestFileName(name: string): boolean {
+  const lower = name.toLowerCase();
+  if (lower === LEGACY_MANIFEST_NAME) return true;
+  return lower.startsWith(DEVICE_MANIFEST_PREFIX) && lower.endsWith('.json') && !/[\\/]/.test(name);
+}
+
+function pickWinningRecord(a: SyncItemRecord, b: SyncItemRecord, canonicalId: string): SyncItemRecord {
+  const aDel = a.deletedAt ?? null;
+  const bDel = b.deletedAt ?? null;
+  if (aDel || bDel) {
+    const delRec = aDel && bDel ? (aDel >= bDel ? a : b) : (aDel ? a : b);
+    const liveRec = aDel && bDel ? null : (aDel ? b : a);
+    const delAt = delRec.deletedAt!;
+    if (
+      liveRec
+      && !liveRec.trashedAt
+      && liveRec.updatedAt > delAt
+      && Boolean(!delRec.contentHash || (liveRec.contentHash && liveRec.contentHash !== delRec.contentHash))
+    ) {
+      return { ...liveRec, id: canonicalId, deletedAt: null };
+    }
+    return {
+      ...liveRec,
+      ...delRec,
+      id: canonicalId,
+      updatedAt: Math.max(delRec.updatedAt, delAt),
+      trashedAt: delRec.trashedAt ?? delAt,
+      deletedAt: delAt,
+    };
+  }
+  if (b.updatedAt > a.updatedAt) {
+    return {
+      ...a,
+      ...b,
+      id: canonicalId,
+      kind: a.id === canonicalId ? a.kind : b.kind,
+      favorite: b.trashedAt ? false : b.favorite,
+    };
+  }
+  if (a.updatedAt > b.updatedAt) {
+    return {
+      ...b,
+      ...a,
+      id: canonicalId,
+      kind: a.id === canonicalId ? a.kind : b.kind,
+      favorite: a.trashedAt ? false : a.favorite,
+    };
+  }
+  // Tie-breaker: prefer record with contentHash or trashedAt
+  const base = b.contentHash && !a.contentHash ? b : a;
+  return { ...a, ...b, ...base, id: canonicalId };
+}
+
+/**
+ * Merges per-device manifests (`sync-device-*.json`) and any legacy `library-sync.json`
+ * into a single unified remote view without shared-file write contention.
+ */
+export function mergeSyncManifests(manifests: readonly SyncManifest[]): SyncManifest | null {
+  if (manifests.length === 0) return null;
+  if (manifests.length === 1) return manifests[0];
+
+  const folderMap = new Map<string, LibraryFolder>();
+  let latestUpdatedAt = 0;
+  let latestDeviceId = manifests[0].deviceId;
+
+  // Map `remoteName.toLowerCase()` -> canonical non-`cloud-*` ID so if one device
+  // discovered a PDF before the creator's manifest arrived (`cloud-...`), its edits
+  // merge seamlessly back onto the creator's canonical document ID!
+  const canonicalIdByName = new Map<string, string>();
+  for (const m of manifests) {
+    if (m.updatedAt >= latestUpdatedAt) {
+      latestUpdatedAt = m.updatedAt;
+      latestDeviceId = m.deviceId;
+    }
+    for (const item of m.items) {
+      if (!item.deletedAt && !item.id.startsWith('cloud-')) {
+        const key = item.remoteName.toLowerCase();
+        const prevId = canonicalIdByName.get(key);
+        if (!prevId) canonicalIdByName.set(key, item.id);
+      }
+    }
+    for (const f of m.folders) {
+      const existing = folderMap.get(f.id);
+      if (!existing) {
+        folderMap.set(f.id, { ...f });
+      } else if (f.deletedAt && (!existing.deletedAt || f.deletedAt >= existing.updatedAt)) {
+        folderMap.set(f.id, { ...f });
+      } else if (!f.deletedAt && existing.deletedAt) {
+        if (f.updatedAt > existing.deletedAt) folderMap.set(f.id, { ...f, deletedAt: null });
+      } else if (f.updatedAt > existing.updatedAt) {
+        folderMap.set(f.id, { ...f });
+      }
+    }
+  }
+
+  const itemMap = new Map<string, SyncItemRecord>();
+  for (const m of manifests) {
+    for (const raw of m.items) {
+      const canonicalFromName =
+        raw.id.startsWith('cloud-') && !raw.deletedAt
+          ? canonicalIdByName.get(raw.remoteName.toLowerCase())
+          : undefined;
+      const targetId = canonicalFromName ?? raw.id;
+      const existing = itemMap.get(targetId);
+      if (!existing) {
+        itemMap.set(targetId, { ...raw, id: targetId });
+      } else {
+        itemMap.set(targetId, pickWinningRecord(existing, raw, targetId));
+      }
+    }
+  }
+
+  return {
+    version: 1,
+    updatedAt: latestUpdatedAt,
+    deviceId: latestDeviceId,
+    folders: Array.from(folderMap.values()),
+    items: Array.from(itemMap.values()),
+  };
+}
+
 /** Extracts a safe single-segment PDF filename for shared sync storage. */
 export function remoteNameForDocument(doc: Pick<LibraryDocument, 'filePath' | 'title'>): string {
   const fromPath = doc.filePath?.split(/[\\/]/).pop();

@@ -12,9 +12,16 @@
 
 import { base64ToBytes, bytesToBase64, isIpadApp, isIphoneDevice } from '../../platform/native';
 import { useSyncStore } from '../../store/syncStore';
-import { parseSyncManifest, type RemoteFileEntry, type SyncAdapter, type SyncManifest } from '../syncTypes';
-
-const MANIFEST_NAME = 'library-sync.json';
+import {
+  LEGACY_MANIFEST_NAME,
+  deviceManifestFileName,
+  isManifestFileName,
+  mergeSyncManifests,
+  parseSyncManifest,
+  type RemoteFileEntry,
+  type SyncAdapter,
+  type SyncManifest,
+} from '../syncTypes';
 const noBridgeMessage = () =>
   isIphoneDevice()
     ? 'iCloud Drive sync needs the latest MaliPDF app on this iPhone. Please update the app.'
@@ -147,31 +154,59 @@ export class ICloudSyncAdapter implements SyncAdapter {
     // Keep local files untouched on disconnect
   }
 
-  /** null ONLY when the manifest does not exist; bridge/IPC/parse failures throw. */
-  async readManifest(): Promise<SyncManifest | null> {
+  private async listAllEntries(): Promise<RemoteFileEntry[]> {
     if (isIpadApp()) {
-      // Rejects without the bridge or when the native side reports an error
-      // (e.g. the file is still an undownloaded iCloud placeholder).
-      const res = await callNativeICloud('read', { name: MANIFEST_NAME });
-      if (res.data == null) return null;
-      return parseSyncManifest(base64ToBytes(res.data));
+      const res = await callNativeICloud('list');
+      return res.files ?? [];
     }
     const folder = await this.desktopFolder();
     await window.electronAPI.syncActivateFolder!(folder);
-    const buf = await window.electronAPI.syncReadFile!(folder, MANIFEST_NAME);
-    if (!buf) return null;
-    return parseSyncManifest(new Uint8Array(buf));
+    if (!window.electronAPI?.syncList) throw new Error('iCloud Drive folder not found.');
+    return await window.electronAPI.syncList(folder);
+  }
+
+  private async readRawFile(name: string): Promise<Uint8Array | null> {
+    if (isIpadApp()) {
+      const res = await callNativeICloud('read', { name });
+      return res.data == null ? null : base64ToBytes(res.data);
+    }
+    const folder = await this.desktopFolder();
+    const buf = await window.electronAPI.syncReadFile!(folder, name);
+    return buf ? new Uint8Array(buf) : null;
+  }
+
+  /** null ONLY when no manifest exists yet; bridge/IPC/download failures throw. */
+  async readManifest(): Promise<SyncManifest | null> {
+    const entries = await this.listAllEntries();
+    const listedNames = entries.map((e) => e.name).filter(isManifestFileName);
+    const hasPerDevice = listedNames.some((n) => n.toLowerCase() !== LEGACY_MANIFEST_NAME);
+    const manifestNames = Array.from(new Set([...listedNames, LEGACY_MANIFEST_NAME]));
+
+    const manifests: SyncManifest[] = [];
+    for (const name of manifestNames) {
+      try {
+        const bytes = await this.readRawFile(name);
+        if (!bytes) continue;
+        manifests.push(parseSyncManifest(bytes));
+      } catch (err) {
+        // Never block per-device manifests if only the retired legacy library-sync.json is damaged
+        if (hasPerDevice && name.toLowerCase() === LEGACY_MANIFEST_NAME) continue;
+        throw err;
+      }
+    }
+    return mergeSyncManifests(manifests);
   }
 
   async writeManifest(manifest: SyncManifest): Promise<void> {
+    const targetName = deviceManifestFileName(manifest.deviceId);
     const enc = new TextEncoder().encode(JSON.stringify(manifest, null, 2));
     if (isIpadApp()) {
-      await callNativeICloud('write', { name: MANIFEST_NAME, data: bytesToBase64(enc) });
+      await callNativeICloud('write', { name: targetName, data: bytesToBase64(enc) });
       return;
     }
     const folder = await this.desktopFolder();
     await window.electronAPI.syncActivateFolder!(folder);
-    await window.electronAPI.syncWriteFile!(folder, MANIFEST_NAME, enc.buffer.slice(enc.byteOffset, enc.byteOffset + enc.byteLength));
+    await window.electronAPI.syncWriteFile!(folder, targetName, enc.buffer.slice(enc.byteOffset, enc.byteOffset + enc.byteLength));
   }
 
   async readPdf(remoteName: string): Promise<Uint8Array | null> {
@@ -206,14 +241,7 @@ export class ICloudSyncAdapter implements SyncAdapter {
   }
 
   async listRemotePdfs(): Promise<RemoteFileEntry[]> {
-    if (isIpadApp()) {
-      // Errors propagate: an empty list must mean an empty folder, not a failure.
-      const res = await callNativeICloud('list');
-      return (res.files ?? []).filter((f) => /\.pdf$/i.test(f.name));
-    }
-    const folder = await this.desktopFolder();
-    if (!window.electronAPI?.syncList) throw new Error('iCloud Drive folder not found.');
-    const entries = await window.electronAPI.syncList(folder);
+    const entries = await this.listAllEntries();
     return entries.filter((e) => /\.pdf$/i.test(e.name));
   }
 }

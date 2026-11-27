@@ -252,8 +252,16 @@ export async function saveAllDocuments() {
  */
 export async function autoSaveDirtyTabletDocuments(): Promise<void> {
   const { documents } = useDocumentStore.getState();
+  const tablet = isTabletMode() || isIpadApp();
   for (const doc of documents.values()) {
-    if (doc.currentStateId !== doc.savedStateId && doc.filePath && !doc.ephemeralImport && doc.saveStatus !== 'saving') {
+    if (doc.currentStateId === doc.savedStateId || !doc.filePath || doc.ephemeralImport || doc.saveStatus === 'saving') {
+      continue;
+    }
+    const isManagedLibraryOrCloudDoc =
+      doc.filePath.startsWith(DOCUMENTS_PREFIX)
+      || doc.filePath.startsWith(PREVIEW_PREFIX)
+      || doc.filePath.startsWith(CLOUD_CACHE_PREFIX);
+    if (tablet || isManagedLibraryOrCloudDoc) {
       await performSave(doc.id, false, { silent: true });
     }
   }

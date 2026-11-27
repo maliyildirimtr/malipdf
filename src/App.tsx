@@ -204,26 +204,54 @@ export default function App() {
     return () => { stopOpenFiles?.(); };
   }, [showTabletLibrary]);
 
-  // iPadOS / Tablet auto-save when switching apps, locking screen, or closing tab.
+  // Auto-save Library & Cloud documents when switching apps, locking screen, or
+  // 2.2 seconds after finishing a stroke so edits sync to iCloud automatically!
   useEffect(() => {
-    if (!isTabletUI) return;
     const flush = () => { void autoSaveDirtyTabletDocuments(); };
     const onVisibility = () => {
       if (document.visibilityState === 'hidden') flush();
     };
     document.addEventListener('visibilitychange', onVisibility);
     window.addEventListener('pagehide', flush);
+    window.addEventListener('blur', flush);
     const stopNative = isIpadApp()
       ? onNative('App', 'appStateChange', (state: { isActive?: boolean }) => {
           if (state && state.isActive === false) flush();
         })
       : () => {};
+
+    let idleSaveTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleIdleSave = () => {
+      if (idleSaveTimer) clearTimeout(idleSaveTimer);
+      idleSaveTimer = setTimeout(() => {
+        idleSaveTimer = null;
+        if (useUIStore.getState().isDrawing) {
+          scheduleIdleSave();
+          return;
+        }
+        void autoSaveDirtyTabletDocuments();
+      }, 2200);
+    };
+    const unsubDocs = useDocumentStore.subscribe((state, prev) => {
+      for (const doc of state.documents.values()) {
+        if (!doc.filePath || doc.ephemeralImport || doc.currentStateId === doc.savedStateId) continue;
+        const before = prev.documents.get(doc.id);
+        if (!before || before.currentStateId !== doc.currentStateId) {
+          scheduleIdleSave();
+          break;
+        }
+      }
+    });
+
     return () => {
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('pagehide', flush);
+      window.removeEventListener('blur', flush);
       stopNative();
+      unsubDocs();
+      if (idleSaveTimer) clearTimeout(idleSaveTimer);
     };
-  }, [isTabletUI]);
+  }, []);
 
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [isExporting, setIsExporting] = useState(false);
@@ -275,22 +303,33 @@ export default function App() {
 
   useEffect(() => startAutoSave(), []);
 
-  // ── Background Cloud Sync (startup + returning to foreground) ──────────
+  // ── Background Cloud Sync (startup + focus + live 12s foreground poll) ──
 
   useEffect(() => {
-    scheduleAutoSync(2200);
+    scheduleAutoSync(1500);
     const onVisibility = () => {
-      if (document.visibilityState === 'visible') scheduleAutoSync(900);
+      if (document.visibilityState === 'visible') scheduleAutoSync(600);
+    };
+    const onFocus = () => {
+      scheduleAutoSync(600);
     };
     document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('focus', onFocus);
     const stopNative = isIpadApp()
       ? onNative('App', 'appStateChange', (state: { isActive?: boolean }) => {
-          if (state?.isActive === true) scheduleAutoSync(900);
+          if (state?.isActive === true) scheduleAutoSync(600);
         })
       : () => {};
+    const liveInterval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      if (useUIStore.getState().isDrawing) return;
+      scheduleAutoSync(0);
+    }, 12_000);
     return () => {
       document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('focus', onFocus);
       stopNative();
+      clearInterval(liveInterval);
     };
   }, []);
 

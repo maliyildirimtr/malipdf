@@ -19,6 +19,14 @@ import {
 } from '../platform/ipadLibrary';
 import { prefixForScope, useLibraryStore } from '../store/libraryStore';
 import { useDocumentStore } from '../store/documentStore';
+import { useAnnotationStore } from '../store/annotationStore';
+import { useAssetStore } from '../store/assetStore';
+import { useHistoryStore } from '../store/historyStore';
+import { useSelectionStore } from '../store/selectionStore';
+import { documentSessionStore } from '../store/documentSessionStore';
+import { reloadDocument } from '../pdf/documentManager';
+import { extractEditableData } from '../pdf/editableData';
+import { nanoid } from '../utils/nanoid';
 import { useSyncStore } from '../store/syncStore';
 import { FolderSyncAdapter } from './adapters/folderSyncAdapter';
 import { ICloudSyncAdapter } from './adapters/icloudSyncAdapter';
@@ -47,6 +55,66 @@ const adapters: Partial<Record<Exclude<SyncProviderId, 'local'>, SyncAdapter>> =
 
 let activeSyncPromise: Promise<boolean> | null = null;
 let resyncRequested = false;
+const lastWrittenSignatureByDevice = new Map<string, string>();
+
+/**
+ * Hot-reloads any open, unedited tab in `useDocumentStore` when Cloud Sync
+ * downloads a newer version of that PDF from another device (e.g. strokes added
+ * on iPhone appear immediately on an open iPad/Mac tab!).
+ */
+async function reloadSyncedOpenDocument(targetPath: string, downloadedBytes: Uint8Array): Promise<void> {
+  const docStore = useDocumentStore.getState();
+  for (const doc of docStore.documents.values()) {
+    if (doc.filePath !== targetPath) continue;
+    // Never clobber active unsaved local strokes
+    if (doc.currentStateId !== doc.savedStateId || doc.saveStatus === 'saving') continue;
+    try {
+      const editable = await extractEditableData(downloadedBytes);
+      const rawPdfBytes = editable.kind === 'restored' ? editable.bytes : downloadedBytes;
+      const nextRevision = doc.sourceRevision + 1;
+      const identity = { docId: doc.id, instanceId: doc.instanceId };
+      const reloadedPages = await reloadDocument(identity, rawPdfBytes, nextRevision).catch(() => null);
+      if (reloadedPages !== null) {
+        documentSessionStore.getState().reloadSession(identity, reloadedPages);
+      }
+      const totalPages = reloadedPages ?? doc.pageCount;
+
+      useSelectionStore.getState().removeDocument(identity);
+      useAssetStore.getState().removeDocument(identity);
+      useAnnotationStore.getState().removeDocument(doc.id);
+      useAnnotationStore.getState().initDocument(doc.id);
+      useHistoryStore.getState().removeDocument(doc.id);
+      useHistoryStore.getState().initDocument(doc.id);
+
+      if (editable.kind === 'restored') {
+        const assetIds = new Set<string>();
+        for (const asset of editable.assets) {
+          useAssetStore.getState().addAsset(identity, asset);
+          assetIds.add(asset.id);
+        }
+        const annotations = useAnnotationStore.getState();
+        for (const annotation of editable.annotations) {
+          if (!Number.isInteger(annotation.pageIndex) || annotation.pageIndex < 0 || annotation.pageIndex >= totalPages) continue;
+          if (annotation.type === 'image' && !assetIds.has(annotation.assetId)) continue;
+          annotations.addAnnotation(doc.id, annotation);
+        }
+      }
+
+      const freshStateId = nanoid();
+      useDocumentStore.getState().updateDocument(doc.id, {
+        sourceData: rawPdfBytes,
+        sourceRevision: nextRevision,
+        pageCount: totalPages,
+        activePageIndex: Math.min(doc.activePageIndex, Math.max(0, totalPages - 1)),
+        bookmarks: editable.kind === 'restored' && editable.bookmarks.length > 0 ? editable.bookmarks : undefined,
+        currentStateId: freshStateId,
+        savedStateId: freshStateId,
+      });
+    } catch (err) {
+      console.warn('Could not hot-reload synced open document:', err);
+    }
+  }
+}
 
 export function getSyncAdapter(provider: SyncProviderId): SyncAdapter | null {
   if (provider === 'local' || provider === 'gdrive') return null;
@@ -192,7 +260,7 @@ async function runSingleSyncPass(): Promise<boolean> {
     // 1b. Save local conflict copies (remote won) to their OWN local file
     //     before the winner is downloaded over the original file.
     for (const item of plan.toUpload) {
-      if (!item.sourceLocalId) continue;
+      if (!item.sourceLocalId || item.sourceLocalId === item.id || !item.id.includes('-conflict-')) continue;
       const bytes = localBytesById.get(item.sourceLocalId)!;
       const copyPath = cloudPrefix + item.remoteName;
       await writeLibraryPdfBytes(copyPath, bytes);
@@ -223,6 +291,7 @@ async function runSingleSyncPass(): Promise<boolean> {
       await writeLibraryPdfBytes(targetPath, bytes);
       item.sizeBytes = bytes.byteLength;
       item.contentHash = fingerprintPdfBytes(bytes);
+      await reloadSyncedOpenDocument(targetPath, bytes);
       const rendered = await renderPdfCoverThumbnail(bytes).catch(() => null);
       if (rendered) {
         downloadedThumbs.set(item.id, { thumbnail: rendered.dataUrl, pageCount: rendered.pageCount });
@@ -288,6 +357,7 @@ async function runSingleSyncPass(): Promise<boolean> {
     const current = useLibraryStore.getState();
 
     const mergedDocById = new Map(mergedCloudDocs.map((d) => [d.id, d]));
+    const mergedDocByPath = new Map(mergedCloudDocs.map((d) => [d.filePath, d]));
     const seenItemIds = new Set<string>();
     const nextItems: LibraryDocument[] = [];
     for (const cur of current.items) {
@@ -299,11 +369,26 @@ async function runSingleSyncPass(): Promise<boolean> {
         continue;
       }
       if (deleteLocal.has(cur.id) || liveTombById.has(cur.id)) {
-        // Permanently deleted on another device (or deleted mid-sync).
-        await deleteLibraryPdfBytes(cur.filePath);
+        // Permanently deleted on another device (or deleted mid-sync): only delete
+        // bytes if no surviving canonical document shares this exact filePath.
+        if (!mergedDocByPath.has(cur.filePath)) {
+          await deleteLibraryPdfBytes(cur.filePath);
+        }
         continue;
       }
-      nextItems.push(mergedDocById.get(cur.id) ?? cur);
+      const direct = mergedDocById.get(cur.id);
+      if (direct) {
+        nextItems.push(direct);
+        continue;
+      }
+      // Synthetic `cloud-*` ID upgraded in-place to the creator's canonical ID!
+      const upgraded = cur.id.startsWith('cloud-') ? mergedDocByPath.get(cur.filePath) : undefined;
+      if (upgraded) {
+        seenItemIds.add(upgraded.id);
+        nextItems.push(upgraded);
+        continue;
+      }
+      nextItems.push(cur);
     }
     for (const doc of mergedCloudDocs) {
       // In the snapshot but gone now = deleted while syncing: do not resurrect.
@@ -409,7 +494,23 @@ async function runSingleSyncPass(): Promise<boolean> {
       folders: manifestCloudFolders,
       items: Array.from(manifestItemsById.values()),
     };
-    await adapter.writeManifest(nextManifest);
+    const manifestSignature = JSON.stringify({
+      folders: nextManifest.folders,
+      items: nextManifest.items,
+    });
+    const prevSignature = lastWrittenSignatureByDevice.get(syncStore.deviceId);
+    const shouldWriteManifest =
+      useSyncStore.getState().lastSyncedAt === null
+      || prevSignature !== manifestSignature
+      || uploaded > 0
+      || downloaded > 0
+      || liveTombById.size > 0
+      || liveFolderTombById.size > 0
+      || !remoteManifest;
+    if (shouldWriteManifest) {
+      await adapter.writeManifest(nextManifest);
+      lastWrittenSignatureByDevice.set(syncStore.deviceId, manifestSignature);
+    }
 
     // Clear tombstones that are now recorded in the shared manifest.
     useSyncStore.getState().clearTombstones(Array.from(liveTombById.keys()));
@@ -489,6 +590,9 @@ export async function switchSyncProvider(
     }
 
     store.setProvider(nextProvider);
+    // Switch the Library straight into Cloud scope so the user immediately sees
+    // their synced iCloud / Cloud Folder documents and creates new notes there!
+    useLibraryStore.getState().setStorageScope('cloud');
     // Only copy local docs to Cloud if explicitly requested by the user in Settings
     if (options?.migrateExisting) {
       const lib = useLibraryStore.getState();

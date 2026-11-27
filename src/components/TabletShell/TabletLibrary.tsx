@@ -873,6 +873,37 @@ export function TabletLibrary() {
               <h1 className={styles.panelTitle} data-no-translate={activeSection === 'folder' ? '' : undefined}>
                 {sectionHeading}
               </h1>
+
+              {/* Always-visible Device vs Cloud switcher right in the top bar */}
+              <div className={styles.headerScopeSegment} role="tablist" aria-label="Storage location">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={storageScope === 'local'}
+                  className={`${styles.headerScopeBtn} ${storageScope === 'local' ? styles.headerScopeBtnActive : ''}`}
+                  onClick={() => setStorageScope('local')}
+                >
+                  <DeviceIcon size={14} />
+                  <span>This Device</span>
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={storageScope === 'cloud'}
+                  className={`${styles.headerScopeBtn} ${storageScope === 'cloud' ? styles.headerScopeBtnCloudActive : ''}`}
+                  onClick={handleSelectCloudScope}
+                >
+                  {syncStatus === 'syncing' ? (
+                    <RefreshCw size={14} className="animate-spin" />
+                  ) : (
+                    <Cloud size={14} />
+                  )}
+                  <span data-no-translate={syncProvider !== 'local' ? '' : undefined}>
+                    {syncProvider !== 'local' ? cloudProviderLabel : 'Cloud Storage'}
+                  </span>
+                </button>
+              </div>
+
               <button
                 type="button"
                 className={styles.headerIconBtn}
@@ -895,9 +926,7 @@ export function TabletLibrary() {
                   onClick={() => openCloudModal()}
                   title="Switch Cloud Provider"
                 >
-                  <Cloud size={14} />
-                  <span data-no-translate>{cloudProviderLabel}</span>
-                  <ChevronDown size={13} />
+                  <Settings size={13} />
                 </button>
               )}
               {activeSection !== 'trash' && (

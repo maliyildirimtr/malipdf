@@ -194,8 +194,10 @@ export function buildSyncPlan(input: MergeSyncInputs): SyncPlan {
     if (!remote) {
       const byName = remoteByName.get(local.remoteName.toLowerCase());
       const sameContent = Boolean(byName && local.contentHash && byName.contentHash && local.contentHash === byName.contentHash);
-      if (byName && !matchedRemoteIds.has(byName.id) && sameContent) {
-        // Same file added independently on two devices: safe to treat as one.
+      // If `local.id` starts with `cloud-`, this device originally discovered that exact
+      // cloud PDF before the creator's manifest arrived: treat it as the same document!
+      const isSyntheticCloudAlias = Boolean(byName && local.id.startsWith('cloud-') && !byName.id.startsWith('cloud-'));
+      if (byName && !matchedRemoteIds.has(byName.id) && (sameContent || isSyntheticCloudAlias)) {
         remote = byName;
       } else if (byName || remoteFileMap.has(local.remoteName.toLowerCase())) {
         // A DIFFERENT remote document (or an unindexed remote file whose content
@@ -229,6 +231,11 @@ export function buildSyncPlan(input: MergeSyncInputs): SyncPlan {
       (local.contentHash && remote.contentHash && local.contentHash !== remote.contentHash)
       || (!local.contentHash && !remote.contentHash && local.sizeBytes !== remote.sizeBytes);
 
+    const canonicalId =
+      Boolean(remote && local.id.startsWith('cloud-') && !remote.id.startsWith('cloud-'))
+        ? remote.id
+        : local.id;
+
     if (remote.deletedAt) {
       // Only revive a remotely deleted doc if THIS device made a real content edit
       // AFTER its last sync and AFTER `remote.deletedAt` (prevents clock skew or
@@ -240,10 +247,10 @@ export function buildSyncPlan(input: MergeSyncInputs): SyncPlan {
         && local.updatedAt > lastSync
         && Boolean(!remote.contentHash || contentDiffers);
       if (genuinelyEditedAfterDelete) {
-        mergedById.set(local.id, { ...local, deletedAt: null });
-        toUpload.push(local);
+        mergedById.set(canonicalId, { ...local, id: canonicalId, deletedAt: null });
+        toUpload.push({ ...local, id: canonicalId });
       } else {
-        mergedById.set(local.id, { ...remote, id: local.id });
+        mergedById.set(canonicalId, { ...remote, id: canonicalId });
         toDeleteLocal.push(local.id);
         if (remoteFileMap.has(remote.remoteName.toLowerCase())) {
           queueRemoteDelete(remote.remoteName);
@@ -258,8 +265,8 @@ export function buildSyncPlan(input: MergeSyncInputs): SyncPlan {
     if (lastSync > 0 && localEdited && remoteEdited && contentDiffers && !local.trashedAt && !remote.trashedAt) {
       // True two-sided edit conflict: keep newer version at original name, preserve older copy!
       if (local.updatedAt >= remote.updatedAt) {
-        mergedById.set(local.id, { ...local });
-        toUpload.push(local);
+        mergedById.set(canonicalId, { ...local, id: canonicalId });
+        toUpload.push({ ...local, id: canonicalId, sourceLocalId: canonicalId !== local.id ? local.id : undefined });
         const conflictName = makeConflictRemoteName(remote.remoteName, remote.updatedAt || now, takenNames);
         const conflictItem: SyncItemRecord = {
           ...remote,
@@ -271,13 +278,13 @@ export function buildSyncPlan(input: MergeSyncInputs): SyncPlan {
         mergedById.set(conflictItem.id, conflictItem);
         conflictCopies.push({ sourceRemoteName: remote.remoteName, conflictItem });
       } else {
-        const winning: SyncItemRecord = { ...remote, id: local.id };
-        mergedById.set(local.id, winning);
+        const winning: SyncItemRecord = { ...remote, id: canonicalId };
+        mergedById.set(canonicalId, winning);
         toDownload.push(winning);
         const conflictName = makeConflictRemoteName(local.remoteName, local.updatedAt || now, takenNames);
         const conflictItem: SyncItemRecord = {
           ...local,
-          id: `${local.id}-conflict-${now}`,
+          id: `${canonicalId}-conflict-${now}`,
           title: conflictName.replace(/\.pdf$/i, ''),
           remoteName: conflictName,
           updatedAt: now,
@@ -293,18 +300,18 @@ export function buildSyncPlan(input: MergeSyncInputs): SyncPlan {
 
     // Non-conflict reconciliation by updatedAt
     if (local.updatedAt > remote.updatedAt) {
-      mergedById.set(local.id, { ...local });
+      mergedById.set(canonicalId, { ...local, id: canonicalId });
       if (local.trashedAt) {
         queueRemoteDelete(remote.remoteName);
         if (local.remoteName.toLowerCase() !== remote.remoteName.toLowerCase()) {
           queueRemoteDelete(local.remoteName);
         }
       } else if (contentDiffers || !remoteFileMap.has(local.remoteName.toLowerCase())) {
-        toUpload.push(local);
+        toUpload.push({ ...local, id: canonicalId, sourceLocalId: canonicalId !== local.id ? local.id : undefined });
       }
     } else if (remote.updatedAt > local.updatedAt) {
-      const updated: SyncItemRecord = { ...remote, id: local.id };
-      mergedById.set(local.id, updated);
+      const updated: SyncItemRecord = { ...remote, id: canonicalId };
+      mergedById.set(canonicalId, updated);
       if (remote.trashedAt) {
         if (remoteFileMap.has(remote.remoteName.toLowerCase())) {
           queueRemoteDelete(remote.remoteName);
@@ -313,14 +320,25 @@ export function buildSyncPlan(input: MergeSyncInputs): SyncPlan {
         toDownload.push(updated);
       }
     } else {
-      // Same timestamp — keep local. Only upload a missing remote file on the
-      // very first sync (`lastSync === 0`) or when edited locally since `lastSync`:
-      // in iCloud Drive, another device's PDF deletion often arrives 1–2s BEFORE
-      // its `library-sync.json` update, so re-uploading an unchanged pre-sync doc
-      // here would resurrect a file the other device just deleted!
-      mergedById.set(local.id, { ...local });
-      if (!local.trashedAt && !remoteFileMap.has(local.remoteName.toLowerCase()) && (lastSync === 0 || localEdited)) {
-        toUpload.push(local);
+      // Same timestamp — keep local, UNLESS the actual PDF file in the cloud folder
+      // has changed size (meaning another device already uploaded new strokes to the
+      // PDF even before its manifest finished syncing!).
+      const rf = remoteFileMap.get(local.remoteName.toLowerCase());
+      if (!local.trashedAt && !remote.trashedAt && rf && rf.size > 0 && rf.size !== local.sizeBytes && !localEdited && lastSync > 0) {
+        const updatedFromDisk: SyncItemRecord = {
+          ...remote,
+          id: canonicalId,
+          sizeBytes: rf.size,
+          contentHash: undefined,
+          updatedAt: Math.max(remote.updatedAt, rf.updatedAt, local.updatedAt + 1),
+        };
+        mergedById.set(canonicalId, updatedFromDisk);
+        toDownload.push(updatedFromDisk);
+      } else {
+        mergedById.set(canonicalId, { ...local, id: canonicalId });
+        if (!local.trashedAt && !rf && (lastSync === 0 || localEdited)) {
+          toUpload.push({ ...local, id: canonicalId, sourceLocalId: canonicalId !== local.id ? local.id : undefined });
+        }
       }
     }
   }
@@ -422,13 +440,25 @@ export function buildSyncPlan(input: MergeSyncInputs): SyncPlan {
     toDownload.push(discovered);
   }
 
+  // Never delete a remote PDF file that is actively used by a live, non-trashed document
+  // (e.g. a brand-new "Untitled.pdf" created after an older "Untitled.pdf" was deleted!).
+  const liveActiveNames = new Set<string>();
+  for (const rec of mergedById.values()) {
+    if (!rec.deletedAt && !rec.trashedAt) {
+      liveActiveNames.add(rec.remoteName.toLowerCase());
+    }
+  }
+  const safeToDeleteRemote = Array.from(toDeleteRemoteSet).filter(
+    (name) => !liveActiveNames.has(name.toLowerCase()),
+  );
+
   return {
     mergedFolders,
     mergedItems: Array.from(mergedById.values()),
     toUpload,
     toDownload,
     conflictCopies,
-    toDeleteRemote: Array.from(toDeleteRemoteSet),
+    toDeleteRemote: safeToDeleteRemote,
     toDeleteLocal,
   };
 }

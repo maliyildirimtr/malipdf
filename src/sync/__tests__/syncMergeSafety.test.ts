@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildSyncPlan } from '../syncMerge';
-import { fingerprintPdfBytes, type SyncItemRecord, type SyncManifest } from '../syncTypes';
+import { fingerprintPdfBytes, mergeSyncManifests, type SyncItemRecord, type SyncManifest } from '../syncTypes';
 
 function makeItem(overrides: Partial<SyncItemRecord> & { id: string; remoteName: string }): SyncItemRecord {
   return {
@@ -206,5 +206,94 @@ describe('syncMerge data-safety', () => {
     b[1] = 7; // not on the old sampling stride, not in the tail
     expect(fingerprintPdfBytes(a)).not.toBe(fingerprintPdfBytes(b));
     expect(fingerprintPdfBytes(a)).toBe(fingerprintPdfBytes(a.slice()));
+  });
+
+  it('merges per-device manifests and collapses synthetic cloud-* aliases onto canonical IDs', () => {
+    const ipadManifest: SyncManifest = {
+      version: 1,
+      updatedAt: 1000,
+      deviceId: 'dev-ipad',
+      folders: [],
+      items: [
+        makeItem({
+          id: 'qOM3EC_EVcjWaGbOQeoyt',
+          remoteName: 'New Note 2026-11-27 10-24.pdf',
+          kind: 'notebook',
+          sizeBytes: 1357161,
+          contentHash: '1357161:ipad',
+          updatedAt: 1000,
+        }),
+      ],
+    };
+    const iphoneManifest: SyncManifest = {
+      version: 1,
+      updatedAt: 2000,
+      deviceId: 'dev-iphone',
+      folders: [],
+      items: [
+        makeItem({
+          id: 'cloud-new-note-2026-11-27-10-24-pdf-1357161',
+          remoteName: 'New Note 2026-11-27 10-24.pdf',
+          kind: 'pdf',
+          sizeBytes: 1367682,
+          contentHash: '1367682:iphone-edited',
+          updatedAt: 2000,
+        }),
+      ],
+    };
+    const merged = mergeSyncManifests([ipadManifest, iphoneManifest])!;
+    expect(merged.items).toHaveLength(1);
+    expect(merged.items[0].id).toBe('qOM3EC_EVcjWaGbOQeoyt');
+    expect(merged.items[0].sizeBytes).toBe(1367682);
+    expect(merged.items[0].contentHash).toBe('1367682:iphone-edited');
+    expect(merged.items[0].kind).toBe('notebook');
+  });
+
+  it('downloads updated cloud PDF immediately when remote file size changed even before manifest updates', () => {
+    const ipadLocal = makeItem({
+      id: 'qOM3EC',
+      remoteName: 'Note.pdf',
+      sizeBytes: 1357161,
+      contentHash: '1357161:orig',
+      updatedAt: 1000,
+    });
+    const staleManifest = manifest([ipadLocal]);
+    const plan = buildSyncPlan({
+      localFolders: [],
+      localItems: [ipadLocal],
+      remoteManifest: staleManifest,
+      // iPhone already uploaded the 1,367,682-byte PDF to iCloud Drive!
+      remoteFiles: [{ name: 'Note.pdf', size: 1367682, updatedAt: 2000 }],
+      lastSyncedAt: 1100,
+      now: 2100,
+    });
+    expect(plan.toDownload.map((i) => i.id)).toEqual(['qOM3EC']);
+    expect(plan.toUpload).toHaveLength(0);
+  });
+
+  it('never deletes a newly created live PDF when an older tombstone had the same filename', () => {
+    const oldTomb = makeItem({
+      id: 'old-untitled',
+      remoteName: 'Untitled.pdf',
+      updatedAt: 500,
+      trashedAt: 500,
+      deletedAt: 500,
+    });
+    const newLive = makeItem({
+      id: 'new-untitled',
+      remoteName: 'Untitled.pdf',
+      updatedAt: 1500,
+      trashedAt: null,
+      deletedAt: null,
+    });
+    const plan = buildSyncPlan({
+      localFolders: [],
+      localItems: [newLive],
+      remoteManifest: manifest([oldTomb, newLive]),
+      remoteFiles: [{ name: 'Untitled.pdf', size: 1000, updatedAt: 1500 }],
+      lastSyncedAt: 1600,
+      now: 2000,
+    });
+    expect(plan.toDeleteRemote).not.toContain('Untitled.pdf');
   });
 });
